@@ -26,3 +26,5 @@ The test bar is off by default. Enable it from the Action Bars page, **Action Ba
 The bar uses fixed client slots 1–12. **Dragging actions changes those same slots on other bars**, including DiscordActionBars. Hold Shift to drag an action from a test button, or drop an action onto it. The test bar does not follow pages or forms yet.
 
 Open the game's **Key Bindings → BootyActionBars** and assign keys to its twelve buttons. No keys are assigned automatically. Disabling the bar stops these commands from executing actions; assigned keys remain in the game's binding configuration. Mouse clicks and ordinary action slots use the current client APIs, including installed API hooks. Dynamic macro visuals need further compatibility testing.
+
+With current BootyProfiler installed, **Advanced Profiler → Profile Action Bars** records this test bar's event work and cooldown animation. The bar works normally without BootyProfiler.
