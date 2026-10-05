@@ -1,0 +1,14 @@
+## Interface: 11200
+## Title: BootyActionBars
+## Notes: Action bar preferences and profiles, standalone or integrated into Booty Suite. Early development build.
+## Author: Mukla
+## Version: 0.1.0-dev.1
+## Dependencies: BootyLib
+## SavedVariables: BootyActionBarsDB
+
+Core\Bootstrap.lua
+Core\Database.lua
+Core\Runtime.lua
+Core\SettingsSchema.lua
+Modules\Overview.lua
+BootyActionBars.lua
