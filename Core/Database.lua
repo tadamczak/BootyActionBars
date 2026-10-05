@@ -1,0 +1,33 @@
+local Bars = BootyActionBars
+local Database = {}
+Bars.Database = Database
+Database.SCHEMA_VERSION = 1
+
+local function Defaults(store)
+    -- Fail before writing defaults when a newer build owns this saved format.
+    if store.schemaVersion ~= nil and store.schemaVersion ~= Database.SCHEMA_VERSION then
+        error("Unsupported BootyActionBars saved data. Update the addon before opening it.")
+    end
+    store.schemaVersion = Database.SCHEMA_VERSION
+    if type(store.hideMinimapIcon) ~= "boolean" then store.hideMinimapIcon = false end
+    if type(store.presentation) ~= "table" then store.presentation = {} end
+    if type(store.presentation.windows) ~= "table" then store.presentation.windows = {} end
+    if type(store.presentation.minimap) ~= "table" then store.presentation.minimap = {angle = 270} end
+    store.addonVersion = Bars.version
+end
+
+-- This new product has no MOS data to import. DAB import has a separate,
+-- explicitly validated workflow; never borrow a legacy shell preference.
+BootyLib.Data.RegisterOwner("actionbars", "BootyActionBarsDB", function() return false end, Defaults)
+
+function Database.Ensure()
+    -- Guard before the shared migration/default pipeline can touch this store.
+    local store = BootyActionBarsDB
+    if store ~= nil and type(store) ~= "table" then
+        return nil, "Invalid BootyActionBars saved data. Preserve it before repairing the saved file."
+    end
+    if store and store.schemaVersion ~= nil and store.schemaVersion ~= Database.SCHEMA_VERSION then
+        return nil, "Unsupported BootyActionBars saved data. Update the addon before opening it."
+    end
+    return BootyLib.Data.Ensure("actionbars")
+end
