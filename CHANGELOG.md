@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-dev.3 — 2026-10-06
+
+- Support the optional targeted Action Bars profile in BootyProfiler without enabling measurements during ordinary play.
+
 ## 0.1.0-dev.2 — 2026-10-05
 
 - Add an optional slots1–12 test bar with actions, Shift dragging, native cooldowns and explicit keybindings.
