@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.14 — 2026-10-06
+
+- Use Show / Hide for bars while retaining layouts, actions and assigned keys.
+- Add separate pet and form/stance bindings under BootyActionBars with pressed-key feedback.
+- Hide matching native pet/form bars while BAB bars are visible; retain the hide choice across pages and stealth.
+
 ## 0.1.0-dev.13 — 2026-10-06
 
 - Position configured pet and form bars in Edit layout even when no pet or forms are available.

@@ -1,7 +1,7 @@
 BootyActionBars = BootyActionBars or {}
 local Bars = BootyActionBars
 local version = type(GetAddOnMetadata) == "function" and GetAddOnMetadata("BootyActionBars", "Version")
-Bars.version = type(version) == "string" and version ~= "" and version or "0.1.0-dev.13"
+Bars.version = type(version) == "string" and version ~= "" and version or "0.1.0-dev.14"
 Bars.API_VERSION = 1
 Bars.Core = Bars.Core or {}
 Bars.Modules = Bars.Modules or {}
@@ -15,4 +15,8 @@ for barId = 2, 6 do
     for index = 1, 12 do
         _G["BINDING_NAME_BOOTYACTIONBARS_BAR" .. barId .. "_BUTTON" .. index] = "Custom bar " .. barId .. ", button " .. index
     end
+end
+for index = 1, 10 do
+    _G["BINDING_NAME_BOOTYACTIONBARS_PET_BUTTON" .. index] = "Pet action " .. index
+    _G["BINDING_NAME_BOOTYACTIONBARS_STANCE_BUTTON" .. index] = "Form / stance " .. index
 end

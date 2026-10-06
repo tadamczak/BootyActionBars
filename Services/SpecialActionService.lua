@@ -64,7 +64,7 @@ function SpecialActionService.Create(kind, api)
     local service = {}
     local infoName = kind == "pet" and "GetPetActionInfo" or "GetShapeshiftFormInfo"
     local cooldownName = kind == "pet" and "GetPetActionCooldown" or "GetShapeshiftFormCooldown"
-    local bindingPrefix = kind == "pet" and "BONUSACTIONBUTTON" or "SHAPESHIFTBUTTON"
+    local bindingPrefix = kind == "pet" and "BOOTYACTIONBARS_PET_BUTTON" or "BOOTYACTIONBARS_STANCE_BUTTON"
 
     function service.GetCount()
         if kind == "pet" then

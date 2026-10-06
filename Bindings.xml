@@ -215,4 +215,64 @@
     <Binding name="BOOTYACTIONBARS_BAR6_BUTTON12" runOnUp="true">
         BootyActionBars.Core.Engine.UseCustomButton(6, 12, keystate);
     </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON1" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 1, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON2" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 2, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON3" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 3, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON4" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 4, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON5" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 5, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON6" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 6, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON7" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 7, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON8" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 8, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON9" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 9, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_PET_BUTTON10" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("pet", 10, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON1" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 1, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON2" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 2, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON3" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 3, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON4" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 4, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON5" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 5, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON6" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 6, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON7" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 7, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON8" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 8, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON9" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 9, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_STANCE_BUTTON10" runOnUp="true">
+        BootyActionBars.Modules.SpecialBars.UseButton("stance", 10, keystate);
+    </Binding>
 </Bindings>

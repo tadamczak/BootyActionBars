@@ -15,6 +15,8 @@ local transient = {
     stance = {"SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "PLAYER_AURAS_CHANGED", "UPDATE_INVENTORY_ALERTS", "UPDATE_BINDINGS"},
 }
 local Sync, Refresh, StopKind, Remove
+local visibilityObserver, visibilityDepth = nil, 0
+local observedPet, observedStance = false, false
 local function Run(callback, first, second, third, fourth)
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ran, result, failure = pcall(callback, first, second, third, fourth)
@@ -28,21 +30,72 @@ local function Report(message)
     if state.failure ~= message then BootyLib.Print("BootyActionBars: " .. message) end
     state.failure = message
 end
+local function LiveVisibility(owner)
+    local view = state.views[owner.id]
+    return owner.visible == true and view ~= nil and not view.editPreview
+        and view.count > 0 and view.frame:IsVisible() and true or false
+end
+local function ReadLiveVisibility()
+    return LiveVisibility(owners.pet), LiveVisibility(owners.stance)
+end
+function Special.GetLiveVisibility()
+    -- Frame methods can be wrapped by other addons; the snapshot must not
+    -- leak their legacy globals or turn a failed read into hidden intent.
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ok, pet, stance = pcall(ReadLiveVisibility)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ok then error(pet, 0) end
+    return pet, stance
+end
+function Special.SetVisibilityObserver(callback)
+    if callback ~= nil and type(callback) ~= "function" then return false, "Expected a visibility observer or nil." end
+    local pet, stance = Special.GetLiveVisibility()
+    visibilityObserver = callback
+    observedPet, observedStance = pet, stance
+    return true
+end
+local function NotifyVisibility()
+    if visibilityDepth > 0 then return true end
+    local pet, stance = Special.GetLiveVisibility()
+    if pet == observedPet and stance == observedStance then return true end
+    -- Record the transition before invoking the observer so cleanup cannot
+    -- retry the same failing notification recursively.
+    observedPet, observedStance = pet, stance
+    if not visibilityObserver then return true end
+    local ok, failure = Run(visibilityObserver, pet, stance)
+    if not ok then return false, failure end
+    return true
+end
+local function Settled(callback, first, second)
+    visibilityDepth = visibilityDepth + 1
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ran, ok, failure = pcall(callback, first, second)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    visibilityDepth = visibilityDepth - 1
+    if not ran then ok, failure = false, tostring(ok) end
+    local notified, reason = Run(NotifyVisibility)
+    if not notified then
+        if ok then ok, failure = false, reason
+        else failure = tostring(failure) .. " Visibility: " .. tostring(reason) end
+    end
+    return ok, failure
+end
 local function Press(button)
-    if button.mousePressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
+    if button.keyHeld or button.mousePressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
 end
 local function ClearTooltip(button)
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
 end
 local function Cancel(button)
     if button.mouseHeld then button.skipClick = true end
-    button.mousePressed, button.mouseHeld = false, false
+    button.keyHeld, button.mousePressed, button.mouseHeld = false, false, false
     button.pressFeedback:Hide(); button.hoverFeedback:Hide(); ClearTooltip(button)
     return true
 end
 local function VisibleSlot(button)
     local owner = owners[button.bar.kind]
     return state.active and state.configured[owner.kind] and owner.visible
+        and not button.bar.editPreview and button.bar.count > 0
         and button.index <= button.bar.count and button.bar.frame:IsVisible()
 end
 local function InputAvailable(button) return VisibleSlot(button) and button.hasAction end
@@ -119,6 +172,7 @@ local function Binding(button)
 end
 local function Render(button, data, force)
     local old = button.rendered
+    if button.hasAction and not data.hasAction then Cancel(button) end
     button.hasAction = data.hasAction
     if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
     if force or old.usable ~= data.usable or old.noMana ~= data.noMana then
@@ -160,6 +214,8 @@ local function Hidden()
         local ended, reason = Run(Bars.Modules.Editor.OnBarHidden, view.id)
         if not ended and ok then ok, failure = false, reason end
     end
+    local notified, reason = Run(NotifyVisibility)
+    if not notified and ok then ok, failure = false, reason end
     if not ok then Report(failure) end
 end
 local function Shown()
@@ -213,7 +269,7 @@ local function Create(owner)
         button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmall")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -4, -4)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
-        button.read, button.rendered = {}, {}; button.mouseHeld, button.mousePressed = false, false
+        button.read, button.rendered = {}, {}; button.keyHeld, button.mouseHeld, button.mousePressed = false, false, false
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         button:SetScript("OnClick", Click); button:SetScript("OnMouseDown", MouseDown); button:SetScript("OnMouseUp", MouseUp)
         button:SetScript("OnEnter", Enter); button:SetScript("OnLeave", Leave)
@@ -233,11 +289,13 @@ local function Create(owner)
         end
         return firstFailure == nil, firstFailure
     end
-    function view:CancelInput()
+    function view:CancelInput(onlyHeld)
         local firstFailure
         for _, button in ipairs(self.buttons) do
-            local ok, failure = Run(Cancel, button)
-            if not ok and not firstFailure then firstFailure = failure end
+            if not onlyHeld or button.keyHeld or button.mouseHeld then
+                local ok, failure = Run(Cancel, button)
+                if not ok and not firstFailure then firstFailure = failure end
+            end
         end
         return firstFailure == nil, firstFailure
     end
@@ -305,7 +363,7 @@ local function Subscribe(owner, list)
     end
     return true
 end
-StopKind = function(owner, all)
+local function StopBody(owner, all)
     local ok, firstFailure = Remove(owner, transient[owner.kind])
     if all then
         local removed, failure = Remove(owner, availability[owner.kind])
@@ -324,6 +382,7 @@ StopKind = function(owner, all)
     end
     return firstFailure == nil, firstFailure
 end
+StopKind = function(owner, all) return Settled(StopBody, owner, all) end
 Refresh = function(owner, category, force)
     local view = state.views[owner.id]
     if not owner.visible or not view or not view.frame:IsVisible() then return true end
@@ -411,11 +470,8 @@ end
 Sync = function(owner)
     if owner.syncing then return true end
     owner.syncing = true
-    local previousThis, previousEvent, previousArg = this, event, arg1
-    local ran, ok, failure = pcall(SyncBody, owner)
-    this, event, arg1 = previousThis, previousEvent, previousArg
+    local ok, failure = Settled(SyncBody, owner)
     owner.syncing = nil
-    if not ran then return false, tostring(ok) end
     return ok, failure
 end
 function Special.Configure(config)
@@ -427,7 +483,7 @@ function Special.Configure(config)
     if state.active then return Special.Enable() end
     return true
 end
-function Special.Enable(config)
+local function Enable(config)
     if config ~= nil then
         local active = state.active; state.active = false
         local ok, failure = Special.Configure(config)
@@ -444,7 +500,15 @@ function Special.Enable(config)
     end
     state.failure = nil; return true
 end
-function Special.Disable()
+function Special.Enable(config)
+    local ok, failure = Settled(Enable, config)
+    if not ok then
+        local stopped, reason = Special.Disable()
+        if not stopped then failure = tostring(failure) .. " Cleanup: " .. tostring(reason) end
+    end
+    return ok, failure
+end
+local function Disable()
     state.active, state.editing = false, false
     local firstFailure
     for _, kind in ipairs(kinds) do
@@ -453,6 +517,7 @@ function Special.Disable()
     end
     return firstFailure == nil, firstFailure
 end
+function Special.Disable() return Settled(Disable) end
 function Special.SetEditing(value)
     if type(value) ~= "boolean" then return false, "Expected edit mode on or off." end
     if value and not state.active then return false, "Enable the action bars before editing." end
@@ -483,7 +548,12 @@ function Special.HandleEvent(name, unit, kind)
     local ok, failure
     if name == "PLAYER_ENTERING_WORLD" or name == "UNIT_PET" or name == "PET_BAR_UPDATE"
         or name == "PLAYER_CONTROL_LOST" or name == "PLAYER_CONTROL_GAINED" or name == "PLAYER_FARSIGHT_FOCUS_CHANGED"
-        or name == "UPDATE_SHAPESHIFT_FORMS" then ok, failure = Run(Sync, owner)
+        or name == "UPDATE_SHAPESHIFT_FORMS" then
+        -- Availability can replace actions without changing the slot count.
+        -- A key released after that change must not use the replacement.
+        local view = state.views[owner.id]
+        if view then ok, failure = view:CancelInput(true) else ok = true end
+        if ok then ok, failure = Run(Sync, owner) end
     elseif name == "UPDATE_BINDINGS" then ok, failure = Refresh(owner, "Binding")
     elseif name == "PET_BAR_UPDATE_COOLDOWN" or name == "SPELL_UPDATE_COOLDOWN" then ok, failure = Refresh(owner, "ReadCooldown")
     else
@@ -491,6 +561,26 @@ function Special.HandleEvent(name, unit, kind)
         if ok then ok, failure = Refresh(owner, "ReadCooldown") end
     end
     if not ok then StopKind(owner, true); Report(failure) end
+    return ok, failure
+end
+function Special.UseButton(kind, index, keyState)
+    local owner = owners[kind]
+    if not owner or type(index) ~= "number" or index < 1 or index > 10 or index ~= math.floor(index) then return false end
+    local view = state.views[owner.id]
+    local button = view and view.buttons[index]
+    if not button or not InputAvailable(button) then return false end
+    if keyState == "down" then
+        button.keyHeld = true
+        local ok, failure = Run(Press, button)
+        if not ok then button.keyHeld = false; Report(failure) end
+        return ok, failure
+    end
+    if keyState ~= "up" or not button.keyHeld then return false end
+    button.keyHeld = false
+    local ok, failure = Run(Press, button)
+    -- Nil selects keyboard pet attack semantics rather than the mouse toggle.
+    if ok then ok, failure = Run(Use, button, nil) end
+    if not ok then Report(failure) end
     return ok, failure
 end
 function Special.GetView(id) return state.views[id] end

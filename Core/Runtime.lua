@@ -17,45 +17,103 @@ local function UnsubscribeNative()
     for _, name in ipairs(nativeEvents) do BootyLib.Unsubscribe(name, Runtime) end
     state.nativeSubscribed = false
 end
-local SyncNative
-local function NativeEvent() SyncNative(); RefreshView() end
-SyncNative = function()
-    local store, controller = state.store, Bars.Modules.NativeBar
-    if not store or state.stopped or not store.trialBarEnabled or not store.nativeMainBarEnabled
-        or not Bars.Core.Engine.GetState().active then
-        UnsubscribeNative()
-        local ok, failure = controller.Release()
-        if not ok then
-            if store then store.nativeMainBarEnabled = false end
-            return NativeFailure(failure)
+local function CallLifecycle(callback, first, second, third)
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ran, ok, failure = pcall(callback, first, second, third)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ran then return false, tostring(ok) end
+    if ok == false then return false, failure or "Action bar layout could not be updated." end
+    return true
+end
+local function ReleaseNative()
+    -- Both owners must be released even when one restoration fails.
+    local ok, failure = CallLifecycle(Bars.Modules.NativeBar.Release)
+    local special = Bars.Modules.NativeSpecialBars
+    if special then
+        local restored, reason = CallLifecycle(special.Release)
+        if not restored then
+            if ok then failure = reason else failure = tostring(failure) .. " Special bars: " .. tostring(reason) end
+            ok = false
         end
+    end
+    return ok, failure
+end
+local function AbortNative(failure)
+    if state.store then state.store.nativeMainBarEnabled = false end
+    UnsubscribeNative()
+    local restored, reason = ReleaseNative()
+    if not restored then failure = tostring(failure) .. " Restoration: " .. tostring(reason) end
+    return NativeFailure(failure)
+end
+local function NativeRequested()
+    local store = state.store
+    return store ~= nil and not state.stopped and store.trialBarEnabled == true
+        and store.nativeMainBarEnabled == true and Bars.Core.Engine.GetState().active == true
+end
+local function SyncNativeSpecial(pet, stance)
+    local controller = Bars.Modules.NativeSpecialBars
+    if not controller then return true end
+    local ok, failure = CallLifecycle(controller.Sync, NativeRequested(), pet == true, stance == true)
+    if not ok then return AbortNative(failure) end
+    return true
+end
+local function SpecialVisibilityChanged(pet, stance)
+    -- A delivered visibility notification is independent of an optional native
+    -- lease. Its refusal is reported and restored without disabling healthy BAB bars.
+    local ok = SyncNativeSpecial(pet, stance)
+    if not ok then RefreshView() end
+    return true
+end
+local SyncNative
+local function NativeEvent()
+    if event == "ACTIONBAR_PAGE_CHANGED" or event == "UPDATE_BONUS_ACTIONBAR" or event == "UPDATE_SHAPESHIFT_FORMS" then
+        -- Shared subscribers have no ordering contract. Repair the actual BAB
+        -- mapping before deciding whether its primary native buttons can hide.
+        local ok, failure = CallLifecycle(Bars.Core.Engine.HandleEvent, event, arg1)
+        if not ok then AbortNative(failure); RefreshView(); return end
+    end
+    SyncNative(); RefreshView()
+end
+SyncNative = function()
+    local controller = Bars.Modules.NativeBar
+    if not NativeRequested() then
+        UnsubscribeNative()
+        local ok, failure = ReleaseNative()
+        if not ok then return AbortNative(failure) end
         return true
     end
-    local ok, failure = controller.Check()
+    local safe, reason = CallLifecycle(Bars.Services.NativeBarPolicy.CheckCompeting)
+    if not safe then return AbortNative(reason) end
+    local ok, failure = CallLifecycle(controller.Check)
     if ok and Bars.Core.Engine.GetState().actionOffset ~= 0 then
         ok, failure = false, "The test bar must display page 1 before replacing native buttons."
     end
-    if ok then ok, failure = controller.Acquire() end
-    if not ok then
-        store.nativeMainBarEnabled = false
-        UnsubscribeNative()
-        local restored, restoreFailure = controller.Release()
-        if not restored then failure = tostring(failure) .. " Restoration: " .. tostring(restoreFailure) end
-        return NativeFailure(failure)
+    if ok then
+        local acquired, acquireFailure = CallLifecycle(controller.Acquire)
+        if not acquired then return AbortNative(acquireFailure) end
+    else
+        -- Keep the user's hide request while native primary buttons support
+        -- the current bonus/page. Special form controls remain independently owned.
+        local restored, restoreFailure = CallLifecycle(controller.Release)
+        if not restored then return AbortNative(tostring(failure) .. " Restoration: " .. tostring(restoreFailure)) end
     end
+    local special = Bars.Modules.SpecialBars
+    local pet, stance = false, false
+    if special and special.GetLiveVisibility then
+        local previousThis, previousEvent, previousArg = this, event, arg1
+        local read
+        read, pet, stance = pcall(special.GetLiveVisibility)
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        if not read then return AbortNative(pet) end
+    end
+    local specialOK, specialFailure = SyncNativeSpecial(pet, stance)
+    if not specialOK then return false, specialFailure end
     if not state.nativeSubscribed then
         for _, name in ipairs(nativeEvents) do BootyLib.Subscribe(name, Runtime, NativeEvent) end
         state.nativeSubscribed = true
     end
+    if not ok then return NativeFailure(failure) end
     state.nativeFailure = nil
-    return true
-end
-local function CallLifecycle(callback, value)
-    local previousThis, previousEvent, previousArg = this, event, arg1
-    local ran, ok, failure = pcall(callback, value)
-    this, event, arg1 = previousThis, previousEvent, previousArg
-    if not ran then return false, tostring(ok) end
-    if ok == false then return false, failure or "Action bar layout could not be updated." end
     return true
 end
 local function SyncSpecial(active)
@@ -66,8 +124,8 @@ local function SyncSpecial(active)
 end
 local function EngineActivity(active)
     -- Native ownership and layout cleanup must both run even if one fails.
-    local nativeOK, nativeFailure = CallLifecycle(SyncNative)
     local specialOK, specialFailure = CallLifecycle(SyncSpecial, active)
+    local nativeOK, nativeFailure = CallLifecycle(SyncNative)
     local editorOK, editorFailure = CallLifecycle(Bars.Modules.Editor.OnActivity, active)
     if not specialOK then return false, specialFailure end
     if not editorOK then return false, editorFailure end
@@ -125,6 +183,9 @@ function Runtime.Initialize()
     state.initialized, state.failure = true, nil
     state.store = store
     if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
+    if Bars.Modules.SpecialBars and Bars.Modules.SpecialBars.SetVisibilityObserver then
+        Bars.Modules.SpecialBars.SetVisibilityObserver(SpecialVisibilityChanged)
+    end
     Bars.Core.Engine.SetActivityObserver(EngineActivity)
     SyncEngine()
     return true
@@ -208,7 +269,7 @@ function Runtime.SetNativeEnabled(value)
     if value == true and (not store.trialBarEnabled or not Bars.Core.Engine.GetState().active) then
         store.nativeMainBarEnabled = false
         RefreshView()
-        return NativeFailure("Enable and show the BootyActionBars test bar before replacing native buttons.")
+        return NativeFailure("Enable and show the BootyActionBars test bar before hiding native buttons.")
     end
     store.nativeMainBarEnabled = value == true
     local ok, failure = SyncNative()
@@ -220,7 +281,7 @@ end
 function Runtime.SetCustomBar(id, enabled)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     if not Bars.Services.BarConfig.ValidID(id) or type(enabled) ~= "boolean" then
-        return false, "Choose an additional bar from 2 to 6 and enable or remove it."
+        return false, "Choose an additional bar from 2 to 6 and show or hide it."
     end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
@@ -273,8 +334,8 @@ local function LayoutAvailable(id)
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
     if id == 7 or id == 8 then
-        if not store.specialBars[id == 7 and "pet" or "stance"] then return false, "Add this bar before changing its layout." end
-    elseif id ~= 1 and not store.customBars[id] then return false, "Add this bar before changing its layout." end
+        if not store.specialBars[id == 7 and "pet" or "stance"] then return false, "Show this bar before changing its layout." end
+    elseif id ~= 1 and not store.customBars[id] then return false, "Show this bar before changing its layout." end
     return true
 end
 

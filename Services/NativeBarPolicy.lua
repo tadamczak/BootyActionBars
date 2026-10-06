@@ -9,6 +9,27 @@ local function Integer(value, minimum)
         and value < 1e300 and value == floor(value)
 end
 
+-- Special controls remain valid on bonus pages. Ownership conflicts still
+-- apply, independently of the primary twelve-button page restriction.
+function NativeBarPolicy.CheckCompeting(api)
+    if api == nil then api = _G end
+    if type(api) ~= "table" then return false, "The native action-bar API is unavailable." end
+    if type(api.IsAddOnLoaded) ~= "function" then return false, "The loaded-addon API is unavailable." end
+    for _, name in ipairs(competingAddons) do
+        local ok, loaded = pcall(api.IsAddOnLoaded, name)
+        if not ok then return false, "The loaded-addon state could not be read for " .. name .. ": " .. tostring(loaded) end
+        if loaded ~= nil and loaded ~= false and loaded ~= 0 and loaded ~= true and loaded ~= 1 then
+            return false, "The loaded-addon state is invalid for " .. name .. "."
+        end
+        if loaded == true or loaded == 1 then return false, "Disable " .. name .. " before replacing native action buttons." end
+    end
+    if api.DAB_INITIALIZED == true then return false, "Disable DiscordActionBars before replacing native action buttons." end
+    if type(api.pfUI) == "table" and type(api.pfUI.bars) == "table" then
+        return false, "Disable pfUI action bars before replacing native action buttons."
+    end
+    return true
+end
+
 -- Stock 1.12 action buttons derive their slots from this global. The bonus
 -- offset redirects page-one input to a different bar, which this phase does
 -- not own. The controller separately checks the bonus frame's slide-out state.
@@ -25,19 +46,5 @@ function NativeBarPolicy.Check(api)
     if not Integer(offset, 0) then return false, "The native bonus-bar state is invalid." end
     if offset ~= 0 then return false, "Native replacement is unavailable while a bonus action bar is active." end
 
-    if type(api.IsAddOnLoaded) ~= "function" then return false, "The loaded-addon API is unavailable." end
-    for _, name in ipairs(competingAddons) do
-        local loaded
-        ok, loaded = pcall(api.IsAddOnLoaded, name)
-        if not ok then return false, "The loaded-addon state could not be read for " .. name .. ": " .. tostring(loaded) end
-        if loaded ~= nil and loaded ~= false and loaded ~= 0 and loaded ~= true and loaded ~= 1 then
-            return false, "The loaded-addon state is invalid for " .. name .. "."
-        end
-        if loaded == true or loaded == 1 then return false, "Disable " .. name .. " before replacing native action buttons." end
-    end
-    if api.DAB_INITIALIZED == true then return false, "Disable DiscordActionBars before replacing native action buttons." end
-    if type(api.pfUI) == "table" and type(api.pfUI.bars) == "table" then
-        return false, "Disable pfUI action bars before replacing native action buttons."
-    end
-    return true
+    return NativeBarPolicy.CheckCompeting(api)
 end
