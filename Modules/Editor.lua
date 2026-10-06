@@ -277,7 +277,6 @@ EnsureHandle = function(view)
         end
         handle, state.handles[id], view.editHandle = created, created, created
     end
-    view.frame:SetMovable(true)
     handle:SetScript("OnDragStart", Start); handle:SetScript("OnDragStop", Stop); handle:SetScript("OnHide", Hidden)
     handle:Show()
     return true
@@ -294,9 +293,7 @@ local function Detach(id)
         if not ok and not firstFailure then firstFailure = reason end
     end
     if view then
-        local ok, reason = Try(view.frame.SetMovable, view.frame, false)
-        if not ok and not firstFailure then firstFailure = reason end
-        ok, reason = Try(view.CancelInput, view)
+        local ok, reason = Try(view.CancelInput, view)
         if not ok and not firstFailure then firstFailure = reason end
     end
     return firstFailure == nil, firstFailure

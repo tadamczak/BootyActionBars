@@ -95,6 +95,9 @@ function ActionBar.Create(callbacks, barId)
     local frame = UI.CreateContainer(frameName, UIParent)
     local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks}
     frame.bar = view
+    -- Native position APIs require a movable/resizable frame even while the
+    -- editor is locked. Only the editor handle owns drag scripts.
+    frame:SetMovable(true)
     if frame.SetDontSavePosition then frame:SetDontSavePosition(true) end
     if frame.SetUserPlaced then frame:SetUserPlaced(false) end
     if frame.SetClampedToScreen then frame:SetClampedToScreen(true) end

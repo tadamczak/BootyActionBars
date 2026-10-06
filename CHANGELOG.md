@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-dev.8 — 2026-10-06
+
+- Fix the native frame error when enabling action bars and when scaling, resetting or restoring a locked layout.
+- Keep locked bars stationary through hidden, detached editing handles while retaining the client's required position capability.
+
 ## 0.1.0-dev.7 — 2026-10-06
 
 - Move and scale every bar using pooled gold drag handles and selected-bar controls; save completed layouts and cancel unfinished edits on close or stop.
