@@ -5,9 +5,11 @@ Bars.Modules.Overview = Overview
 local message = "The main bar follows pages/forms; extra bars keep fixed slots. Keys are under BootyActionBars. Edit layout to move bars."
 
 function Overview.Create(parent, host)
-    local page = UI.CreateContainer(nil, parent)
-    page:SetAllPoints(parent)
-    local view = {frame = page, selectedBar = 2, lastScale = 100, lastColumns = 12, lastSpacing = 4}
+    local frame = UI.CreateContainer(nil, parent)
+    frame:SetAllPoints(parent)
+    local page = UI.CreateResponsiveCanvas(frame, "BootyActionBarsOverviewScroll")
+    local view = {frame = frame, canvas = page, selectedBar = 2, lastScale = 100, lastColumns = 12, lastSpacing = 4,
+        lastTitle = true, lastHotkeys = true, lastCounts = true}
     local function Complete(ok, failure)
         if not ok and failure then host.Print(failure) end
         view:Refresh()
@@ -91,7 +93,7 @@ function Overview.Create(parent, host)
         })
     local reset = UI.CreateButton(page, nil, "Reset", 72, 24)
     UI.StyleActionButton(reset)
-    UI.AttachTooltip(reset, "Reset bar layout", "Restore the selected bar's position, scale, columns and spacing. Actions and assigned keys are retained.")
+    UI.AttachTooltip(reset, "Reset bar layout", "Restore the selected bar's position, scale, columns, spacing and visible labels. Actions and assigned keys are retained.")
     reset:SetScript("OnClick", function() Complete(Bars.Core.Runtime.ResetBarLayout(view.selectedBar)) end)
     local function GridSlider(name, caption, key, lastKey, minimum, maximum, setter)
         local owner = UI.CreateContainer(nil, page)
@@ -114,33 +116,67 @@ function Overview.Create(parent, host)
         function(value) Complete(Bars.Core.Runtime.SetBarSpacing(view.selectedBar, value)) end)
     UI.AttachTooltip(columns, "Columns", "Arrange the same twelve action buttons in this many columns. The final row starts at the left edge.")
     UI.AttachTooltip(spacing, "Button spacing", "Set the gap between action buttons, from 0 to 20. Button size and assigned keys stay unchanged.")
+    local function DisplayCheckbox(caption, key, lastKey)
+        local owner = UI.CreateContainer(nil, page)
+        owner:SetHeight(26)
+        local checkbox = UI.Settings.CreateCheckbox(owner, 0, -2, caption, key, nil, {
+            ensure = function() end,
+            get = function()
+                local layout = Bars.Core.Runtime.GetBarLayout(view.selectedBar)
+                if layout then view[lastKey] = layout[key] end
+                return view[lastKey]
+            end,
+            set = function(_, enabled) Complete(Bars.Core.Runtime.SetBarDisplay(view.selectedBar, key, enabled)) end,
+        })
+        return owner, checkbox
+    end
+    local titleOwner, titleCheck = DisplayCheckbox("Title", "showTitle", "lastTitle")
+    local hotkeysOwner, hotkeysCheck = DisplayCheckbox("Hotkeys", "showHotkeys", "lastHotkeys")
+    local countsOwner, countsCheck = DisplayCheckbox("Counts", "showCounts", "lastCounts")
+    UI.AttachTooltip(titleCheck, "Bar title", "Show the title above the selected bar.")
+    UI.AttachTooltip(hotkeysCheck, "Assigned keys", "Show key labels on the selected bar. Assigned keys continue working when their labels are hidden.")
+    UI.AttachTooltip(countsCheck, "Action counts", "Show item and action counts on the selected bar.")
     local endPage = function() choice.panel:Hide(); EndEdit() end
-    page:SetScript("OnHide", endPage)
+    frame:SetScript("OnHide", endPage)
     view.settingsButton, view.trialButton, view.nativeButton = settings, trial, native
     view.barChoice, view.addBarButton, view.removeBarButton, view.barStatus = choice, add, remove, status
     view.body, view.editCheckbox, view.scaleSlider, view.resetLayoutButton = body, edit, scale, reset
     view.columnsSlider, view.spacingSlider = columns, spacing
+    view.titleCheckbox, view.hotkeysCheckbox, view.countsCheckbox = titleCheck, hotkeysCheck, countsCheck
     local firstRow, barActions, scaleRow = {trial, settings}, {add, remove, editOwner}, {scaleOwner, reset}
     local gridRow = {columnsOwner, spacingOwner}
-    function view:OnResize()
-        local width = UI.GetFrameSpan(parent)
+    local displayRow = {titleOwner, hotkeysOwner, countsOwner}
+    local function CheckboxWidth(owner, checkbox)
+        owner:SetWidth(checkbox:GetWidth() + 2 + checkbox.label:GetStringWidth() + 5)
+    end
+    local function Measure(width)
         width = math.max(1, width - 32)
         title:SetWidth(width); body:SetWidth(width); controls:SetWidth(width); status:SetWidth(width)
         body:SetHeight(UI.MeasureTextHeight(body, width))
         status:SetHeight(UI.MeasureTextHeight(status, width))
-        editOwner:SetWidth(edit:GetWidth() + 2 + edit.label:GetStringWidth() + 5)
+        CheckboxWidth(editOwner, edit)
+        CheckboxWidth(titleOwner, titleCheck); CheckboxWidth(hotkeysOwner, hotkeysCheck); CheckboxWidth(countsOwner, countsCheck)
         local top = UI.LayoutFlow(page, firstRow, 16, 52 + body:GetHeight() + 16, width, 12) + 12
         native:ClearAllPoints(); native:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         top = top + native:GetHeight() + 16
         controls:ClearAllPoints(); controls:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         top = UI.LayoutFlow(page, barActions, 16, top + controls:GetHeight() + 12, width, 8) + 12
         top = UI.LayoutFlow(page, scaleRow, 16, top, width, 8) + 12
-        top = UI.LayoutFlow(page, gridRow, 16, top, width, 8) + 10
+        top = UI.LayoutFlow(page, gridRow, 16, top, width, 8) + 12
+        top = UI.LayoutFlow(page, displayRow, 16, top, width, 8) + 10
         status:ClearAllPoints(); status:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
-        self.contentHeight = top + status:GetHeight() + 16
+        view.contentHeight = top + status:GetHeight() + 16
+        return view.contentHeight
+    end
+    function view:OnResize()
+        if not frame:IsVisible() then return end
+        local width, height = UI.GetFrameSpan(parent)
+        width, height = math.max(1, width), math.max(1, height)
+        frame:SetWidth(width); frame:SetHeight(height)
+        UI.LayoutResponsiveCanvas(page, Measure, nil, width, height)
     end
     function view:Refresh()
-        if page:IsVisible() then
+        if frame:IsVisible() then
             local store, failure = Bars.Database.Ensure()
             trial.label:SetText(store and store.trialBarEnabled and "Disable test bar" or "Enable test bar")
             native.label:SetText(store and store.nativeMainBarEnabled and "Restore native buttons" or "Replace native buttons")
@@ -151,6 +187,7 @@ function Overview.Create(parent, host)
             local layout, layoutFailure = Bars.Core.Runtime.GetBarLayout(self.selectedBar)
             if layout then
                 self.lastScale, self.lastColumns, self.lastSpacing = layout.scalePct, layout.columns, layout.spacing
+                self.lastTitle, self.lastHotkeys, self.lastCounts = layout.showTitle, layout.showHotkeys, layout.showCounts
             end
             UI.Settings.SynchronizeSlider(scale, self.lastScale)
             UI.Settings.SynchronizeSlider(columns, self.lastColumns)
@@ -158,6 +195,12 @@ function Overview.Create(parent, host)
             UI.Settings.SetSliderEnabled(scale, configured == true and layout ~= nil)
             UI.Settings.SetSliderEnabled(columns, configured == true and layout ~= nil)
             UI.Settings.SetSliderEnabled(spacing, configured == true and layout ~= nil)
+            titleCheck:SetChecked(self.lastTitle and 1 or nil)
+            hotkeysCheck:SetChecked(self.lastHotkeys and 1 or nil)
+            countsCheck:SetChecked(self.lastCounts and 1 or nil)
+            UI.Settings.SetCheckboxEnabled(titleCheck, configured == true and layout ~= nil)
+            UI.Settings.SetCheckboxEnabled(hotkeysCheck, configured == true and layout ~= nil)
+            UI.Settings.SetCheckboxEnabled(countsCheck, configured == true and layout ~= nil)
             UI.SetButtonEnabled(reset, configured == true and layout ~= nil)
             edit:SetChecked(Bars.Core.Runtime.IsEditing() and 1 or nil)
             UI.Settings.SetCheckboxEnabled(edit, Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active == true)
@@ -170,9 +213,9 @@ function Overview.Create(parent, host)
     end
     function view:Show()
         if not Bars.Core.Runtime.IsAvailable() then return false end
-        page:Show(); self:Refresh(); return true
+        frame:Show(); self:Refresh(); return true
     end
-    function view:Hide() choice.panel:Hide(); EndEdit(); page:Hide() end
-    page:Hide()
+    function view:Hide() choice.panel:Hide(); EndEdit(); frame:Hide() end
+    frame:Hide()
     return view
 end

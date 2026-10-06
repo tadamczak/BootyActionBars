@@ -17,11 +17,17 @@ end
 function Layout.ValidSpacing(value)
     return Layout.Finite(value) and value >= 0 and value <= 20 and value == math.floor(value)
 end
+function Layout.ValidDisplayKey(key)
+    return key == "showTitle" or key == "showHotkeys" or key == "showCounts"
+end
 function Layout.Validate(record)
     if type(record) ~= "table" or not Layout.ValidScale(record.scalePct)
         or not Layout.Finite(record.x) or not Layout.Finite(record.y)
         or record.columns ~= nil and not Layout.ValidColumns(record.columns)
-        or record.spacing ~= nil and not Layout.ValidSpacing(record.spacing) then
+        or record.spacing ~= nil and not Layout.ValidSpacing(record.spacing)
+        or record.showTitle ~= nil and type(record.showTitle) ~= "boolean"
+        or record.showHotkeys ~= nil and type(record.showHotkeys) ~= "boolean"
+        or record.showCounts ~= nil and type(record.showCounts) ~= "boolean" then
         return false, "Invalid action bar layout. Preserve the saved file before repairing it."
     end
     return true
@@ -41,9 +47,11 @@ function Layout.Read(layouts, id)
     local ok, failure = Layout.ValidateLayouts(layouts)
     if not ok then return nil, failure end
     local record = layouts and layouts[id]
-    if not record then return {scalePct = 100, x = 0, y = -180 + (id - 1) * 68, columns = 12, spacing = 4} end
+    if not record then return {scalePct = 100, x = 0, y = -180 + (id - 1) * 68, columns = 12, spacing = 4,
+        showTitle = true, showHotkeys = true, showCounts = true} end
     return {scalePct = record.scalePct, x = record.x, y = record.y,
-        columns = record.columns or 12, spacing = record.spacing or 4}
+        columns = record.columns or 12, spacing = record.spacing or 4,
+        showTitle = record.showTitle ~= false, showHotkeys = record.showHotkeys ~= false, showCounts = record.showCounts ~= false}
 end
 local function Clamp(value, minimum, maximum)
     -- An oversized bar cannot fit this axis; keep its center accessible.
@@ -63,11 +71,13 @@ function Layout.Resolve(id, record, width, height)
     local rows = math.ceil(12 / columns)
     local barWidth, barHeight = 40 * columns + (columns - 1) * spacing, 40 * rows + (rows - 1) * spacing
     local halfWidth, halfHeight = barWidth / 2 * scale, barHeight / 2 * scale
+    local showTitle, showHotkeys, showCounts = record.showTitle ~= false, record.showHotkeys ~= false, record.showCounts ~= false
+    local titleHeight = (showTitle and 28 or 0) * scale
     local x = Clamp(record.x, -width / 2 + 8 + halfWidth, width / 2 - 8 - halfWidth)
-    local y = Clamp(record.y, -height / 2 + 8 + halfHeight, height / 2 - 8 - halfHeight - 28 * scale)
+    local y = Clamp(record.y, -height / 2 + 8 + halfHeight, height / 2 - 8 - halfHeight - titleHeight)
     return {scale = scale, x = x, y = y, anchorX = x / scale, anchorY = y / scale,
         width = width, height = height, columns = columns, spacing = spacing,
-        barWidth = barWidth, barHeight = barHeight}
+        barWidth = barWidth, barHeight = barHeight, showTitle = showTitle, showHotkeys = showHotkeys, showCounts = showCounts}
 end
 function Layout.Capture(centerX, centerY, barScale, parentScale, parentX, parentY)
     if not Layout.Finite(centerX) or not Layout.Finite(centerY) or not Layout.Finite(parentX)

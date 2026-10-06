@@ -5,10 +5,28 @@ Bars.Modules.ActionBar = ActionBar
 local pooled = {}
 
 local function UpdateCaption(view)
+    if not view.showTitle then return end
     if view.gridWidth < 320 then view.title:SetText("Bar " .. view.id); return end
     if not view.page then view.title:SetText("BootyActionBars (slots 1-12)"); return end
     local label = view.id == 1 and "BootyActionBars (page " .. view.page or "BootyActionBars custom " .. view.id .. " (fixed"
     view.title:SetText(label .. ", slots " .. (view.offset + 1) .. "-" .. (view.offset + 12) .. ")")
+end
+local function FormatHotkey(button, key, nativeEvent, nativeArg)
+    local text = key and (type(GetBindingText) == "function" and GetBindingText(key, "KEY_", 1) or key) or ""
+    -- A formatter hook may alter legacy globals before the native text write.
+    this, event, arg1 = button, nativeEvent, nativeArg
+    button.hotkey:SetText(text)
+end
+local function UpdateHotkey(button, key)
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    this = button
+    local ok, failure = pcall(FormatHotkey, button, key, previousEvent, previousArg)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ok then error(failure) end
+end
+local function UpdateCount(button)
+    local count = button.rendered.count or 0
+    button.count:SetText(count > 1 and count or "")
 end
 
 local function UpdatePressed(button)
@@ -103,7 +121,8 @@ function ActionBar.Create(callbacks, barId)
     if pooled[barId] then return pooled[barId] end
     local frameName = barId == 1 and "BootyActionBarsTrialBar" or "BootyActionBarsBar" .. barId
     local frame = UI.CreateContainer(frameName, UIParent)
-    local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks, gridWidth = 524}
+    local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks, gridWidth = 524,
+        showTitle = true, showHotkeys = true, showCounts = true, displayReady = true}
     frame.bar = view
     -- Native position APIs require a movable/resizable frame even while the
     -- editor is locked. Only the editor handle owns drag scripts.
@@ -191,6 +210,30 @@ function ActionBar.Create(callbacks, barId)
         UpdateCaption(self)
         return true
     end
+    function view:SetDisplay(value, repair)
+        local rebuild = repair == true or not self.displayReady
+        local titleChanged = rebuild or self.showTitle ~= value.showTitle
+        local hotkeysChanged = rebuild or self.showHotkeys ~= value.showHotkeys
+        local countsChanged = rebuild or self.showCounts ~= value.showCounts
+        if not titleChanged and not hotkeysChanged and not countsChanged then return true end
+        self.displayReady = false
+        self.showTitle, self.showHotkeys, self.showCounts = value.showTitle, value.showHotkeys, value.showCounts
+        if titleChanged then
+            if self.showTitle then UpdateCaption(self); title:Show() else title:Hide() end
+        end
+        for index = 1, 12 do
+            local button = self.buttons[index]
+            if hotkeysChanged then
+                if self.showHotkeys then UpdateHotkey(button, button.bindingKey); button.hotkey:Show()
+                else button.hotkey:Hide() end
+            end
+            if countsChanged then
+                if self.showCounts then UpdateCount(button); button.count:Show() else button.count:Hide() end
+            end
+        end
+        self.displayReady = true
+        return true
+    end
     function view:Hide()
         local previousThis, previousEvent, previousArg = this, event, arg1
         local ran, ok, failure = pcall(self.Suspend, self)
@@ -238,16 +281,22 @@ function ActionBar.Create(callbacks, barId)
     end
     function view:Binding(index, key)
         local button = self.buttons[index]
-        if button.bindingKey == key then return end
+        if button.bindingKey == key and self.displayReady then return end
         button.bindingKey = key
-        local text = key and (type(GetBindingText) == "function" and GetBindingText(key, "KEY_", 1) or key) or ""
-        button.hotkey:SetText(text)
+        if not self.showHotkeys then return end
+        local ready = self.displayReady
+        self.displayReady = false
+        UpdateHotkey(button, key)
+        self.displayReady = ready
     end
     function view:Render(index, data, force)
         local button, old = self.buttons[index], self.buttons[index].rendered
         button.hasAction = data.hasAction
         if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
-        if force or old.count ~= data.count then button.count:SetText(data.count > 1 and data.count or ""); old.count = data.count end
+        if force or old.count ~= data.count then
+            if self.showCounts then button.count:SetText(data.count > 1 and data.count or "") end
+            old.count = data.count
+        end
         if force or old.usable ~= data.usable or old.noMana ~= data.noMana then
             if data.usable then button.icon:SetVertexColor(1, 1, 1)
             elseif data.noMana then button.icon:SetVertexColor(0.5, 0.5, 1)

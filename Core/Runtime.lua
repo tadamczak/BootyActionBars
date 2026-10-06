@@ -268,6 +268,17 @@ function Runtime.SetBarSpacing(id, spacing)
     return SetGridPreference(id, "spacing", spacing, Bars.Services.BarLayout.ValidSpacing, 20)
 end
 
+function Runtime.SetBarDisplay(id, key, enabled)
+    if not Bars.Services.BarLayout.ValidDisplayKey(key) or type(enabled) ~= "boolean" then
+        return false, "Choose a bar title, hotkey or count setting and enable or disable it."
+    end
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local ok, failure = Bars.Modules.Editor.SetDisplay(id, key, enabled)
+    RefreshView()
+    return ok, failure
+end
+
 function Runtime.ResetBarLayout(id)
     local valid, reason = LayoutAvailable(id)
     if not valid then return false, reason end
@@ -290,6 +301,13 @@ function Runtime.Open(command)
         return ok, failure
     end
     if command == "lock" then return Runtime.SetEditEnabled(false) end
+    local _, _, display, displayBar, choice = string.find(command, "^(%a+) (%d+) (%a+)$")
+    local displayKey = display == "title" and "showTitle" or display == "hotkeys" and "showHotkeys" or display == "counts" and "showCounts"
+    if displayKey and (choice == "on" or choice == "off") then
+        local ok, failure = Runtime.SetBarDisplay(tonumber(displayBar), displayKey, choice == "on")
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
     local _, _, gridBar, columns = string.find(command, "^columns (%d+) (%d+)$")
     if gridBar then
         local ok, failure = Runtime.SetBarColumns(tonumber(gridBar), tonumber(columns))
@@ -335,6 +353,6 @@ function Runtime.Open(command)
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-6 50-200, /bab columns 1-6 1-12, /bab gap 1-6 0-20, or /bab reset 1-6.")
+    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-6 50-200, /bab columns 1-6 1-12, /bab gap 1-6 0-20, /bab title|hotkeys|counts 1-6 on|off, or /bab reset 1-6.")
     return false
 end
