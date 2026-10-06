@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-dev.6 — 2026-10-06
+
+- Add five optional fixed action bars with separate bindings, pooled add/remove controls and complete cooldown profiling.
+
 ## 0.1.0-dev.5 — 2026-10-06
 
 - Show hover and mouse/key press feedback even when an action cannot be used; cancel presses during dragging/page changes and clear feedback when disabling.

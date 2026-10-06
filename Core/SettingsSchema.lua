@@ -9,7 +9,7 @@ local fields = {{
 }, {
     key = "trialBarEnabled", label = "Enable test action bar", type = "checkbox", default = false,
     profile = false, path = {"Action Bars", "General"},
-    tooltip = "Follow the client's action pages and bonus form slots. Dragging changes shared client actions. Assign its keys under BootyActionBars in the game's Key Bindings menu. Pet and separate form controls are planned.",
+    tooltip = "Enable the main bar and configured additional bars. The main bar follows client pages and bonus form slots. Dragging changes shared client actions. Assign keys under BootyActionBars in the game's Key Bindings menu.",
     set = function(value) return Bars.Core.Runtime.SetTrialEnabled(value) end,
     onChange = Bars.Core.Runtime.SettingsChanged,
 }}
