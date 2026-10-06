@@ -82,7 +82,7 @@ function Overview.Create(parent, host)
         get = function() return Bars.Core.Runtime.IsEditing() end,
         set = function(_, enabled) Complete(Bars.Core.Runtime.SetEditEnabled(enabled)) end,
     })
-    UI.AttachTooltip(edit, "Edit layout", "Unlock the visible bars to move them. Closing this window locks the bars and cancels an unfinished move.")
+    UI.AttachTooltip(edit, "Edit layout", "Unlock configured bars to move them, including pet/form bars when unavailable. Closing this window locks the bars and cancels an unfinished move.")
     local scaleOwner = UI.CreateContainer(nil, page)
     scaleOwner:SetWidth(220); scaleOwner:SetHeight(52)
     local scale = UI.Settings.CreateSlider(scaleOwner, "BootyActionBarsLayoutScale", 0, -18,

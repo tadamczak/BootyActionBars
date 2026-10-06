@@ -2,7 +2,7 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Special = {}
 Bars.Modules.SpecialBars = Special
-local state = {active = false, configured = {}, views = {}, visibleCount = 0}
+local state = {active = false, editing = false, configured = {}, views = {}, visibleCount = 0}
 local owners = {pet = {id = 7, kind = "pet", subscriptions = {}}, stance = {id = 8, kind = "stance", subscriptions = {}}}
 local kinds = {"pet", "stance"}
 local availability = {
@@ -63,6 +63,7 @@ local function Click()
     if not ok then Report(failure) end
 end
 local function MouseDown()
+    if not VisibleSlot(this) then return end
     if arg1 == "LeftButton" or arg1 == "RightButton" then
         this.skipClick = nil; this.mouseHeld, this.mousePressed = true, true; Press(this)
     end
@@ -75,6 +76,7 @@ local function Tooltip(button)
 end
 local function Enter()
     local button = this
+    if not VisibleSlot(button) then return end
     button.hoverFeedback:Show()
     local ok, failure = Run(Tooltip, button)
     if not ok then Report(failure) end
@@ -313,6 +315,7 @@ StopKind = function(owner, all)
     local view = state.views[owner.id]
     if view then
         local hidden, failure = Run(view.Hide, view)
+        if hidden then view.editPreview = false end
         if not hidden and not firstFailure then firstFailure = failure end
         if Bars.Modules.Editor then
             local ended, reason = Run(Bars.Modules.Editor.OnBarHidden, owner.id)
@@ -340,7 +343,7 @@ local function SyncBody(owner)
     if not owner.service then owner.service = Bars.Services.SpecialActionService.Create(owner.kind) end
     local count, reason = owner.service.GetCount()
     if count == nil then return false, reason end
-    if count == 0 then return StopKind(owner, false) end
+    if count == 0 and not state.editing then return StopKind(owner, false) end
     if owner.creationFailure then return false, owner.creationFailure end
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ran, view = pcall(Create, owner)
@@ -353,6 +356,29 @@ local function SyncBody(owner)
         local prepared, reason = view:SetDisplay(layout)
         if not prepared then return false, reason end
     end
+    if count == 0 then
+        if not view.editPreview then
+            -- Changing availability cancels a move before showing the same
+            -- retained frame as an inert layout surface.
+            local stopped, failure = StopKind(owner, false)
+            if not stopped then return false, failure end
+            view.count = 0
+            for _, button in ipairs(view.buttons) do button:Hide() end
+            view.editPreview = true
+            local shown, reason = Run(view.Show, view)
+            if not shown then return false, reason end
+        end
+        if editor and type(editor.Sync) == "function" then
+            local synced, failure = Run(editor.Sync)
+            if not synced then return false, failure end
+        end
+        return true
+    end
+    if view.editPreview and editor then
+        local cancelled, failure = Run(editor.OnBarHidden, view.id)
+        if not cancelled then return false, failure end
+    end
+    view.editPreview = false
     local force = not owner.visible or view.count ~= count
     if view.count ~= count then
         local ok, failure = view:Suspend()
@@ -374,7 +400,13 @@ local function SyncBody(owner)
     ok, failure = Run(view.Show, view)
     if not ok then return false, failure end
     if not view.frame:IsVisible() then return StopKind(owner, false) end
-    return Subscribe(owner, transient[owner.kind])
+    ok, failure = Subscribe(owner, transient[owner.kind])
+    if not ok then return false, failure end
+    if state.editing and editor and type(editor.Sync) == "function" then
+        ok, failure = Run(editor.Sync)
+        if not ok then return false, failure end
+    end
+    return true
 end
 Sync = function(owner)
     if owner.syncing then return true end
@@ -413,11 +445,33 @@ function Special.Enable(config)
     state.failure = nil; return true
 end
 function Special.Disable()
-    state.active = false
+    state.active, state.editing = false, false
     local firstFailure
     for _, kind in ipairs(kinds) do
         local ok, failure = StopKind(owners[kind], true)
         if not ok and not firstFailure then firstFailure = failure end
+    end
+    return firstFailure == nil, firstFailure
+end
+function Special.SetEditing(value)
+    if type(value) ~= "boolean" then return false, "Expected edit mode on or off." end
+    if value and not state.active then return false, "Enable the action bars before editing." end
+    if state.editing == value then return true end
+    state.editing = value
+    local firstFailure
+    for _, kind in ipairs(kinds) do
+        local ok, failure = Run(Sync, owners[kind])
+        if not ok and not firstFailure then firstFailure = failure end
+    end
+    if firstFailure then
+        state.editing = false
+        for _, kind in ipairs(kinds) do
+            local view = state.views[owners[kind].id]
+            if view and view.editPreview then
+                local ok, failure = StopKind(owners[kind], false)
+                if not ok then firstFailure = firstFailure .. " Cleanup: " .. tostring(failure) end
+            end
+        end
     end
     return firstFailure == nil, firstFailure
 end
