@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-dev.7 — 2026-10-06
+
+- Move and scale every bar using pooled gold drag handles and selected-bar controls; save completed layouts and cancel unfinished edits on close or stop.
+- Keep bar centers stable when scaling and retain user layouts while fitting changed screen/UI scale.
+
 ## 0.1.0-dev.6 — 2026-10-06
 
 - Add five optional fixed action bars with separate bindings, pooled add/remove controls and complete cooldown profiling.

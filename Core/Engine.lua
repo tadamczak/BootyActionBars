@@ -129,13 +129,19 @@ local function ProtectedCall(callback, owner)
     return true
 end
 local function HideView(view)
+    local firstFailure
+    if Bars.Modules.Editor then
+        local id = view.id or (view == state.view and 1)
+        local ok, failure = ProtectedCall(Bars.Modules.Editor.OnBarHidden, id)
+        if not ok then firstFailure = failure end
+    end
     local ok, failure = ProtectedCall(view.Hide, view)
     if not ok and view.frame and type(view.frame.Hide) == "function" then
         -- Even a broken suspension must not leave native child animations
         -- visible. Preserve the first failure after attempting the parent.
         ProtectedCall(view.frame.Hide, view.frame)
     end
-    return ok, failure
+    return firstFailure == nil and ok, firstFailure or failure
 end
 function Engine.SetActivityObserver(callback)
     state.activityObserver = callback
@@ -209,7 +215,8 @@ local function ActivateCustom(barId, revise)
     ok, reason = ViewBindings(view, barId)
     if not ok then return false, reason end
     SetCustomActive(barId, true, revise)
-    view:Show()
+    ok, reason = ProtectedCall(view.Show, view)
+    if not ok then return false, reason end
     if not view.frame:IsVisible() then
         SetCustomActive(barId, false, revise)
         local suspended, failure = ProtectedCall(view.Suspend, view)
@@ -281,16 +288,23 @@ local function Subscribe()
 end
 function Engine.OnHide(barId)
     barId = barId or 1
+    local firstFailure
+    if Bars.Modules.Editor then
+        local ok, failure = ProtectedCall(Bars.Modules.Editor.OnBarHidden, barId)
+        if not ok then firstFailure = failure end
+    end
     if barId ~= 1 then
         if ValidBar(barId) and state.views[barId] then
             SetCustomActive(barId, false, not state.hidingCustoms)
-            return ProtectedCall(state.views[barId].Suspend, state.views[barId])
+            local ok, failure = ProtectedCall(state.views[barId].Suspend, state.views[barId])
+            return firstFailure == nil and ok, firstFailure or failure
         end
-        return true
+        return firstFailure == nil, firstFailure
     end
     state.active = false; Unsubscribe()
-    if state.cleaning then return true end
-    local ok, firstFailure = ProtectedCall(ActivityChanged)
+    if state.cleaning then return firstFailure == nil, firstFailure end
+    local ok, failure = ProtectedCall(ActivityChanged)
+    if not ok and not firstFailure then firstFailure = failure end
     if state.view then
         local suspended, failure = ProtectedCall(state.view.Suspend, state.view)
         if not suspended and not firstFailure then firstFailure = failure end
@@ -305,6 +319,7 @@ function Engine.OnShow(barId)
     if barId ~= 1 then
         if not ValidBar(barId) or not state.active or not state.customBars[barId] or state.customActive[barId] then return end
         local ok, failure = ActivateCustom(barId, true)
+        if ok and Bars.Modules.Editor then ok, failure = ProtectedCall(Bars.Modules.Editor.Sync) end
         if not ok then Engine.Disable(); Report(failure) end
         return
     end
@@ -342,11 +357,14 @@ function Engine.Enable(customBars)
     ok, failure = ViewBindings(state.view, 1)
     if not ok then Engine.Disable(); return false, failure end
     state.active, state.failure = true, nil
-    Subscribe(); state.view:Show()
+    Subscribe()
+    ok, failure = ProtectedCall(state.view.Show, state.view)
+    if not ok then Engine.Disable(); return false, failure end
     if not state.view.frame:IsVisible() then Engine.OnHide() end
     ok, failure = SyncCustoms(false)
     if not ok then Engine.Disable(); return false, failure end
-    ActivityChanged()
+    ok, failure = ProtectedCall(ActivityChanged)
+    if not ok then Engine.Disable(); return false, failure end
     return true
 end
 function Engine.Disable()
@@ -403,5 +421,9 @@ function Engine.Place(index, barId)
         if not refreshed then Engine.Disable(); Report(reason); return false, reason end
     end
     return ok, failure
+end
+function Engine.MarkLayoutChanged()
+    state.customRevision = state.customRevision + 1
+    return state.customRevision
 end
 function Engine.GetState() return state end

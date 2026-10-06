@@ -50,10 +50,30 @@ SyncNative = function()
     state.nativeFailure = nil
     return true
 end
+local function CallLifecycle(callback, value)
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ran, ok, failure = pcall(callback, value)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ran then return false, tostring(ok) end
+    if ok == false then return false, failure or "Action bar layout could not be updated." end
+    return true
+end
+local function EngineActivity(active)
+    -- Native ownership and layout cleanup must both run even if one fails.
+    local nativeOK, nativeFailure = CallLifecycle(SyncNative)
+    local editorOK, editorFailure = CallLifecycle(Bars.Modules.Editor.OnActivity, active)
+    if not editorOK then return false, editorFailure end
+    -- A rejected native lease is already reported and leaves valid trial bars
+    -- usable. Restoration errors still fail inactive cleanup.
+    if not nativeOK and not active then return false, nativeFailure end
+    return true
+end
 local function SyncEngine()
     local store = Bars.Database.Ensure()
     if not store then return false end
     state.store = store
+    local layoutOK, layoutFailure = Bars.Modules.Editor.Configure(store)
+    if not layoutOK then return false, layoutFailure end
     local configured, reason = Bars.Core.Engine.ConfigureCustomBars(store.customBars)
     if not configured then return false, reason end
     if state.stopped or not store.trialBarEnabled then return Bars.Core.Engine.Disable() end
@@ -64,6 +84,13 @@ local function SyncEngine()
         BootyLib.Print("BootyActionBars: " .. tostring(failure))
     else
         SyncNative()
+        local applied, reason = CallLifecycle(Bars.Modules.Editor.OnActivity, Bars.Core.Engine.GetState().active)
+        if not applied then
+            store.trialBarEnabled = false
+            Bars.Core.Engine.Disable()
+            BootyLib.Print("BootyActionBars: " .. tostring(reason))
+            return false, reason
+        end
     end
     return ok, failure
 end
@@ -75,7 +102,7 @@ function Runtime.Initialize()
     state.initialized, state.failure = true, nil
     state.store = store
     if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
-    Bars.Core.Engine.SetActivityObserver(SyncNative)
+    Bars.Core.Engine.SetActivityObserver(EngineActivity)
     SyncEngine()
     return true
 end
@@ -183,12 +210,78 @@ function Runtime.SetCustomBar(id, enabled)
     return ok, reason
 end
 
+function Runtime.IsEditing() return Bars.Modules.Editor.IsEditing() end
+
+function Runtime.SetEditEnabled(enabled)
+    if type(enabled) ~= "boolean" then return false, "Choose whether to edit the bar layout." end
+    local ok, failure
+    if enabled then
+        if not Runtime.IsAvailable() or not state.view or not state.view.frame:IsVisible() then
+            return false, "Open Action Bars and enable the test bars before editing their layout."
+        end
+        ok, failure = Bars.Modules.Editor.Begin()
+    else ok, failure = Bars.Modules.Editor.End() end
+    RefreshView()
+    return ok, failure
+end
+
+function Runtime.GetBarLayout(id)
+    return Bars.Modules.Editor.GetLayout(id)
+end
+
+local function LayoutAvailable(id)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    if type(id) ~= "number" or id < 1 or id > 6 or id ~= math.floor(id) then
+        return false, "Choose a bar from 1 to 6."
+    end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    if id ~= 1 and not store.customBars[id] then return false, "Add this bar before changing its layout." end
+    return true
+end
+
+function Runtime.SetBarScale(id, percent)
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local ok, failure = Bars.Modules.Editor.SetScale(id, percent)
+    RefreshView()
+    return ok, failure
+end
+
+function Runtime.ResetBarLayout(id)
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local ok, failure = Bars.Modules.Editor.Reset(id)
+    RefreshView()
+    return ok, failure
+end
+
 function Runtime.Open(command)
     if not state.host then
         BootyLib.Print(state.failure or "BootyActionBars is waiting for login.")
         return false
     end
     if command == "settings" then return state.host.OpenSettings() end
+    if command == "unlock" then
+        local opened = state.host.OpenView("actionbars")
+        if opened == false then return false, "Action Bars could not be opened." end
+        local ok, failure = Runtime.SetEditEnabled(true)
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
+    if command == "lock" then return Runtime.SetEditEnabled(false) end
+    local _, _, bar, percent = string.find(command, "^scale (%d+) (%d+)$")
+    if bar then
+        local ok, failure = Runtime.SetBarScale(tonumber(bar), tonumber(percent))
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
+    local _, _, reset = string.find(command, "^reset (%d+)$")
+    if reset then
+        local ok, failure = Runtime.ResetBarLayout(tonumber(reset))
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
     if command == "test" or command == "test on" or command == "test off" then
         local store, failure = Bars.Database.Ensure()
         if not store then state.host.Print(failure); return false, failure end
@@ -210,6 +303,6 @@ function Runtime.Open(command)
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, or /bab bar 2-6 on|off.")
+    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-6 50-200, or /bab reset 1-6.")
     return false
 end
