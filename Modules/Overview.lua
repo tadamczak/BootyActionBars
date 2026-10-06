@@ -7,7 +7,7 @@ local message = "The main bar follows pages/forms; extra bars keep fixed slots. 
 function Overview.Create(parent, host)
     local page = UI.CreateContainer(nil, parent)
     page:SetAllPoints(parent)
-    local view = {frame = page, selectedBar = 2, lastScale = 100}
+    local view = {frame = page, selectedBar = 2, lastScale = 100, lastColumns = 12, lastSpacing = 4}
     local function Complete(ok, failure)
         if not ok and failure then host.Print(failure) end
         view:Refresh()
@@ -91,14 +91,37 @@ function Overview.Create(parent, host)
         })
     local reset = UI.CreateButton(page, nil, "Reset", 72, 24)
     UI.StyleActionButton(reset)
-    UI.AttachTooltip(reset, "Reset bar layout", "Restore the selected bar's position and scale. Actions and assigned keys are retained.")
+    UI.AttachTooltip(reset, "Reset bar layout", "Restore the selected bar's position, scale, columns and spacing. Actions and assigned keys are retained.")
     reset:SetScript("OnClick", function() Complete(Bars.Core.Runtime.ResetBarLayout(view.selectedBar)) end)
+    local function GridSlider(name, caption, key, lastKey, minimum, maximum, setter)
+        local owner = UI.CreateContainer(nil, page)
+        owner:SetWidth(140); owner:SetHeight(52)
+        local slider = UI.Settings.CreateSlider(owner, name, 0, -18, caption, key, minimum, maximum, nil, {
+            ensure = function() end,
+            get = function()
+                local layout = Bars.Core.Runtime.GetBarLayout(view.selectedBar)
+                if layout then view[lastKey] = layout[key] end
+                return view[lastKey]
+            end,
+            set = function(_, value) setter(value) end,
+        })
+        slider:SetWidth(140)
+        return owner, slider
+    end
+    local columnsOwner, columns = GridSlider("BootyActionBarsLayoutColumns", "Columns", "columns", "lastColumns", 1, 12,
+        function(value) Complete(Bars.Core.Runtime.SetBarColumns(view.selectedBar, value)) end)
+    local spacingOwner, spacing = GridSlider("BootyActionBarsLayoutSpacing", "Spacing", "spacing", "lastSpacing", 0, 20,
+        function(value) Complete(Bars.Core.Runtime.SetBarSpacing(view.selectedBar, value)) end)
+    UI.AttachTooltip(columns, "Columns", "Arrange the same twelve action buttons in this many columns. The final row starts at the left edge.")
+    UI.AttachTooltip(spacing, "Button spacing", "Set the gap between action buttons, from 0 to 20. Button size and assigned keys stay unchanged.")
     local endPage = function() choice.panel:Hide(); EndEdit() end
     page:SetScript("OnHide", endPage)
     view.settingsButton, view.trialButton, view.nativeButton = settings, trial, native
     view.barChoice, view.addBarButton, view.removeBarButton, view.barStatus = choice, add, remove, status
     view.body, view.editCheckbox, view.scaleSlider, view.resetLayoutButton = body, edit, scale, reset
+    view.columnsSlider, view.spacingSlider = columns, spacing
     local firstRow, barActions, scaleRow = {trial, settings}, {add, remove, editOwner}, {scaleOwner, reset}
+    local gridRow = {columnsOwner, spacingOwner}
     function view:OnResize()
         local width = UI.GetFrameSpan(parent)
         width = math.max(1, width - 32)
@@ -111,7 +134,8 @@ function Overview.Create(parent, host)
         top = top + native:GetHeight() + 16
         controls:ClearAllPoints(); controls:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         top = UI.LayoutFlow(page, barActions, 16, top + controls:GetHeight() + 12, width, 8) + 12
-        top = UI.LayoutFlow(page, scaleRow, 16, top, width, 8) + 10
+        top = UI.LayoutFlow(page, scaleRow, 16, top, width, 8) + 12
+        top = UI.LayoutFlow(page, gridRow, 16, top, width, 8) + 10
         status:ClearAllPoints(); status:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         self.contentHeight = top + status:GetHeight() + 16
     end
@@ -125,9 +149,15 @@ function Overview.Create(parent, host)
             UI.SetButtonEnabled(add, store ~= nil and not main and not configured)
             UI.SetButtonEnabled(remove, not main and configured == true)
             local layout, layoutFailure = Bars.Core.Runtime.GetBarLayout(self.selectedBar)
-            if layout then self.lastScale = layout.scalePct end
+            if layout then
+                self.lastScale, self.lastColumns, self.lastSpacing = layout.scalePct, layout.columns, layout.spacing
+            end
             UI.Settings.SynchronizeSlider(scale, self.lastScale)
+            UI.Settings.SynchronizeSlider(columns, self.lastColumns)
+            UI.Settings.SynchronizeSlider(spacing, self.lastSpacing)
             UI.Settings.SetSliderEnabled(scale, configured == true and layout ~= nil)
+            UI.Settings.SetSliderEnabled(columns, configured == true and layout ~= nil)
+            UI.Settings.SetSliderEnabled(spacing, configured == true and layout ~= nil)
             UI.SetButtonEnabled(reset, configured == true and layout ~= nil)
             edit:SetChecked(Bars.Core.Runtime.IsEditing() and 1 or nil)
             UI.Settings.SetCheckboxEnabled(edit, Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active == true)

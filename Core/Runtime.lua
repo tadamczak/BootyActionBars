@@ -248,6 +248,26 @@ function Runtime.SetBarScale(id, percent)
     return ok, failure
 end
 
+local function SetGridPreference(id, key, value, validator, maximum)
+    if not validator(value) then return false, "Choose an integer " .. key .. " value from " .. (key == "columns" and 1 or 0) .. " to " .. maximum .. "." end
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local layout, failure = Bars.Modules.Editor.GetLayout(id)
+    if not layout then return false, failure end
+    layout[key] = value
+    local ok, message = Bars.Modules.Editor.SetGrid(id, layout.columns, layout.spacing)
+    RefreshView()
+    return ok, message
+end
+
+function Runtime.SetBarColumns(id, columns)
+    return SetGridPreference(id, "columns", columns, Bars.Services.BarLayout.ValidColumns, 12)
+end
+
+function Runtime.SetBarSpacing(id, spacing)
+    return SetGridPreference(id, "spacing", spacing, Bars.Services.BarLayout.ValidSpacing, 20)
+end
+
 function Runtime.ResetBarLayout(id)
     local valid, reason = LayoutAvailable(id)
     if not valid then return false, reason end
@@ -270,6 +290,18 @@ function Runtime.Open(command)
         return ok, failure
     end
     if command == "lock" then return Runtime.SetEditEnabled(false) end
+    local _, _, gridBar, columns = string.find(command, "^columns (%d+) (%d+)$")
+    if gridBar then
+        local ok, failure = Runtime.SetBarColumns(tonumber(gridBar), tonumber(columns))
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
+    local _, _, gapBar, spacing = string.find(command, "^gap (%d+) (%d+)$")
+    if gapBar then
+        local ok, failure = Runtime.SetBarSpacing(tonumber(gapBar), tonumber(spacing))
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
     local _, _, bar, percent = string.find(command, "^scale (%d+) (%d+)$")
     if bar then
         local ok, failure = Runtime.SetBarScale(tonumber(bar), tonumber(percent))
@@ -303,6 +335,6 @@ function Runtime.Open(command)
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-6 50-200, or /bab reset 1-6.")
+    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-6 50-200, /bab columns 1-6 1-12, /bab gap 1-6 0-20, or /bab reset 1-6.")
     return false
 end

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.10 — 2026-10-06
+
+- Arrange each bar in 1–12 columns with adjustable spacing, including vertical bars and multiple rows.
+- Preserve existing actions, bindings and saved layouts while reusing the same buttons and cooldowns.
+- Reset the selected bar's position, scale, columns and spacing together.
+
 ## 0.1.0-dev.9 — 2026-10-06
 
 - Restore left/right mouse action clicks by keeping visual press feedback independent of native click dispatch.
