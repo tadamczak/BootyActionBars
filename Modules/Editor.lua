@@ -48,6 +48,8 @@ local function Drawing(view, value)
     frame:SetScale(value.scale)
     local actual = frame:GetScale()
     if not Layout.Finite(actual) or math.abs(actual - value.scale) > 0.0001 then error("The client declined the action bar scale.") end
+    local arranged, failure = view:SetGrid(value)
+    if arranged == false then error(failure or "The client declined the action bar grid.") end
     frame:ClearAllPoints(); frame:SetPoint("CENTER", UIParent, "CENTER", value.anchorX, value.anchorY)
     if frame.SetUserPlaced then frame:SetUserPlaced(false) end
     return true
@@ -60,7 +62,8 @@ local function ApplyRecord(view, record, force)
     local previous = view.layoutDrawing
     if not force and previous and previous.scale == value.scale and previous.anchorX == value.anchorX
         and previous.anchorY == value.anchorY and previous.width == value.width and previous.height == value.height
-        and previous.parentScale == value.parentScale then return true end
+        and previous.parentScale == value.parentScale and previous.columns == value.columns and previous.spacing == value.spacing
+        and previous.barWidth == value.barWidth and previous.barHeight == value.barHeight then return true end
     local ok, reason = Try(Drawing, view, value)
     if not ok then
         if previous then
@@ -100,6 +103,7 @@ local function Owner()
 end
 local function Equal(first, second)
     return first and second and first.scalePct == second.scalePct and first.x == second.x and first.y == second.y
+        and first.columns == second.columns and first.spacing == second.spacing
 end
 local function Commit(id, candidate, reset, expected)
     local store, failure = Owner()
@@ -112,6 +116,10 @@ local function Commit(id, candidate, reset, expected)
     local changed = reset and original ~= nil or not reset and not Equal(previous, candidate)
     if not changed and not expected then return true end
     local view = View(id)
+    if view then
+        local ok, message = Try(view.CancelInput, view)
+        if not ok then return false, message end
+    end
     -- Profiling must also see attempted geometry changes which are rolled
     -- back after a native setter failure.
     Bars.Core.Engine.MarkLayoutChanged()
@@ -133,6 +141,8 @@ local function Commit(id, candidate, reset, expected)
         local record = {}
         if original then for key, value in pairs(original) do record[key] = value end end
         record.scalePct, record.x, record.y = candidate.scalePct, candidate.x, candidate.y
+        record.columns = candidate.columns ~= 12 and candidate.columns or nil
+        record.spacing = candidate.spacing ~= 4 and candidate.spacing or nil
         layouts[id] = record
     end
     state.failure = nil
@@ -161,6 +171,34 @@ local function SetScale(id, percent)
 end
 function Editor.SetScale(id, percent)
     local ran, ok, failure = Run(SetScale, id, percent)
+    if not ran then return false, ok end
+    return ok, failure
+end
+local function SetGrid(id, columns, spacing)
+    if not Layout.ValidID(id) or not Layout.ValidColumns(columns) or not Layout.ValidSpacing(spacing) then
+        return false, "Choose bar 1-6, integer columns from 1 to 12 and spacing from 0 to 20."
+    end
+    local record, failure = Editor.GetLayout(id)
+    if not record then return false, failure end
+    if record.columns == columns and record.spacing == spacing then return true end
+    local cancelled, reason = CancelDrag(id)
+    if not cancelled then return false, reason end
+    record, failure = Editor.GetLayout(id)
+    if not record then return false, failure end
+    local view = View(id)
+    if view then
+        if view.frame:IsVisible() then
+            local context = Screen(true)
+            local x, y = Capture(view, context)
+            if x == nil then return false, y end
+            record.x, record.y = x, y
+        end
+    end
+    record.columns, record.spacing = columns, spacing
+    return Commit(id, record, false)
+end
+function Editor.SetGrid(id, columns, spacing)
+    local ran, ok, failure = Run(SetGrid, id, columns, spacing)
     if not ran then return false, ok end
     return ok, failure
 end
@@ -225,7 +263,8 @@ local function DragStop(id)
     if not SameContext(context, drag.context) then return CancelDrag(id) end
     local x, y = Capture(drag.view, context)
     if x == nil then CancelDrag(id); return false, y end
-    local candidate = {scalePct = drag.original.scalePct, x = x, y = y}
+    local candidate = {scalePct = drag.original.scalePct, x = x, y = y,
+        columns = drag.original.columns, spacing = drag.original.spacing}
     local committed, reason = Commit(id, candidate, false, drag)
     if not committed then CancelDrag(id); return false, reason end
     state.drags[id] = nil
@@ -248,7 +287,9 @@ end
 local function CreateHandle(view)
     local name = "BootyActionBarsBar" .. view.id .. "MoveHandle"
     if _G[name] then error("An action bar editing handle already owns this name.") end
-    local handle = UI.CreateButton(view.frame, name, "Move bar " .. view.id, 524, 40)
+    local drawing = view.layoutDrawing
+    if not drawing then error("Action bar geometry is unavailable for its editing handle.") end
+    local handle = UI.CreateButton(view.frame, name, "Move", drawing.barWidth, drawing.barHeight)
     state.handles[view.id], view.editHandle = handle, handle
     handle:Hide()
     handle.editBarId = view.id; handle:SetAllPoints(view.frame)

@@ -4,6 +4,13 @@ local ActionBar = {}
 Bars.Modules.ActionBar = ActionBar
 local pooled = {}
 
+local function UpdateCaption(view)
+    if view.gridWidth < 320 then view.title:SetText("Bar " .. view.id); return end
+    if not view.page then view.title:SetText("BootyActionBars (slots 1-12)"); return end
+    local label = view.id == 1 and "BootyActionBars (page " .. view.page or "BootyActionBars custom " .. view.id .. " (fixed"
+    view.title:SetText(label .. ", slots " .. (view.offset + 1) .. "-" .. (view.offset + 12) .. ")")
+end
+
 local function UpdatePressed(button)
     local pressed = button.pressed or button.mousePressed
     -- MouseUp runs before the client's pressed-state check for OnClick. The
@@ -96,7 +103,7 @@ function ActionBar.Create(callbacks, barId)
     if pooled[barId] then return pooled[barId] end
     local frameName = barId == 1 and "BootyActionBarsTrialBar" or "BootyActionBarsBar" .. barId
     local frame = UI.CreateContainer(frameName, UIParent)
-    local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks}
+    local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks, gridWidth = 524}
     frame.bar = view
     -- Native position APIs require a movable/resizable frame even while the
     -- editor is locked. Only the editor handle owns drag scripts.
@@ -109,6 +116,7 @@ function ActionBar.Create(callbacks, barId)
     local title = UI.CreateComponentLabel(frame, "BootyActionBars (slots 1-12)", "white")
     view.title = title
     title:SetPoint("BOTTOM", frame, "TOP", 0, 8)
+    title:SetWidth(524); title:SetHeight(20)
     frame:Hide()
     for index = 1, 12 do
         local prefix = barId == 1 and "BootyActionBarsActionButton" or "BootyActionBarsBar" .. barId .. "ActionButton"
@@ -165,8 +173,23 @@ function ActionBar.Create(callbacks, barId)
         return true
     end
     function view:SetPage(page, offset)
-        local label = self.id == 1 and "BootyActionBars (page " .. page or "BootyActionBars custom " .. self.id .. " (fixed"
-        title:SetText(label .. ", slots " .. (offset + 1) .. "-" .. (offset + 12) .. ")")
+        self.page, self.offset = page, offset
+        UpdateCaption(self)
+    end
+    function view:SetGrid(value)
+        self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
+        local step, columns = 40 + value.spacing, value.columns
+        for index = 1, 12 do
+            local row = math.floor((index - 1) / columns)
+            local column = index - 1 - row * columns
+            local button = self.buttons[index]
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", self.frame, "TOPLEFT", column * step, -row * step)
+        end
+        self.gridWidth = value.barWidth
+        title:SetWidth(value.barWidth); title:SetHeight(20)
+        UpdateCaption(self)
+        return true
     end
     function view:Hide()
         local previousThis, previousEvent, previousArg = this, event, arg1
