@@ -74,15 +74,31 @@ local function Place()
     if this.bar.id == 1 then this.bar.callbacks.Place(this.index)
     else this.bar.callbacks.Place(this.index, this.bar.id) end
 end
+local function Tooltip(button)
+    if button.bar.callbacks.Tooltip then
+        local ok, failure = button.bar.callbacks.Tooltip(button.index, button.bar.id)
+        if ok == false and failure then error(failure) end
+        return ok
+    end
+    GameTooltip:SetOwner(button, "ANCHOR_RIGHT"); GameTooltip:SetAction(button.action)
+end
+local function LeaveTooltip(button)
+    if button.bar.callbacks.LeaveTooltip then
+        local ok, failure = button.bar.callbacks.LeaveTooltip(button.index, button.bar.id)
+        if ok == false and failure then error(failure) end
+        return ok
+    end
+    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
+end
 local function Leave()
     this.hoverFeedback:Hide()
     this.mousePressed = false; UpdatePressed(this)
-    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(this) then GameTooltip:Hide() end
+    LeaveTooltip(this)
 end
 local function Enter()
     this.hoverFeedback:Show()
     if this.hasAction and GameTooltip and GameTooltip.SetAction then
-        GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetAction(this.action)
+        Tooltip(this)
     end
 end
 local function Hide()
@@ -94,7 +110,7 @@ local function Show()
     else this.bar.callbacks.OnShow(this.bar.id) end
 end
 local function ClearTooltip(button)
-    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
+    LeaveTooltip(button)
 end
 local function SuspendButton(button, preserveHover)
     local firstFailure
@@ -289,7 +305,7 @@ function ActionBar.Create(callbacks, barId)
         UpdateHotkey(button, key)
         self.displayReady = ready
     end
-    function view:Render(index, data, force)
+    function view:Render(index, data, force, rangeOnly)
         local button, old = self.buttons[index], self.buttons[index].rendered
         button.hasAction = data.hasAction
         if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
@@ -297,20 +313,24 @@ function ActionBar.Create(callbacks, barId)
             if self.showCounts then button.count:SetText(data.count > 1 and data.count or "") end
             old.count = data.count
         end
-        if force or old.usable ~= data.usable or old.noMana ~= data.noMana then
-            if data.usable then button.icon:SetVertexColor(1, 1, 1)
-            elseif data.noMana then button.icon:SetVertexColor(0.5, 0.5, 1)
+        local color = data.usable and (data.inRange == 0 and 2 or 1) or data.noMana and 3 or 4
+        if force or old.color ~= color then
+            if color == 1 then button.icon:SetVertexColor(1, 1, 1)
+            elseif color == 2 then button.icon:SetVertexColor(1, 0.2, 0.2)
+            elseif color == 3 then button.icon:SetVertexColor(0.5, 0.5, 1)
             else button.icon:SetVertexColor(0.3, 0.3, 0.3) end
-            old.usable, old.noMana = data.usable, data.noMana
+            old.color = color
         end
+        old.usable, old.noMana, old.inRange = data.usable, data.noMana, data.inRange
         local checked = data.current or data.autoRepeat
         if force or old.checked ~= checked then button:SetChecked(checked and 1 or 0); old.checked = checked end
         if force or old.start ~= data.cooldownStart or old.duration ~= data.cooldownDuration or old.enabled ~= data.cooldownEnabled then
             CooldownFrame_SetTimer(button.cooldown, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled and 1 or 0)
             old.start, old.duration, old.enabled = data.cooldownStart, data.cooldownDuration, data.cooldownEnabled
         end
-        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then
-            if data.hasAction then GameTooltip:SetAction(button.action) else GameTooltip:Hide() end
+        if not rangeOnly and GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button)
+            and GameTooltip.IsShown and GameTooltip:IsShown() then
+            if data.hasAction then Tooltip(button) else LeaveTooltip(button) end
         end
     end
     pooled[barId] = view

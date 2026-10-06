@@ -70,6 +70,7 @@ end
 function ActionService.Create(api)
     api = api or _G
     local service = {}
+    local macro = Bars.Services.MacroActionService and Bars.Services.MacroActionService.Create(api)
 
     function service.Read(slot, target)
         if not ValidIndex(slot, 120) then return nil, "invalid-slot" end
@@ -85,20 +86,46 @@ function ActionService.Create(api)
         end
         ReadUsability(api, slot, target)
         ReadState(api, slot, target)
+        if macro then
+            local resolved = macro.ReadCooldown(slot, target)
+            if resolved then return resolved end
+        end
         ReadCooldown(api, slot, target)
+        if macro then return macro.Apply(slot, target) end
         return target
     end
 
     function service.ReadCooldown(slot, target)
         local valid, reason = ValidatePartial(slot, target)
         if not valid then return nil, reason end
-        return ReadCooldown(api, slot, target)
+        if macro then
+            local resolved = macro.ReadCooldown(slot, target)
+            if resolved then return resolved end
+        end
+        ReadCooldown(api, slot, target)
+        if macro then return macro.Apply(slot, target, true) end
+        return target
     end
 
     function service.ReadUsability(slot, target)
         local valid, reason = ValidatePartial(slot, target)
         if not valid then return nil, reason end
-        return ReadUsability(api, slot, target)
+        ReadUsability(api, slot, target)
+        if macro then return macro.Apply(slot, target) end
+        return target
+    end
+
+    function service.ReadAvailability(slot, target)
+        local valid, reason = ValidatePartial(slot, target)
+        if not valid then return nil, reason end
+        ReadUsability(api, slot, target)
+        if macro then
+            local resolved = macro.ReadCooldown(slot, target)
+            if resolved then return resolved end
+        end
+        ReadCooldown(api, slot, target)
+        if macro then return macro.Apply(slot, target, "texture") end
+        return target
     end
 
     function service.ReadState(slot, target)
@@ -148,5 +175,10 @@ function ActionService.Create(api)
     end
 
     service.IsBusy = service.InCombat
+    if macro then
+        service.Tooltip, service.LeaveTooltip = macro.Tooltip, macro.LeaveTooltip
+        service.EnableMacroEvents, service.DisableMacroEvents = macro.Enable, macro.Disable
+        service.RefreshMacroProvider = macro.RefreshProvider
+    end
     return service
 end
