@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.11 — 2026-10-06
+
+- Show or hide each bar's title, key labels and item/charge counts independently.
+- Keep hidden labels current without formatting or rewriting them until they are shown.
+- Keep all bar settings reachable in shorter windows through the shared scrolling panel.
+
 ## 0.1.0-dev.10 — 2026-10-06
 
 - Arrange each bar in 1–12 columns with adjustable spacing, including vertical bars and multiple rows.

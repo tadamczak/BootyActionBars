@@ -43,13 +43,15 @@ local function SameContext(first, second)
     return first and second and first.width == second.width and first.height == second.height
         and first.scale == second.scale and first.x == second.x and first.y == second.y
 end
-local function Drawing(view, value)
+local function Drawing(view, value, repair)
     local frame = view.frame
     frame:SetScale(value.scale)
     local actual = frame:GetScale()
     if not Layout.Finite(actual) or math.abs(actual - value.scale) > 0.0001 then error("The client declined the action bar scale.") end
     local arranged, failure = view:SetGrid(value)
     if arranged == false then error(failure or "The client declined the action bar grid.") end
+    local displayed, displayFailure = view:SetDisplay(value, repair)
+    if displayed == false then error(displayFailure or "The client declined the action bar display settings.") end
     frame:ClearAllPoints(); frame:SetPoint("CENTER", UIParent, "CENTER", value.anchorX, value.anchorY)
     if frame.SetUserPlaced then frame:SetUserPlaced(false) end
     return true
@@ -60,15 +62,20 @@ local function ApplyRecord(view, record, force)
     if not value then return false, failure end
     value.parentScale = context.scale
     local previous = view.layoutDrawing
-    if not force and previous and previous.scale == value.scale and previous.anchorX == value.anchorX
+    if not force and view.displayReady ~= false and previous and previous.scale == value.scale and previous.anchorX == value.anchorX
         and previous.anchorY == value.anchorY and previous.width == value.width and previous.height == value.height
         and previous.parentScale == value.parentScale and previous.columns == value.columns and previous.spacing == value.spacing
-        and previous.barWidth == value.barWidth and previous.barHeight == value.barHeight then return true end
-    local ok, reason = Try(Drawing, view, value)
+        and previous.barWidth == value.barWidth and previous.barHeight == value.barHeight
+        and previous.showTitle == value.showTitle and previous.showHotkeys == value.showHotkeys
+        and previous.showCounts == value.showCounts then return true end
+    local ok, reason = Try(Drawing, view, value, false)
     if not ok then
         if previous then
-            local restored, restoreFailure = Try(Drawing, view, previous)
-            if not restored then reason = reason .. " Restoration: " .. tostring(restoreFailure) end
+            local restored, restoreFailure = Try(Drawing, view, previous, true)
+            if not restored then
+                view.layoutDrawing = nil
+                reason = reason .. " Restoration: " .. tostring(restoreFailure)
+            end
         end
         return false, reason
     end
@@ -104,6 +111,7 @@ end
 local function Equal(first, second)
     return first and second and first.scalePct == second.scalePct and first.x == second.x and first.y == second.y
         and first.columns == second.columns and first.spacing == second.spacing
+        and first.showTitle == second.showTitle and first.showHotkeys == second.showHotkeys and first.showCounts == second.showCounts
 end
 local function Commit(id, candidate, reset, expected)
     local store, failure = Owner()
@@ -143,6 +151,9 @@ local function Commit(id, candidate, reset, expected)
         record.scalePct, record.x, record.y = candidate.scalePct, candidate.x, candidate.y
         record.columns = candidate.columns ~= 12 and candidate.columns or nil
         record.spacing = candidate.spacing ~= 4 and candidate.spacing or nil
+        if candidate.showTitle == false then record.showTitle = false else record.showTitle = nil end
+        if candidate.showHotkeys == false then record.showHotkeys = false else record.showHotkeys = nil end
+        if candidate.showCounts == false then record.showCounts = false else record.showCounts = nil end
         layouts[id] = record
     end
     state.failure = nil
@@ -199,6 +210,25 @@ local function SetGrid(id, columns, spacing)
 end
 function Editor.SetGrid(id, columns, spacing)
     local ran, ok, failure = Run(SetGrid, id, columns, spacing)
+    if not ran then return false, ok end
+    return ok, failure
+end
+local function SetDisplay(id, key, value)
+    if not Layout.ValidID(id) or not Layout.ValidDisplayKey(key) or type(value) ~= "boolean" then
+        return false, "Choose bar 1-6 and a true or false title, hotkey or count display setting."
+    end
+    local record, failure = Editor.GetLayout(id)
+    if not record then return false, failure end
+    if record[key] == value then return true end
+    local cancelled, reason = CancelDrag(id)
+    if not cancelled then return false, reason end
+    record, failure = Editor.GetLayout(id)
+    if not record then return false, failure end
+    record[key] = value
+    return Commit(id, record, false)
+end
+function Editor.SetDisplay(id, key, value)
+    local ran, ok, failure = Run(SetDisplay, id, key, value)
     if not ran then return false, ok end
     return ok, failure
 end
@@ -264,7 +294,8 @@ local function DragStop(id)
     local x, y = Capture(drag.view, context)
     if x == nil then CancelDrag(id); return false, y end
     local candidate = {scalePct = drag.original.scalePct, x = x, y = y,
-        columns = drag.original.columns, spacing = drag.original.spacing}
+        columns = drag.original.columns, spacing = drag.original.spacing,
+        showTitle = drag.original.showTitle, showHotkeys = drag.original.showHotkeys, showCounts = drag.original.showCounts}
     local committed, reason = Commit(id, candidate, false, drag)
     if not committed then CancelDrag(id); return false, reason end
     state.drags[id] = nil

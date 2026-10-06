@@ -128,6 +128,15 @@ local function ProtectedCall(callback, owner)
     if ok == false then return false, failure or "An action bar could not be suspended." end
     return true
 end
+local function PrepareDisplay(view)
+    -- Apply saved visibility before page text, forced action reads and binding
+    -- formatting, including reactivation of an already pooled hidden view.
+    local editor = Bars.Modules.Editor
+    if not editor then return true end
+    local layout, failure = editor.GetLayout(view.id)
+    if not layout then return false, failure end
+    return view:SetDisplay(layout)
+end
 local function HideView(view)
     local firstFailure
     if Bars.Modules.Editor then
@@ -205,6 +214,8 @@ local function ActivateCustom(barId, revise)
     local offset = (barId - 1) * 12
     local suspended, suspendFailure = ProtectedCall(view.Suspend, view)
     if not suspended then return false, suspendFailure end
+    local prepared, prepareFailure = ProtectedCall(PrepareDisplay, view)
+    if not prepared then return false, prepareFailure end
     for index = 1, 12 do view.buttons[index].action = offset + index end
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ok, reason = pcall(view.SetPage, view, barId, offset)
@@ -348,6 +359,8 @@ function Engine.Enable(customBars)
     local view
     view, failure = CreateView(1)
     if not view then state.requested = false; Engine.Disable(); return false, failure end
+    ok, failure = ProtectedCall(PrepareDisplay, view)
+    if not ok then Engine.Disable(); return false, failure end
     local previousThis, previousEvent, previousArg = this, event, arg1
     ok, failure = pcall(ApplyPage, offset, page)
     this, event, arg1 = previousThis, previousEvent, previousArg
