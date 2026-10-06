@@ -2,7 +2,7 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Overview = {}
 Bars.Modules.Overview = Overview
-local message = "The main bar follows pages/forms; extra bars keep fixed slots. Keys are under BootyActionBars. Edit layout to move bars."
+local message = "The main bar follows pages/forms; extra bars keep fixed slots. Pet and Forms use native pet/form keys. Edit layout to move bars."
 
 function Overview.Create(parent, host)
     local frame = UI.CreateContainer(nil, parent)
@@ -52,8 +52,10 @@ function Overview.Create(parent, host)
         choices[table.getn(choices) + 1] = {value = id,
             text = id == 1 and "Main bar (pages/forms)" or "Bar " .. id .. " (slots " .. ((id - 1) * 12 + 1) .. "-" .. (id * 12) .. ")"}
     end
+    table.insert(choices, {value = 7, text = "Pet bar"})
+    table.insert(choices, {value = 8, text = "Forms / stances"})
     local _, choice = UI.CreateChoiceField({parent = controls, x = 0, y = 0,
-        label = "Bar", initialText = choices[2].text, width = 200, height = 146,
+        label = "Bar", initialText = choices[2].text, width = 200, height = 186,
         firstY = -7, step = 20, buttonOffset = 70, labelValue = true, choices = choices,
         getValue = function() return view.selectedBar end,
         onSelect = function(value) view.selectedBar = value end,
@@ -66,10 +68,12 @@ function Overview.Create(parent, host)
     status:SetPoint("TOPLEFT", add, "BOTTOMLEFT", 0, -10)
     status:SetJustifyH("LEFT"); status:SetJustifyV("TOP")
     add:SetScript("OnClick", function()
-        if view.selectedBar ~= 1 then Complete(Bars.Core.Runtime.SetCustomBar(view.selectedBar, true)) end
+        if view.selectedBar >= 7 then Complete(Bars.Core.Runtime.SetSpecialBar(view.selectedBar == 7 and "pet" or "stance", true))
+        elseif view.selectedBar ~= 1 then Complete(Bars.Core.Runtime.SetCustomBar(view.selectedBar, true)) end
     end)
     remove:SetScript("OnClick", function()
-        if view.selectedBar ~= 1 then Complete(Bars.Core.Runtime.SetCustomBar(view.selectedBar, false)) end
+        if view.selectedBar >= 7 then Complete(Bars.Core.Runtime.SetSpecialBar(view.selectedBar == 7 and "pet" or "stance", false))
+        elseif view.selectedBar ~= 1 then Complete(Bars.Core.Runtime.SetCustomBar(view.selectedBar, false)) end
     end)
     local editOwner = UI.CreateContainer(nil, page)
     editOwner:SetHeight(26)
@@ -181,7 +185,9 @@ function Overview.Create(parent, host)
             trial.label:SetText(store and store.trialBarEnabled and "Disable test bar" or "Enable test bar")
             native.label:SetText(store and store.nativeMainBarEnabled and "Restore native buttons" or "Replace native buttons")
             local main = self.selectedBar == 1
-            local configured = store and (main or store.customBars[self.selectedBar] == true)
+            local special = self.selectedBar == 7 or self.selectedBar == 8
+            local configured = store and (main or special and store.specialBars[self.selectedBar == 7 and "pet" or "stance"] == true
+                or not special and store.customBars[self.selectedBar] == true)
             UI.SetButtonEnabled(add, store ~= nil and not main and not configured)
             UI.SetButtonEnabled(remove, not main and configured == true)
             local layout, layoutFailure = Bars.Core.Runtime.GetBarLayout(self.selectedBar)
@@ -190,6 +196,11 @@ function Overview.Create(parent, host)
                 self.lastTitle, self.lastHotkeys, self.lastCounts = layout.showTitle, layout.showHotkeys, layout.showCounts
             end
             UI.Settings.SynchronizeSlider(scale, self.lastScale)
+            local synchronizing = columns.mosSynchronizing
+            columns.mosSynchronizing = true
+            columns:SetMinMaxValues(1, special and 10 or 12)
+            columns.mosSynchronizing = synchronizing
+            getglobal("BootyActionBarsLayoutColumnsHigh"):SetText(tostring(special and 10 or 12))
             UI.Settings.SynchronizeSlider(columns, self.lastColumns)
             UI.Settings.SynchronizeSlider(spacing, self.lastSpacing)
             UI.Settings.SetSliderEnabled(scale, configured == true and layout ~= nil)
@@ -200,12 +211,13 @@ function Overview.Create(parent, host)
             countsCheck:SetChecked(self.lastCounts and 1 or nil)
             UI.Settings.SetCheckboxEnabled(titleCheck, configured == true and layout ~= nil)
             UI.Settings.SetCheckboxEnabled(hotkeysCheck, configured == true and layout ~= nil)
-            UI.Settings.SetCheckboxEnabled(countsCheck, configured == true and layout ~= nil)
+            UI.Settings.SetCheckboxEnabled(countsCheck, configured == true and layout ~= nil and not special)
             UI.SetButtonEnabled(reset, configured == true and layout ~= nil)
             edit:SetChecked(Bars.Core.Runtime.IsEditing() and 1 or nil)
             UI.Settings.SetCheckboxEnabled(edit, Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active == true)
             status:SetText(not store and failure or not layout and layoutFailure or main and
                 "Main bar. Actions and keys follow the visible page or form."
+                or special and configured and "Added. Appears when a pet or forms are available. Native pet/form keys and buttons remain available."
                 or configured and "Added. Removing this bar keeps its actions and assigned keys."
                 or "Not added. Enable the test bars to show configured bars.")
             self:OnResize()

@@ -18,3 +18,14 @@ function BarConfig.Validate(config)
     end
     return true
 end
+
+function BarConfig.ValidateSpecial(config)
+    if config == nil then return true end
+    if type(config) ~= "table" then return false, "Invalid saved pet/form bars." end
+    for kind, enabled in pairs(config) do
+        if (kind ~= "pet" and kind ~= "stance") or enabled ~= true then
+            return false, "Saved pet/form bars support only enabled pet and stance entries."
+        end
+    end
+    return true
+end

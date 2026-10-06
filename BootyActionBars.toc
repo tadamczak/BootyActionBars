@@ -2,7 +2,7 @@
 ## Title: BootyActionBars
 ## Notes: Optional action bars, client pages, form actions and native main-button replacement. Standalone or integrated into Booty Suite. Early development build.
 ## Author: Mukla
-## Version: 0.1.0-dev.11
+## Version: 0.1.0-dev.12
 ## Dependencies: BootyLib
 ## SavedVariables: BootyActionBarsDB
 
@@ -11,12 +11,14 @@ Services\BarConfig.lua
 Services\BarLayout.lua
 Core\Database.lua
 Services\ActionService.lua
+Services\SpecialActionService.lua
 Services\ActionPageService.lua
 Services\NativeBarPolicy.lua
 Modules\ActionBar.lua
 Modules\NativeBar.lua
 Core\Engine.lua
 Modules\Editor.lua
+Modules\SpecialBars.lua
 Core\Runtime.lua
 Core\SettingsSchema.lua
 Modules\Overview.lua

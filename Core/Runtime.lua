@@ -58,10 +58,18 @@ local function CallLifecycle(callback, value)
     if ok == false then return false, failure or "Action bar layout could not be updated." end
     return true
 end
+local function SyncSpecial(active)
+    local controller = Bars.Modules.SpecialBars
+    if not controller then return true end
+    if active then return controller.Enable() end
+    return controller.Disable()
+end
 local function EngineActivity(active)
     -- Native ownership and layout cleanup must both run even if one fails.
     local nativeOK, nativeFailure = CallLifecycle(SyncNative)
+    local specialOK, specialFailure = CallLifecycle(SyncSpecial, active)
     local editorOK, editorFailure = CallLifecycle(Bars.Modules.Editor.OnActivity, active)
+    if not specialOK then return false, specialFailure end
     if not editorOK then return false, editorFailure end
     -- A rejected native lease is already reported and leaves valid trial bars
     -- usable. Restoration errors still fail inactive cleanup.
@@ -76,6 +84,15 @@ local function SyncEngine()
     if not layoutOK then return false, layoutFailure end
     local configured, reason = Bars.Core.Engine.ConfigureCustomBars(store.customBars)
     if not configured then return false, reason end
+    if Bars.Modules.SpecialBars then
+        configured, reason = Bars.Modules.SpecialBars.Configure(store.specialBars)
+        if not configured then
+            store.trialBarEnabled = false
+            local stopped, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
+            if not stopped then reason = tostring(reason) .. " Cleanup: " .. tostring(cleanupFailure) end
+            return false, reason
+        end
+    end
     if state.stopped or not store.trialBarEnabled then return Bars.Core.Engine.Disable() end
     local ok, failure = Bars.Core.Engine.Enable(store.customBars)
     if not ok then
@@ -83,6 +100,12 @@ local function SyncEngine()
         Bars.Core.Engine.Disable()
         BootyLib.Print("BootyActionBars: " .. tostring(failure))
     else
+        local specialOK, specialFailure = CallLifecycle(SyncSpecial, Bars.Core.Engine.GetState().active)
+        if not specialOK then
+            store.trialBarEnabled = false
+            Bars.Core.Engine.Disable()
+            return false, specialFailure
+        end
         SyncNative()
         local applied, reason = CallLifecycle(Bars.Modules.Editor.OnActivity, Bars.Core.Engine.GetState().active)
         if not applied then
@@ -210,6 +233,19 @@ function Runtime.SetCustomBar(id, enabled)
     return ok, reason
 end
 
+function Runtime.SetSpecialBar(kind, enabled)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    if (kind ~= "pet" and kind ~= "stance") or type(enabled) ~= "boolean" then return false, "Choose pet or stance and on or off." end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    if (store.specialBars[kind] == true) == enabled then return true end
+    store.specialBars[kind] = enabled and true or nil
+    Bars.Core.Engine.MarkLayoutChanged()
+    local ok, reason = SyncEngine()
+    RefreshView()
+    return ok, reason
+end
+
 function Runtime.IsEditing() return Bars.Modules.Editor.IsEditing() end
 
 function Runtime.SetEditEnabled(enabled)
@@ -231,12 +267,14 @@ end
 
 local function LayoutAvailable(id)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
-    if type(id) ~= "number" or id < 1 or id > 6 or id ~= math.floor(id) then
-        return false, "Choose a bar from 1 to 6."
+    if not Bars.Services.BarLayout.ValidID(id) then
+        return false, "Choose a bar from 1 to 8."
     end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
-    if id ~= 1 and not store.customBars[id] then return false, "Add this bar before changing its layout." end
+    if id == 7 or id == 8 then
+        if not store.specialBars[id == 7 and "pet" or "stance"] then return false, "Add this bar before changing its layout." end
+    elseif id ~= 1 and not store.customBars[id] then return false, "Add this bar before changing its layout." end
     return true
 end
 
@@ -261,6 +299,7 @@ local function SetGridPreference(id, key, value, validator, maximum)
 end
 
 function Runtime.SetBarColumns(id, columns)
+    if (id == 7 or id == 8) and type(columns) == "number" and columns > 10 then return false, "Pet and form bars support at most 10 columns." end
     return SetGridPreference(id, "columns", columns, Bars.Services.BarLayout.ValidColumns, 12)
 end
 
@@ -293,6 +332,12 @@ function Runtime.Open(command)
         return false
     end
     if command == "settings" then return state.host.OpenSettings() end
+    local _, _, special, specialChoice = string.find(command, "^(%a+) (%a+)$")
+    if (special == "pet" or special == "stance") and (specialChoice == "on" or specialChoice == "off") then
+        local ok, failure = Runtime.SetSpecialBar(special, specialChoice == "on")
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
     if command == "unlock" then
         local opened = state.host.OpenView("actionbars")
         if opened == false then return false, "Action Bars could not be opened." end
@@ -353,6 +398,6 @@ function Runtime.Open(command)
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-6 50-200, /bab columns 1-6 1-12, /bab gap 1-6 0-20, /bab title|hotkeys|counts 1-6 on|off, or /bab reset 1-6.")
+    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-8 50-200, /bab columns 1-8 1-12, /bab gap 1-8 0-20, /bab title|hotkeys|counts 1-8 on|off, or /bab reset 1-8.")
     return false
 end

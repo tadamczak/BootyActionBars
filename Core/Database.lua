@@ -10,6 +10,8 @@ local function Defaults(store)
     end
     local valid, failure = Bars.Services.BarConfig.Validate(store.customBars)
     if not valid then error(failure) end
+    valid, failure = Bars.Services.BarConfig.ValidateSpecial(store.specialBars)
+    if not valid then error(failure) end
     valid, failure = Bars.Services.BarLayout.ValidateLayouts(store.barLayouts)
     if not valid then error(failure) end
     store.schemaVersion = Database.SCHEMA_VERSION
@@ -17,6 +19,7 @@ local function Defaults(store)
     if type(store.trialBarEnabled) ~= "boolean" then store.trialBarEnabled = false end
     if type(store.nativeMainBarEnabled) ~= "boolean" then store.nativeMainBarEnabled = false end
     if store.customBars == nil then store.customBars = {} end
+    if store.specialBars == nil then store.specialBars = {} end
     if store.barLayouts == nil then store.barLayouts = {} end
     if type(store.presentation) ~= "table" then store.presentation = {} end
     if type(store.presentation.windows) ~= "table" then store.presentation.windows = {} end
@@ -39,6 +42,8 @@ function Database.Ensure()
     end
     if store then
         local valid, failure = Bars.Services.BarConfig.Validate(store.customBars)
+        if not valid then return nil, failure end
+        valid, failure = Bars.Services.BarConfig.ValidateSpecial(store.specialBars)
         if not valid then return nil, failure end
         valid, failure = Bars.Services.BarLayout.ValidateLayouts(store.barLayouts)
         if not valid then return nil, failure end

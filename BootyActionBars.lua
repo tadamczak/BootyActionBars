@@ -35,6 +35,8 @@ function Bars.GetProfilingTargets()
         customRevision = state.customRevision or 0,
         customConfiguredCount = state.customConfiguredCount or 0,
         customActiveCount = state.customActiveCount or 0,
+        specialConfiguredCount = type(BootyActionBarsDB) == "table" and type(BootyActionBarsDB.specialBars) == "table" and
+            ((BootyActionBarsDB.specialBars.pet and 1 or 0) + (BootyActionBarsDB.specialBars.stance and 1 or 0)) or 0,
         runtimeStopped = Runtime.GetState().stopped == true,
         settingsEnabled = type(BootyActionBarsDB) == "table" and BootyActionBarsDB.trialBarEnabled == true,
         targets = targets}

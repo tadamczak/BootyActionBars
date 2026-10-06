@@ -24,6 +24,7 @@ local function Report(failure)
     state.failure = failure
 end
 local function View(id)
+    if id == 7 or id == 8 then return Bars.Modules.SpecialBars and Bars.Modules.SpecialBars.GetView(id) end
     local engine = Bars.Core.Engine.GetState()
     return engine.views and engine.views[id] or id == 1 and engine.view or nil
 end
@@ -149,7 +150,7 @@ local function Commit(id, candidate, reset, expected)
         local record = {}
         if original then for key, value in pairs(original) do record[key] = value end end
         record.scalePct, record.x, record.y = candidate.scalePct, candidate.x, candidate.y
-        record.columns = candidate.columns ~= 12 and candidate.columns or nil
+        record.columns = candidate.columns ~= Layout.SlotCount(id) and candidate.columns or nil
         record.spacing = candidate.spacing ~= 4 and candidate.spacing or nil
         if candidate.showTitle == false then record.showTitle = false else record.showTitle = nil end
         if candidate.showHotkeys == false then record.showHotkeys = false else record.showHotkeys = nil end
@@ -164,7 +165,7 @@ local function Capture(view, context)
     return Layout.Capture(x, y, view.frame:GetEffectiveScale(), context.scale, context.x, context.y)
 end
 local function SetScale(id, percent)
-    if not Layout.ValidID(id) or not Layout.ValidScale(percent) then return false, "Choose bar 1-6 and an integer scale from 50 to 200." end
+    if not Layout.ValidID(id) or not Layout.ValidScale(percent) then return false, "Choose bar 1-8 and an integer scale from 50 to 200." end
     local cancelled, failure = CancelDrag(id)
     if not cancelled then return false, failure end
     local record, reason = Editor.GetLayout(id)
@@ -187,7 +188,7 @@ function Editor.SetScale(id, percent)
 end
 local function SetGrid(id, columns, spacing)
     if not Layout.ValidID(id) or not Layout.ValidColumns(columns) or not Layout.ValidSpacing(spacing) then
-        return false, "Choose bar 1-6, integer columns from 1 to 12 and spacing from 0 to 20."
+        return false, "Choose bar 1-8, integer columns from 1 to 12 and spacing from 0 to 20."
     end
     local record, failure = Editor.GetLayout(id)
     if not record then return false, failure end
@@ -215,7 +216,7 @@ function Editor.SetGrid(id, columns, spacing)
 end
 local function SetDisplay(id, key, value)
     if not Layout.ValidID(id) or not Layout.ValidDisplayKey(key) or type(value) ~= "boolean" then
-        return false, "Choose bar 1-6 and a true or false title, hotkey or count display setting."
+        return false, "Choose bar 1-8 and a true or false title, hotkey or count display setting."
     end
     local record, failure = Editor.GetLayout(id)
     if not record then return false, failure end
@@ -233,7 +234,7 @@ function Editor.SetDisplay(id, key, value)
     return ok, failure
 end
 local function Reset(id)
-    if not Layout.ValidID(id) then return false, "Choose an action bar from 1 to 6." end
+    if not Layout.ValidID(id) then return false, "Choose an action bar from 1 to 8." end
     local ok, failure = CancelDrag(id)
     if not ok then return false, failure end
     return Commit(id, Layout.Read(nil, id), true)
@@ -260,7 +261,7 @@ CancelDrag = function(id)
 end
 local function CancelAll()
     local firstFailure
-    for id = 1, 6 do
+    for id = 1, 8 do
         local ok, failure = CancelDrag(id)
         if not ok and not firstFailure then firstFailure = failure end
     end
@@ -373,7 +374,7 @@ end
 function Editor.End()
     state.editing = false
     local ok, firstFailure = CancelAll()
-    for id = 1, 6 do
+    for id = 1, 8 do
         local detached, failure = Detach(id)
         if not detached and not firstFailure then firstFailure = failure end
     end
@@ -388,7 +389,7 @@ function Editor.OnBarHidden(id)
 end
 function Editor.Sync()
     local firstFailure
-    for id = 1, 6 do
+    for id = 1, 8 do
         local view = View(id)
         if view and view.frame:IsVisible() then
             local ok, failure = Editor.ApplyView(view)
@@ -402,7 +403,7 @@ function Editor.Begin()
     if not state.active or not Bars.Core.Engine.GetState().active then return false, "Enable and show the action bars before editing." end
     if state.editing then return true end
     state.editing = true
-    for id = 1, 6 do
+    for id = 1, 8 do
         local view = View(id)
         if view and view.frame:IsVisible() then
             local ok, failure = Try(view.CancelInput, view)
