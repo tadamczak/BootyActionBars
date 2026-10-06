@@ -85,18 +85,11 @@ SyncNative = function()
     local safe, reason = CallLifecycle(Bars.Services.NativeBarPolicy.CheckCompeting)
     if not safe then return AbortNative(reason) end
     local ok, failure = CallLifecycle(controller.Check)
-    if ok and Bars.Core.Engine.GetState().actionOffset ~= 0 then
-        ok, failure = false, "The test bar must display page 1 before replacing native buttons."
-    end
-    if ok then
-        local acquired, acquireFailure = CallLifecycle(controller.Acquire)
-        if not acquired then return AbortNative(acquireFailure) end
-    else
-        -- Keep the user's hide request while native primary buttons support
-        -- the current bonus/page. Special form controls remain independently owned.
-        local restored, restoreFailure = CallLifecycle(controller.Release)
-        if not restored then return AbortNative(tostring(failure) .. " Restoration: " .. tostring(restoreFailure)) end
-    end
+    if not ok then return AbortNative(failure) end
+    -- Main and bonus buttons share one lease. Native parent animation and
+    -- keyboard dispatch retain their owners while all BAB pages stay usable.
+    local acquired, acquireFailure = CallLifecycle(controller.Acquire)
+    if not acquired then return AbortNative(acquireFailure) end
     local special = Bars.Modules.SpecialBars
     local pet, stance = false, false
     if special and special.GetLiveVisibility then
@@ -112,7 +105,6 @@ SyncNative = function()
         for _, name in ipairs(nativeEvents) do BootyLib.Subscribe(name, Runtime, NativeEvent) end
         state.nativeSubscribed = true
     end
-    if not ok then return NativeFailure(failure) end
     state.nativeFailure = nil
     return true
 end

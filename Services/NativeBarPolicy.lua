@@ -4,13 +4,12 @@ BootyActionBars.Services.NativeBarPolicy = NativeBarPolicy
 local competingAddons = {"DiscordActionBars", "DiscordActionBarsOptions", "Bongos", "Bongos_ActionBar", "pfUI"}
 local floor = math.floor
 
-local function Integer(value, minimum)
+local function Integer(value, minimum, maximum)
     return type(value) == "number" and value == value and value >= minimum
-        and value < 1e300 and value == floor(value)
+        and value <= maximum and value == floor(value)
 end
 
--- Special controls remain valid on bonus pages. Ownership conflicts still
--- apply, independently of the primary twelve-button page restriction.
+-- Special controls do not depend on the primary action-slot mapping.
 function NativeBarPolicy.CheckCompeting(api)
     if api == nil then api = _G end
     if type(api) ~= "table" then return false, "The native action-bar API is unavailable." end
@@ -30,21 +29,19 @@ function NativeBarPolicy.CheckCompeting(api)
     return true
 end
 
--- Stock 1.12 action buttons derive their slots from this global. The bonus
--- offset redirects page-one input to a different bar, which this phase does
--- not own. The controller separately checks the bonus frame's slide-out state.
+-- The owned main view follows all six stock pages and page-one bonus offsets
+-- through ActionPageService. Its native counterparts are both twelve-button
+-- families, including the bonus frame's temporary slide-out visibility.
 function NativeBarPolicy.Check(api)
     if api == nil then api = _G end
     if type(api) ~= "table" then return false, "The native action-bar API is unavailable." end
     local page = api.CURRENT_ACTIONBAR_PAGE
-    if not Integer(page, 1) then return false, "The native action-bar page is unavailable or invalid." end
-    if page ~= 1 then return false, "Native replacement currently supports action-bar page 1 only." end
+    if not Integer(page, 1, 6) then return false, "The native action-bar page is unavailable or invalid." end
 
     if type(api.GetBonusBarOffset) ~= "function" then return false, "The native bonus-bar API is unavailable." end
     local ok, offset = pcall(api.GetBonusBarOffset)
     if not ok then return false, "The native bonus-bar state could not be read: " .. tostring(offset) end
-    if not Integer(offset, 0) then return false, "The native bonus-bar state is invalid." end
-    if offset ~= 0 then return false, "Native replacement is unavailable while a bonus action bar is active." end
+    if not Integer(offset, 0, 4) then return false, "The native bonus-bar state is invalid." end
 
     return NativeBarPolicy.CheckCompeting(api)
 end
