@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.16 — 2026-10-07
+
+- Refresh SuperMacro/CleveRoids macro icons, item counts, cooldowns and tooltips, including delayed conditional changes.
+- Show target range with cached action colors; stop distance checks without a target or active ranged buttons.
+- Preserve action input through pages/forms and include shared gameplay updates in scoped profiling.
+
 ## 0.1.0-dev.15 — 2026-10-06
 
 - Keep native main and bonus action buttons hidden through stealth, forms, page changes and native exit animations.
