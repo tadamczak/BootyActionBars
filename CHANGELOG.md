@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-dev.9 — 2026-10-06
+
+- Restore left/right mouse action clicks by keeping visual press feedback independent of native click dispatch.
+- Keep pending mouse releases cancelled across page changes, editing and bar suspension.
+
 ## 0.1.0-dev.8 — 2026-10-06
 
 - Fix the native frame error when enabling action bars and when scaling, resetting or restoring a locked layout.
