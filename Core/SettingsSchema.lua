@@ -7,9 +7,9 @@ local fields = {{
     set = function(value, store) store.hideMinimapIcon = value == true end,
     onChange = Bars.Core.Runtime.SettingsChanged,
 }, {
-    key = "trialBarEnabled", label = "Enable test bar (slots 1-12)", type = "checkbox", default = false,
+    key = "trialBarEnabled", label = "Enable test action bar", type = "checkbox", default = false,
     profile = false, path = {"Action Bars", "General"},
-    tooltip = "Show the optional fixed slots 1-12 test bar. Dragging actions changes these shared client slots, including other bars. Set its own keys in the game's Key Bindings menu. Paging, forms and pets are not supported yet.",
+    tooltip = "Follow the client's action pages and bonus form slots. Dragging changes shared client actions. Assign its keys under BootyActionBars in the game's Key Bindings menu. Pet and separate form controls are planned.",
     set = function(value) return Bars.Core.Runtime.SetTrialEnabled(value) end,
     onChange = Bars.Core.Runtime.SettingsChanged,
 }}

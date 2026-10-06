@@ -1,15 +1,18 @@
 ## Interface: 11200
 ## Title: BootyActionBars
-## Notes: Optional test action bar, preferences and profiles, standalone or integrated into Booty Suite. Early development build.
+## Notes: Optional action bar with client pages, form actions and native main-button replacement. Standalone or integrated into Booty Suite. Early development build.
 ## Author: Mukla
-## Version: 0.1.0-dev.3
+## Version: 0.1.0-dev.4
 ## Dependencies: BootyLib
 ## SavedVariables: BootyActionBarsDB
 
 Core\Bootstrap.lua
 Core\Database.lua
 Services\ActionService.lua
+Services\ActionPageService.lua
+Services\NativeBarPolicy.lua
 Modules\ActionBar.lua
+Modules\NativeBar.lua
 Core\Engine.lua
 Core\Runtime.lua
 Core\SettingsSchema.lua

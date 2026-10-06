@@ -37,7 +37,7 @@ Bars.Product = {
     GetDatabase = Bars.Database.Ensure,
     views = {{id = "actionbars", label = "Action Bars", icon = "list",
         create = Runtime.CreateView, IsAvailable = Runtime.IsAvailable,
-        width = 560, height = 340, minWidth = 350, minHeight = 260}},
+        width = 560, height = 340, minWidth = 350, minHeight = 300}},
     GetQuickMenu = Bars.GetQuickMenu, GetSettings = Bars.GetSettings,
     GetProfilingTargets = Bars.GetProfilingTargets,
     BeginSettingsBatch = Runtime.BeginSettingsBatch, EndSettingsBatch = Runtime.EndSettingsBatch,

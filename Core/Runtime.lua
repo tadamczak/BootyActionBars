@@ -2,15 +2,66 @@ local Bars = BootyActionBars
 local Runtime = {}
 Bars.Core.Runtime = Runtime
 local state = {initialized = false, stopped = false, batchDepth = 0}
+local nativeEvents = {"ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORMS", "ADDON_LOADED"}
+local function RefreshView()
+    if state.view then state.view:Refresh() end
+end
+local function NativeFailure(failure)
+    failure = tostring(failure or "Native action buttons could not be restored. Reload before continuing.")
+    if state.nativeFailure ~= failure then BootyLib.Print("BootyActionBars: " .. failure) end
+    state.nativeFailure = failure
+    return false, failure
+end
+local function UnsubscribeNative()
+    if not state.nativeSubscribed then return end
+    for _, name in ipairs(nativeEvents) do BootyLib.Unsubscribe(name, Runtime) end
+    state.nativeSubscribed = false
+end
+local SyncNative
+local function NativeEvent() SyncNative(); RefreshView() end
+SyncNative = function()
+    local store, controller = state.store, Bars.Modules.NativeBar
+    if not store or state.stopped or not store.trialBarEnabled or not store.nativeMainBarEnabled
+        or not Bars.Core.Engine.GetState().active then
+        UnsubscribeNative()
+        local ok, failure = controller.Release()
+        if not ok then
+            if store then store.nativeMainBarEnabled = false end
+            return NativeFailure(failure)
+        end
+        return true
+    end
+    local ok, failure = controller.Check()
+    if ok and Bars.Core.Engine.GetState().actionOffset ~= 0 then
+        ok, failure = false, "The test bar must display page 1 before replacing native buttons."
+    end
+    if ok then ok, failure = controller.Acquire() end
+    if not ok then
+        store.nativeMainBarEnabled = false
+        UnsubscribeNative()
+        local restored, restoreFailure = controller.Release()
+        if not restored then failure = tostring(failure) .. " Restoration: " .. tostring(restoreFailure) end
+        return NativeFailure(failure)
+    end
+    if not state.nativeSubscribed then
+        for _, name in ipairs(nativeEvents) do BootyLib.Subscribe(name, Runtime, NativeEvent) end
+        state.nativeSubscribed = true
+    end
+    state.nativeFailure = nil
+    return true
+end
 local function SyncEngine()
     local store = Bars.Database.Ensure()
     if not store then return false end
+    state.store = store
     if state.stopped or not store.trialBarEnabled then return Bars.Core.Engine.Disable() end
     local ok, failure = Bars.Core.Engine.Enable()
     if not ok then
         store.trialBarEnabled = false
         Bars.Core.Engine.Disable()
         BootyLib.Print("BootyActionBars: " .. tostring(failure))
+    else
+        SyncNative()
     end
     return ok, failure
 end
@@ -20,6 +71,9 @@ function Runtime.Initialize()
     local store, failure = Bars.Database.Ensure()
     if not store then state.failure = failure; return false, failure end
     state.initialized, state.failure = true, nil
+    state.store = store
+    if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
+    Bars.Core.Engine.SetActivityObserver(SyncNative)
     SyncEngine()
     return true
 end
@@ -68,17 +122,16 @@ end
 
 function Runtime.Stop()
     state.stopped = true
-    Bars.Core.Engine.Disable()
+    local ok, failure = Bars.Core.Engine.Disable()
     if state.view then state.view:Hide() end
-    return true
+    return ok, failure
 end
 
 function Runtime.Start()
     local ok, failure = Runtime.Initialize()
     if not ok then return false, failure end
     state.stopped = false
-    SyncEngine()
-    return true
+    return SyncEngine()
 end
 
 function Runtime.IsBusy() return false end
@@ -89,8 +142,26 @@ function Runtime.SetTrialEnabled(value)
     local store = Bars.Database.Ensure()
     if not store then return false, "BootyActionBars settings are unavailable." end
     store.trialBarEnabled = value == true
+    if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
     local ok, failure = SyncEngine()
     if state.view then state.view:Refresh() end
+    return ok, failure
+end
+
+function Runtime.SetNativeEnabled(value)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local store = Bars.Database.Ensure()
+    if not store then return false, "BootyActionBars settings are unavailable." end
+    state.store = store
+    if value == true and (not store.trialBarEnabled or not Bars.Core.Engine.GetState().active) then
+        store.nativeMainBarEnabled = false
+        RefreshView()
+        return NativeFailure("Enable and show the BootyActionBars test bar before replacing native buttons.")
+    end
+    store.nativeMainBarEnabled = value == true
+    local ok, failure = SyncNative()
+    if ok and value ~= true then state.nativeFailure = nil end
+    RefreshView()
     return ok, failure
 end
 
@@ -105,7 +176,12 @@ function Runtime.Open(command)
         if not store then state.host.Print(failure); return false, failure end
         return Runtime.SetTrialEnabled(command == "test on" or command == "test" and not store.trialBarEnabled)
     end
+    if command == "native" or command == "native on" or command == "native off" then
+        local store, failure = Bars.Database.Ensure()
+        if not store then state.host.Print(failure); return false, failure end
+        return Runtime.SetNativeEnabled(command == "native on" or command == "native" and not store.nativeMainBarEnabled)
+    end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, or /bab test on|off for the optional slots 1-12 test bar.")
+    state.host.Print("Use /bab, /bab settings, /bab test on|off, or /bab native on|off.")
     return false
 end
