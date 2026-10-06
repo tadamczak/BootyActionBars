@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.15 — 2026-10-06
+
+- Keep native main and bonus action buttons hidden through stealth, forms, page changes and native exit animations.
+- Refresh form icons when their active state changes.
+- Preserve native keyboard dispatch and restore both button sets when native hiding ends.
+
 ## 0.1.0-dev.14 — 2026-10-06
 
 - Use Show / Hide for bars while retaining layouts, actions and assigned keys.

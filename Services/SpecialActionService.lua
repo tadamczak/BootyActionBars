@@ -106,6 +106,9 @@ function SpecialActionService.Create(kind, api)
             target.usable = getUsable and Enabled(getUsable()) or false
         else
             local texture, name, current, usable = getInfo(index)
+            -- The stock form-state update also refreshes its texture: Rogue
+            -- stealth can change the icon without changing the form count.
+            target.texture, target.name = ResolveTexture(api, texture, false), Text(name)
             target.current, target.usable = Enabled(current), Enabled(usable)
         end
         return target
