@@ -95,9 +95,13 @@ function ActionBar.Create(callbacks, barId)
     local frame = UI.CreateContainer(frameName, UIParent)
     local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks}
     frame.bar = view
+    if frame.SetDontSavePosition then frame:SetDontSavePosition(true) end
+    if frame.SetUserPlaced then frame:SetUserPlaced(false) end
+    if frame.SetClampedToScreen then frame:SetClampedToScreen(true) end
     frame:SetWidth(524); frame:SetHeight(40)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, -180 + (barId - 1) * 68)
     local title = UI.CreateComponentLabel(frame, "BootyActionBars (slots 1-12)", "white")
+    view.title = title
     title:SetPoint("BOTTOM", frame, "TOP", 0, 8)
     frame:Hide()
     for index = 1, 12 do
@@ -144,7 +148,15 @@ function ActionBar.Create(callbacks, barId)
         button:SetScript("OnEnter", Enter); button:SetScript("OnLeave", Leave)
     end
     frame:SetScript("OnHide", Hide); frame:SetScript("OnShow", Show)
-    function view:Show() self.frame:Show() end
+    function view:Show()
+        local editor = Bars.Modules.Editor
+        if editor then
+            local ok, failure = editor.ApplyView(self, true)
+            if not ok then return false, failure end
+        end
+        self.frame:Show()
+        return true
+    end
     function view:SetPage(page, offset)
         local label = self.id == 1 and "BootyActionBars (page " .. page or "BootyActionBars custom " .. self.id .. " (fixed"
         title:SetText(label .. ", slots " .. (offset + 1) .. "-" .. (offset + 12) .. ")")
@@ -169,6 +181,23 @@ function ActionBar.Create(callbacks, barId)
             local ran, ok, failure = pcall(SuspendButton, button, preserveHover)
             if not ran and not firstFailure then firstFailure = tostring(ok)
             elseif ok == false and not firstFailure then firstFailure = failure end
+        end
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        return firstFailure == nil, firstFailure
+    end
+    function view:CancelInput()
+        local previousThis, previousEvent, previousArg = this, event, arg1
+        local firstFailure
+        for _, button in ipairs(self.buttons) do
+            button.skipClick = nil
+            local ok, failure = pcall(CancelPressed, button)
+            if not ok and not firstFailure then firstFailure = tostring(failure) end
+            ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
+            if not ok and not firstFailure then firstFailure = tostring(failure) end
+            ok, failure = pcall(button.hoverFeedback.Hide, button.hoverFeedback)
+            if not ok and not firstFailure then firstFailure = tostring(failure) end
+            ok, failure = pcall(ClearTooltip, button)
+            if not ok and not firstFailure then firstFailure = tostring(failure) end
         end
         this, event, arg1 = previousThis, previousEvent, previousArg
         return firstFailure == nil, firstFailure
