@@ -374,6 +374,10 @@ end
 function Editor.End()
     state.editing = false
     local ok, firstFailure = CancelAll()
+    if Bars.Modules.SpecialBars then
+        local ended, failure = Try(Bars.Modules.SpecialBars.SetEditing, false)
+        if not ended and not firstFailure then firstFailure = failure end
+    end
     for id = 1, 8 do
         local detached, failure = Detach(id)
         if not detached and not firstFailure then firstFailure = failure end
@@ -409,6 +413,10 @@ function Editor.Begin()
             local ok, failure = Try(view.CancelInput, view)
             if not ok then Editor.End(); return false, failure end
         end
+    end
+    if Bars.Modules.SpecialBars then
+        local prepared, failure = Try(Bars.Modules.SpecialBars.SetEditing, true)
+        if not prepared then Editor.End(); return false, failure end
     end
     local ok, failure = Editor.Sync()
     if not ok then Editor.End(); return false, failure end

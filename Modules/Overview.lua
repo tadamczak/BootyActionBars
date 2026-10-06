@@ -2,7 +2,7 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Overview = {}
 Bars.Modules.Overview = Overview
-local message = "The main bar follows pages/forms; extra bars keep fixed slots. Pet and Forms use native pet/form keys. Edit layout to move bars."
+local message = "The main bar follows pages/forms; extra bars keep fixed slots. Assign action, pet and form keys under BootyActionBars. Edit layout to move bars."
 
 function Overview.Create(parent, host)
     local frame = UI.CreateContainer(nil, parent)
@@ -37,13 +37,14 @@ function Overview.Create(parent, host)
     UI.StyleActionButton(settings)
     settings:SetPoint("LEFT", trial, "RIGHT", 12, 0)
     settings:SetScript("OnClick", host.OpenSettings)
-    local native = UI.CreateButton(page, nil, "Replace native buttons", 180, 24)
+    local native = UI.CreateButton(page, nil, "Hide native buttons", 180, 24)
     UI.StyleActionButton(native)
     native:SetPoint("TOPLEFT", trial, "BOTTOMLEFT", 0, -12)
     native:SetScript("OnClick", function()
         local store = Bars.Database.Ensure()
         if store then Bars.Core.Runtime.SetNativeEnabled(not store.nativeMainBarEnabled) end
     end)
+    UI.AttachTooltip(native, "Native buttons", "Hide supported main buttons and native pet/form bars when the matching BootyActionBars bar is visible. Show restores native controls and keeps assigned keys.")
     local controls = UI.CreateContainer(nil, page)
     controls:SetPoint("TOPLEFT", native, "BOTTOMLEFT", 0, -16)
     controls:SetHeight(24)
@@ -60,10 +61,11 @@ function Overview.Create(parent, host)
         getValue = function() return view.selectedBar end,
         onSelect = function(value) view.selectedBar = value end,
         onChanged = function() view:Refresh() end})
-    local add = UI.CreateButton(page, nil, "Add", 56, 24)
+    local add = UI.CreateButton(page, nil, "Show", 56, 24)
     UI.StyleActionButton(add); add:SetPoint("TOPLEFT", controls, "BOTTOMLEFT", 0, -12)
-    local remove = UI.CreateButton(page, nil, "Remove", 72, 24)
+    local remove = UI.CreateButton(page, nil, "Hide", 72, 24)
     UI.StyleActionButton(remove); remove:SetPoint("LEFT", add, "RIGHT", 12, 0)
+    UI.AttachTooltip(remove, "Hide bar", "Hide this bar while keeping its position, scale, layout, actions and assigned keys. Show restores the same bar.")
     local status = UI.CreateComponentLabel(page, "", "white")
     status:SetPoint("TOPLEFT", add, "BOTTOMLEFT", 0, -10)
     status:SetJustifyH("LEFT"); status:SetJustifyV("TOP")
@@ -82,7 +84,7 @@ function Overview.Create(parent, host)
         get = function() return Bars.Core.Runtime.IsEditing() end,
         set = function(_, enabled) Complete(Bars.Core.Runtime.SetEditEnabled(enabled)) end,
     })
-    UI.AttachTooltip(edit, "Edit layout", "Unlock the visible bars to move them. Closing this window locks the bars and cancels an unfinished move.")
+    UI.AttachTooltip(edit, "Edit layout", "Unlock configured bars to move them, including pet/form bars when unavailable. Closing this window locks the bars and cancels an unfinished move.")
     local scaleOwner = UI.CreateContainer(nil, page)
     scaleOwner:SetWidth(220); scaleOwner:SetHeight(52)
     local scale = UI.Settings.CreateSlider(scaleOwner, "BootyActionBarsLayoutScale", 0, -18,
@@ -183,7 +185,7 @@ function Overview.Create(parent, host)
         if frame:IsVisible() then
             local store, failure = Bars.Database.Ensure()
             trial.label:SetText(store and store.trialBarEnabled and "Disable test bar" or "Enable test bar")
-            native.label:SetText(store and store.nativeMainBarEnabled and "Restore native buttons" or "Replace native buttons")
+            native.label:SetText(store and store.nativeMainBarEnabled and "Show native buttons" or "Hide native buttons")
             local main = self.selectedBar == 1
             local special = self.selectedBar == 7 or self.selectedBar == 8
             local configured = store and (main or special and store.specialBars[self.selectedBar == 7 and "pet" or "stance"] == true
@@ -217,9 +219,9 @@ function Overview.Create(parent, host)
             UI.Settings.SetCheckboxEnabled(edit, Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active == true)
             status:SetText(not store and failure or not layout and layoutFailure or main and
                 "Main bar. Actions and keys follow the visible page or form."
-                or special and configured and "Added. Appears when a pet or forms are available. Native pet/form keys and buttons remain available."
-                or configured and "Added. Removing this bar keeps its actions and assigned keys."
-                or "Not added. Enable the test bars to show configured bars.")
+                or special and configured and "Shown when a pet or forms are available. Assign its keys under BootyActionBars; Edit layout also shows unavailable bars."
+                or configured and "Shown. Hide keeps its layout, actions and assigned keys."
+                or "Hidden. Layout, actions and assigned keys are retained; Show restores this bar.")
             self:OnResize()
         end
     end
