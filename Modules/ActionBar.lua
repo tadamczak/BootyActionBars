@@ -2,7 +2,7 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local ActionBar = {}
 Bars.Modules.ActionBar = ActionBar
-local pooled
+local pooled = {}
 
 local function UpdatePressed(button)
     local pressed = button.pressed or button.mousePressed
@@ -17,7 +17,9 @@ local function Click()
     -- Native CheckButton clicks toggle checked before invoking this script.
     this:SetChecked(this.rendered.checked and 1 or 0)
     this.mousePressed = false; UpdatePressed(this)
-    this.bar.callbacks.Click(this.index, arg1, this.skipClick); this.skipClick = nil
+    if this.bar.id == 1 then this.bar.callbacks.Click(this.index, arg1, this.skipClick)
+    else this.bar.callbacks.Click(this.index, arg1, this.skipClick, this.bar.id) end
+    this.skipClick = nil
 end
 local function MouseDown()
     this.skipClick = nil
@@ -32,12 +34,16 @@ local function Pickup()
     if type(IsShiftKeyDown) == "function" then
         local shift = IsShiftKeyDown()
         if shift and shift ~= 0 then
-            this.skipClick = true; CancelPressed(this); this.bar.callbacks.Pickup(this.index)
+            this.skipClick = true; CancelPressed(this)
+            if this.bar.id == 1 then this.bar.callbacks.Pickup(this.index)
+            else this.bar.callbacks.Pickup(this.index, this.bar.id) end
         end
     end
 end
 local function Place()
-    this.skipClick = true; CancelPressed(this); this.bar.callbacks.Place(this.index)
+    this.skipClick = true; CancelPressed(this)
+    if this.bar.id == 1 then this.bar.callbacks.Place(this.index)
+    else this.bar.callbacks.Place(this.index, this.bar.id) end
 end
 local function Leave()
     this.hoverFeedback:Hide()
@@ -50,24 +56,56 @@ local function Enter()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetAction(this.action)
     end
 end
-local function Hide() this.bar.callbacks.OnHide() end
-local function Show() this.bar.callbacks.OnShow() end
+local function Hide()
+    if this.bar.id == 1 then this.bar.callbacks.OnHide()
+    else this.bar.callbacks.OnHide(this.bar.id) end
+end
+local function Show()
+    if this.bar.id == 1 then this.bar.callbacks.OnShow()
+    else this.bar.callbacks.OnShow(this.bar.id) end
+end
+local function ClearTooltip(button)
+    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
+end
+local function SuspendButton(button, preserveHover)
+    button.skipClick = nil
+    local firstFailure
+    local ok, failure = pcall(CancelPressed, button)
+    if not ok then firstFailure = tostring(failure) end
+    ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
+    if not ok and not firstFailure then firstFailure = tostring(failure) end
+    ok, failure = pcall(button.cooldown.Hide, button.cooldown)
+    if not ok and not firstFailure then firstFailure = tostring(failure) end
+    if not preserveHover then
+        ok, failure = pcall(button.hoverFeedback.Hide, button.hoverFeedback)
+        if not ok and not firstFailure then firstFailure = tostring(failure) end
+    end
+    ok, failure = pcall(ClearTooltip, button)
+    if not ok and not firstFailure then firstFailure = tostring(failure) end
+    return firstFailure == nil, firstFailure
+end
 
-function ActionBar.Create(callbacks)
-    if pooled then return pooled end
-    local frame = UI.CreateContainer("BootyActionBarsTrialBar", UIParent)
-    local view = {frame = frame, buttons = {}, callbacks = callbacks}
+function ActionBar.Create(callbacks, barId)
+    barId = barId or 1
+    if type(barId) ~= "number" or barId < 1 or barId > 6 or barId ~= math.floor(barId) then
+        error("Invalid action bar identity.")
+    end
+    if pooled[barId] then return pooled[barId] end
+    local frameName = barId == 1 and "BootyActionBarsTrialBar" or "BootyActionBarsBar" .. barId
+    local frame = UI.CreateContainer(frameName, UIParent)
+    local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks}
     frame.bar = view
     frame:SetWidth(524); frame:SetHeight(40)
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, -180)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, -180 + (barId - 1) * 68)
     local title = UI.CreateComponentLabel(frame, "BootyActionBars (slots 1-12)", "white")
     title:SetPoint("BOTTOM", frame, "TOP", 0, 8)
     frame:Hide()
     for index = 1, 12 do
-        local name = "BootyActionBarsActionButton" .. index
+        local prefix = barId == 1 and "BootyActionBarsActionButton" or "BootyActionBarsBar" .. barId .. "ActionButton"
+        local name = prefix .. index
         local button = UI.CreateCheckButton(name, frame)
         view.buttons[index] = button
-        button.index, button.action, button.bar = index, index, view
+        button.index, button.action, button.bar = index, (barId - 1) * 12 + index, view
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
         UI.StyleButton(button, ""); button.label:Hide()
@@ -108,17 +146,32 @@ function ActionBar.Create(callbacks)
     frame:SetScript("OnHide", Hide); frame:SetScript("OnShow", Show)
     function view:Show() self.frame:Show() end
     function view:SetPage(page, offset)
-        title:SetText("BootyActionBars (page " .. page .. ", slots " .. (offset + 1) .. "-" .. (offset + 12) .. ")")
+        local label = self.id == 1 and "BootyActionBars (page " .. page or "BootyActionBars custom " .. self.id .. " (fixed"
+        title:SetText(label .. ", slots " .. (offset + 1) .. "-" .. (offset + 12) .. ")")
     end
-    function view:Hide() self:Suspend(); self.frame:Hide() end
+    function view:Hide()
+        local previousThis, previousEvent, previousArg = this, event, arg1
+        local ran, ok, failure = pcall(self.Suspend, self)
+        local firstFailure
+        if not ran then firstFailure = tostring(ok)
+        elseif ok == false then firstFailure = failure or "The action bar could not be suspended." end
+        local hidden, reason = pcall(self.frame.Hide, self.frame)
+        if not hidden and not firstFailure then firstFailure = tostring(reason) end
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        return firstFailure == nil, firstFailure
+    end
     function view:Suspend(preserveHover)
+        local previousThis, previousEvent, previousArg = this, event, arg1
+        local firstFailure
         for _, button in ipairs(self.buttons) do
-            CancelPressed(button); button.skipClick = nil
-            button.cooldown:Hide()
-            -- A page change keeps the button under the pointer visible.
-            if not preserveHover then button.hoverFeedback:Hide() end
-            if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
+            -- A page change keeps the button under the pointer visible;
+            -- one failing widget must not keep later animations running.
+            local ran, ok, failure = pcall(SuspendButton, button, preserveHover)
+            if not ran and not firstFailure then firstFailure = tostring(ok)
+            elseif ok == false and not firstFailure then firstFailure = failure end
         end
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        return firstFailure == nil, firstFailure
     end
     function view:SetPressed(index, pressed)
         local button = self.buttons[index]
@@ -153,6 +206,6 @@ function ActionBar.Create(callbacks)
             if data.hasAction then GameTooltip:SetAction(button.action) else GameTooltip:Hide() end
         end
     end
-    pooled = view
+    pooled[barId] = view
     return view
 end

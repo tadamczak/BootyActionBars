@@ -54,8 +54,10 @@ local function SyncEngine()
     local store = Bars.Database.Ensure()
     if not store then return false end
     state.store = store
+    local configured, reason = Bars.Core.Engine.ConfigureCustomBars(store.customBars)
+    if not configured then return false, reason end
     if state.stopped or not store.trialBarEnabled then return Bars.Core.Engine.Disable() end
-    local ok, failure = Bars.Core.Engine.Enable()
+    local ok, failure = Bars.Core.Engine.Enable(store.customBars)
     if not ok then
         store.trialBarEnabled = false
         Bars.Core.Engine.Disable()
@@ -165,6 +167,22 @@ function Runtime.SetNativeEnabled(value)
     return ok, failure
 end
 
+function Runtime.SetCustomBar(id, enabled)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    if not Bars.Services.BarConfig.ValidID(id) or type(enabled) ~= "boolean" then
+        return false, "Choose an additional bar from 2 to 6 and enable or remove it."
+    end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    if (store.customBars[id] == true) == enabled then return true end
+    -- The user's choice is durable; activation errors still stop the engine
+    -- and retain that choice for repair/reload rather than reporting success.
+    store.customBars[id] = enabled and true or nil
+    local ok, reason = SyncEngine()
+    RefreshView()
+    return ok, reason
+end
+
 function Runtime.Open(command)
     if not state.host then
         BootyLib.Print(state.failure or "BootyActionBars is waiting for login.")
@@ -181,7 +199,17 @@ function Runtime.Open(command)
         if not store then state.host.Print(failure); return false, failure end
         return Runtime.SetNativeEnabled(command == "native on" or command == "native" and not store.nativeMainBarEnabled)
     end
+    local _, _, number, choice = string.find(command, "^bar (%d+) ?(%a*)$")
+    if number and (choice == "" or choice == "on" or choice == "off") then
+        local store, failure = Bars.Database.Ensure()
+        if not store then state.host.Print(failure); return false, failure end
+        local id = tonumber(number)
+        local enabled = choice == "on" or choice == "" and not store.customBars[id]
+        local ok, reason = Runtime.SetCustomBar(id, enabled)
+        if not ok and reason then state.host.Print(reason) end
+        return ok, reason
+    end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab test on|off, or /bab native on|off.")
+    state.host.Print("Use /bab, /bab settings, /bab test on|off, /bab native on|off, or /bab bar 2-6 on|off.")
     return false
 end

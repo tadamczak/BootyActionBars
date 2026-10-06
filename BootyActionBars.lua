@@ -13,18 +13,28 @@ function Bars.GetProfilingTargets()
     local state = Engine.GetState()
     local targets = {{kind = "function", owner = Engine, key = "HandleEvent",
         name = "Action bar events", parameters = 2, results = 0}}
-    if state.view then
-        for index = 1, 12 do
-            local button = state.view.buttons[index]
-            if button and button.cooldown then
-                targets[table.getn(targets) + 1] = {kind = "script", frame = button.cooldown,
-                    script = "OnUpdateModel", name = "Cooldown " .. index, parameters = 0, results = 0}
+    local initialized = false
+    for barId = 1, 6 do
+        local view = state.views and state.views[barId]
+        if barId == 1 and not view then view = state.view end
+        if view then
+            initialized = true
+            for index = 1, 12 do
+                local button = view.buttons[index]
+                if button and button.cooldown then
+                    local name = barId == 1 and "Cooldown " .. index or "Bar " .. barId .. " cooldown " .. index
+                    targets[table.getn(targets) + 1] = {kind = "script", frame = button.cooldown,
+                        script = "OnUpdateModel", name = name, parameters = 0, results = 0}
+                end
             end
         end
     end
     return {contractVersion = 1, productVersion = Bars.version,
         active = state.active == true, requested = state.requested == true,
-        subscribed = state.subscribed == true, framesInitialized = state.view ~= nil,
+        subscribed = state.subscribed == true, framesInitialized = initialized,
+        customRevision = state.customRevision or 0,
+        customConfiguredCount = state.customConfiguredCount or 0,
+        customActiveCount = state.customActiveCount or 0,
         runtimeStopped = Runtime.GetState().stopped == true,
         settingsEnabled = type(BootyActionBarsDB) == "table" and BootyActionBarsDB.trialBarEnabled == true,
         targets = targets}
@@ -37,7 +47,7 @@ Bars.Product = {
     GetDatabase = Bars.Database.Ensure,
     views = {{id = "actionbars", label = "Action Bars", icon = "list",
         create = Runtime.CreateView, IsAvailable = Runtime.IsAvailable,
-        width = 560, height = 340, minWidth = 350, minHeight = 300}},
+        width = 560, height = 410, minWidth = 350, minHeight = 360}},
     GetQuickMenu = Bars.GetQuickMenu, GetSettings = Bars.GetSettings,
     GetProfilingTargets = Bars.GetProfilingTargets,
     BeginSettingsBatch = Runtime.BeginSettingsBatch, EndSettingsBatch = Runtime.EndSettingsBatch,
