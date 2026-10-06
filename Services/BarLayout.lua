@@ -6,8 +6,9 @@ function Layout.Finite(value)
     return type(value) == "number" and value == value and math.abs(value) <= 1000000
 end
 function Layout.ValidID(id)
-    return type(id) == "number" and id >= 1 and id <= 6 and id == math.floor(id)
+    return type(id) == "number" and id >= 1 and id <= 8 and id == math.floor(id)
 end
+function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or 12 end
 function Layout.ValidScale(value)
     return Layout.Finite(value) and value >= 50 and value <= 200 and value == math.floor(value)
 end
@@ -36,21 +37,21 @@ function Layout.ValidateLayouts(layouts)
     if layouts == nil then return true end
     if type(layouts) ~= "table" then return false, "Invalid saved action bar layouts." end
     for id, record in pairs(layouts) do
-        if not Layout.ValidID(id) then return false, "Saved layouts support only bars 1 through 6." end
+        if not Layout.ValidID(id) then return false, "Saved layouts support bars 1-6, pet and forms." end
         local ok, failure = Layout.Validate(record)
         if not ok then return false, failure end
     end
     return true
 end
 function Layout.Read(layouts, id)
-    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 6." end
+    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
     local ok, failure = Layout.ValidateLayouts(layouts)
     if not ok then return nil, failure end
     local record = layouts and layouts[id]
-    if not record then return {scalePct = 100, x = 0, y = -180 + (id - 1) * 68, columns = 12, spacing = 4,
+    if not record then return {scalePct = 100, x = 0, y = id == 7 and -250 or id == 8 and -320 or -180 + (id - 1) * 68, columns = Layout.SlotCount(id), spacing = 4,
         showTitle = true, showHotkeys = true, showCounts = true} end
     return {scalePct = record.scalePct, x = record.x, y = record.y,
-        columns = record.columns or 12, spacing = record.spacing or 4,
+        columns = record.columns or Layout.SlotCount(id), spacing = record.spacing or 4,
         showTitle = record.showTitle ~= false, showHotkeys = record.showHotkeys ~= false, showCounts = record.showCounts ~= false}
 end
 local function Clamp(value, minimum, maximum)
@@ -59,7 +60,7 @@ local function Clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
 function Layout.Resolve(id, record, width, height)
-    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 6." end
+    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
     if record == nil then record = Layout.Read(nil, id) end
     local ok, failure = Layout.Validate(record)
     if not ok then return nil, failure end
@@ -67,8 +68,9 @@ function Layout.Resolve(id, record, width, height)
         return nil, "Action bar screen dimensions are unavailable."
     end
     local scale = record.scalePct / 100
-    local columns, spacing = record.columns or 12, record.spacing or 4
-    local rows = math.ceil(12 / columns)
+    local slots = Layout.SlotCount(id)
+    local columns, spacing = math.min(record.columns or slots, slots), record.spacing or 4
+    local rows = math.ceil(slots / columns)
     local barWidth, barHeight = 40 * columns + (columns - 1) * spacing, 40 * rows + (rows - 1) * spacing
     local halfWidth, halfHeight = barWidth / 2 * scale, barHeight / 2 * scale
     local showTitle, showHotkeys, showCounts = record.showTitle ~= false, record.showHotkeys ~= false, record.showCounts ~= false

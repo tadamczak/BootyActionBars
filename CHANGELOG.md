@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.12 — 2026-10-06
+
+- Add optional pet and form/stance bars with native keys, tooltips, cooldowns and pet autocast controls.
+- Move, scale and arrange these bars using the existing layout editor; unavailable bars hide automatically.
+- Keep native pet/form buttons available and mark scoped profiler coverage as partial when these bars are configured.
+
 ## 0.1.0-dev.11 — 2026-10-06
 
 - Show or hide each bar's title, key labels and item/charge counts independently.

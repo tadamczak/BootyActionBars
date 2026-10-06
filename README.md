@@ -2,7 +2,7 @@
 
 # BootyActionBars
 
-BootyActionBars is an upcoming action bar addon for WoW 1.12. This early build includes a main bar following client pages and form actions, up to five additional fixed bars, cooldowns, item counts, dragging actions and separate keybindings. The layout editor moves, scales and arranges each bar. Pet controls, separate form buttons and advanced layouts are planned for later builds.
+BootyActionBars is an upcoming action bar addon for WoW 1.12. This early build includes a main bar following client pages and form actions, up to five additional fixed bars, cooldowns, item counts, dragging actions and separate keybindings. The layout editor moves, scales and arranges each bar. Optional pet and form/stance bars include native key labels, tooltips and cooldowns.
 
 ## Contents
 
@@ -25,9 +25,9 @@ The test bar is off by default. Enable it from the Action Bars page, **Action Ba
 
 Enable or remove additional bars from the Action Bars page: choose **Bar 2–6**, then **Add** or **Remove**. You can also use `/bab bar 2 on`, `/bab bar 2 off` or `/bab bar 2` to toggle that bar. The test-bar switch enables or stops the main bar and all configured additional bars together. Additional bars use fixed slots 13–24, 25–36, 37–48, 49–60 and 61–72; they keep those slots when the main bar changes page or enters stealth. Their separate **Bar 2–6** bindings appear under **BootyActionBars** in the game's Key Bindings menu.
 
-Removing a bar keeps its client actions and assigned keys. Adding the same numbered bar again restores those bindings. Configured bars are saved through reload; named preference profiles currently leave them unchanged. Bars initially stack above the main bar. Select **Bar 1–6** in `/bab`, use **Scale (%)** to choose 50–200%, or **Reset** for the selected bar. Enable **Edit layout** and drag a gold handle to move a bar. Closing or minimizing Action Bars, changing pages in the Booty window, disabling the bars or stopping the addon locks editing and cancels an unfinished drag. Gameplay continues when you close configuration.
+Removing a bar keeps its client actions and assigned keys. Adding the same numbered bar again restores those bindings. Configured bars are saved through reload; named preference profiles currently leave them unchanged. Bars initially stack above the main bar. Select an action bar, **Pet bar** or **Forms / stances** in `/bab`, use **Scale (%)** to choose 50–200%, or **Reset** for the selected bar. Enable **Edit layout** and drag a gold handle to move a bar. Closing or minimizing Action Bars, changing pages in the Booty window, disabling the bars or stopping the addon locks editing and cancels an unfinished drag. Gameplay continues when you close configuration.
 
-Use **Columns** to arrange a bar's twelve buttons in 1–12 columns and **Spacing** to choose a gap of 0–20. Buttons fill each row from left to right; a partial final row starts at the left edge. Every bar keeps its twelve actions and keybindings. The default is twelve columns with a gap of four.
+Use **Columns** to arrange an ordinary bar's twelve buttons in 1–12 columns and **Spacing** to choose a gap of 0–20. Buttons fill each row from left to right; a partial final row starts at the left edge. Every bar keeps its twelve actions and keybindings. The default is twelve columns with a gap of four.
 
 Use **Title**, **Hotkeys** and **Counts** to show or hide the selected bar's title, assigned-key labels and action counts. These are visible by default. Hiding key labels keeps the assigned keys working. The configuration page scrolls when the window is too short to show all controls. **Reset** restores the selected bar's position, scale, columns, spacing and visible labels.
 
@@ -44,3 +44,5 @@ With current BootyProfiler installed, **Advanced Profiler → Profile Action Bar
 Optional native replacement is off by default. Disable DiscordActionBars, Bongos and pfUI and reload, then enable the test bar and use `/bab native on` or **Replace native buttons**. This replaces only the twelve main action buttons on page 1, outside forms. Pet, stance, bags, menu and other native controls remain available. Use `/bab native off` to restore the buttons; disabling the test bar also restores them.
 
 Changing page or entering a form restores the native buttons and turns replacement off. Enable replacement again after returning to page 1 and leaving the form. Assign the BootyActionBars keys for its visible buttons. If another addon changes the replaced callbacks during use, BootyActionBars reports the conflict and requires a reload before another replacement.
+
+Select **Pet bar** or **Forms / stances**, then **Add**. They appear when your pet or class forms are available and use the same movement, scale, columns, spacing and label controls. Use `/bab pet on|off` or `/bab stance on|off`; layout commands use bar 7 for Pet and bar 8 for Forms. The global test-bar switch controls them together with action bars. Native pet/form buttons remain available. Assign keys in the game's pet and shapeshift binding sections. Right-click a pet ability to toggle autocast; Shift-drag rearranges supported pet actions. Form buttons select the corresponding form or stance.
