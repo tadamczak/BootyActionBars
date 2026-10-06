@@ -6,29 +6,33 @@ local pooled = {}
 
 local function UpdatePressed(button)
     local pressed = button.pressed or button.mousePressed
-    button:SetButtonState(pressed and "PUSHED" or "NORMAL")
+    -- MouseUp runs before the client's pressed-state check for OnClick. The
+    -- client owns that state; our overlay also supplies keyboard feedback.
     if pressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
 end
 local function CancelPressed(button)
+    -- A remap or suspension cancels the action even if the client later
+    -- delivers OnClick for the mouse press which started before that change.
+    if button.mouseHeld then button.skipClick = true end
     button.pressed, button.mousePressed = false, false
     UpdatePressed(button)
 end
 local function Click()
     -- Native CheckButton clicks toggle checked before invoking this script.
     this:SetChecked(this.rendered.checked and 1 or 0)
-    this.mousePressed = false; UpdatePressed(this)
+    this.mousePressed, this.mouseHeld = false, false; UpdatePressed(this)
     if this.bar.id == 1 then this.bar.callbacks.Click(this.index, arg1, this.skipClick)
     else this.bar.callbacks.Click(this.index, arg1, this.skipClick, this.bar.id) end
     this.skipClick = nil
 end
 local function MouseDown()
-    this.skipClick = nil
     if arg1 == "LeftButton" or arg1 == "RightButton" then
-        this.mousePressed = true; UpdatePressed(this)
+        this.skipClick = nil
+        this.mousePressed, this.mouseHeld = true, true; UpdatePressed(this)
     end
 end
 local function MouseUp()
-    this.mousePressed = false; UpdatePressed(this)
+    this.mousePressed, this.mouseHeld = false, false; UpdatePressed(this)
 end
 local function Pickup()
     if type(IsShiftKeyDown) == "function" then
@@ -68,7 +72,6 @@ local function ClearTooltip(button)
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
 end
 local function SuspendButton(button, preserveHover)
-    button.skipClick = nil
     local firstFailure
     local ok, failure = pcall(CancelPressed, button)
     if not ok then firstFailure = tostring(failure) end
@@ -143,6 +146,7 @@ function ActionBar.Create(callbacks, barId)
         button.nameLabel = UI.CreateLabel(button, name .. "Name", "OVERLAY", "GameFontNormalSmall")
         button.nameLabel:SetPoint("BOTTOM", button, "BOTTOM", 0, 4); button.nameLabel:Hide()
         button.rendered, button.read, button.pressed, button.mousePressed = {}, {}, false, false
+        button.mouseHeld = false
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         button:RegisterForDrag("LeftButton")
         button:SetScript("OnClick", Click); button:SetScript("OnMouseDown", MouseDown)
@@ -192,7 +196,6 @@ function ActionBar.Create(callbacks, barId)
         local previousThis, previousEvent, previousArg = this, event, arg1
         local firstFailure
         for _, button in ipairs(self.buttons) do
-            button.skipClick = nil
             local ok, failure = pcall(CancelPressed, button)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
             ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
