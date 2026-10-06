@@ -51,7 +51,7 @@ local function ApplyPage(offset, page)
     -- every action even if it returns to the previously cached page.
     state.actionOffset, state.page = nil, nil
     -- Cancel old input and presentation before any button changes its action.
-    state.view:Suspend()
+    state.view:Suspend(true)
     for index = 1, 12 do state.view.buttons[index].action = offset + index end
     state.view:SetPage(page, offset)
     state.actionOffset, state.page = offset, page

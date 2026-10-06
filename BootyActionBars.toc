@@ -2,7 +2,7 @@
 ## Title: BootyActionBars
 ## Notes: Optional action bar with client pages, form actions and native main-button replacement. Standalone or integrated into Booty Suite. Early development build.
 ## Author: Mukla
-## Version: 0.1.0-dev.4
+## Version: 0.1.0-dev.5
 ## Dependencies: BootyLib
 ## SavedVariables: BootyActionBarsDB
 

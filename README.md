@@ -27,6 +27,8 @@ The bar follows the client's current page: ordinary pages 1–6 and the client's
 
 Open the game's **Key Bindings → BootyActionBars** and assign keys to its twelve buttons. No keys are assigned automatically. Disabling the bar stops these commands from executing actions; assigned keys remain in the game's binding configuration. Mouse clicks and ordinary action slots use the current client APIs, including installed API hooks. Dynamic macro visuals need further compatibility testing.
 
+Keys follow the twelve visible button positions on every page and form: the same key uses the action currently shown at that position. Hover highlights a button, and holding its key or mouse button shows pressed feedback even when the action cannot be used.
+
 With current BootyProfiler installed, **Advanced Profiler → Profile Action Bars** records this test bar's event work and cooldown animation. The bar works normally without BootyProfiler.
 
 Optional native replacement is off by default. Disable DiscordActionBars, Bongos and pfUI and reload, then enable the test bar and use `/bab native on` or **Replace native buttons**. This replaces only the twelve main action buttons on page 1, outside forms. Pet, stance, bags, menu and other native controls remain available. Use `/bab native off` to restore the buttons; disabling the test bar also restores them.
