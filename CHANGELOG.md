@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.4 — 2026-10-06
+
+- Add optional reversible replacement of the twelve native main action buttons with `/bab native on|off` and a panel control.
+- Restore native callbacks when disabled, hidden or stopped; reject competing bar addons, unsupported pages/forms and changed ownership.
+- Follow client pages and bonus form actions for icons, cooldowns, keys, tooltips and dragging; cancel held inputs on page changes.
+
 ## 0.1.0-dev.3 — 2026-10-06
 
 - Support the optional targeted Action Bars profile in BootyProfiler without enabling measurements during ordinary play.

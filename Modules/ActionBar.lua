@@ -22,7 +22,7 @@ local function Leave()
 end
 local function Enter()
     if this.hasAction and GameTooltip and GameTooltip.SetAction then
-        GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetAction(this.index)
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT"); GameTooltip:SetAction(this.action)
     end
 end
 local function Hide() this.bar.callbacks.OnHide() end
@@ -70,6 +70,9 @@ function ActionBar.Create(callbacks)
     end
     frame:SetScript("OnHide", Hide); frame:SetScript("OnShow", Show)
     function view:Show() self.frame:Show() end
+    function view:SetPage(page, offset)
+        title:SetText("BootyActionBars (page " .. page .. ", slots " .. (offset + 1) .. "-" .. (offset + 12) .. ")")
+    end
     function view:Hide() self:Suspend(); self.frame:Hide() end
     function view:Suspend()
         for _, button in ipairs(self.buttons) do
@@ -108,7 +111,7 @@ function ActionBar.Create(callbacks)
             old.start, old.duration, old.enabled = data.cooldownStart, data.cooldownDuration, data.cooldownEnabled
         end
         if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then
-            if data.hasAction then GameTooltip:SetAction(index) else GameTooltip:Hide() end
+            if data.hasAction then GameTooltip:SetAction(button.action) else GameTooltip:Hide() end
         end
     end
     pooled = view

@@ -2,7 +2,7 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Overview = {}
 Bars.Modules.Overview = Overview
-local message = "Try a fixed bar for action slots 1-12. Its actions share client storage: dragging an action also changes that slot on other bars. Assign BootyActionBars keys in the game's Key Bindings menu. Paging, shapeshifts, pets and layout editing are planned for later builds."
+local message = "Follow client pages and form actions. Assign keys under BootyActionBars. Native replacement requires page 1 outside forms: disable competing bar addons and reload first. Pets and layout editing are planned."
 
 function Overview.Create(parent, host)
     local page = UI.CreateContainer(nil, parent)
@@ -24,7 +24,14 @@ function Overview.Create(parent, host)
     UI.StyleActionButton(settings)
     settings:SetPoint("LEFT", trial, "RIGHT", 12, 0)
     settings:SetScript("OnClick", host.OpenSettings)
-    local view = {frame = page, settingsButton = settings, trialButton = trial}
+    local native = UI.CreateButton(page, nil, "Replace native buttons", 180, 24)
+    UI.StyleActionButton(native)
+    native:SetPoint("TOPLEFT", trial, "BOTTOMLEFT", 0, -12)
+    native:SetScript("OnClick", function()
+        local store = Bars.Database.Ensure()
+        if store then Bars.Core.Runtime.SetNativeEnabled(not store.nativeMainBarEnabled) end
+    end)
+    local view = {frame = page, settingsButton = settings, trialButton = trial, nativeButton = native}
     function view:OnResize()
         local width = UI.GetFrameSpan(parent)
         width = math.max(1, width - 32)
@@ -36,6 +43,7 @@ function Overview.Create(parent, host)
             self:OnResize()
             local store = Bars.Database.Ensure()
             trial.label:SetText(store and store.trialBarEnabled and "Disable test bar" or "Enable test bar")
+            native.label:SetText(store and store.nativeMainBarEnabled and "Restore native buttons" or "Replace native buttons")
         end
     end
     function view:Show()
