@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.21
+
+- Add per-bar stealth/form behaviors with ordered Add, Edit, Remove and priority controls.
+- Change several visible bars to fixed source action bars together while keeping button keys and positions.
+- Include behaviors in layout profiles and preserve older snapshots and unresolved form identities.
+- Keep narrow settings checkbox labels and click areas inside their measured rows.
+
 ## 0.1.0-dev.20
 
 - Customize range colors, hover effects, button borders/backgrounds and cooldown numbers per bar or through Global.

@@ -22,8 +22,7 @@ function BarSettings.Create(parent, host, owner)
     local description = UI.CreateComponentLabel(canvas, "", "white"); description:SetJustifyH("LEFT"); description:SetJustifyV("TOP")
     local tools, settings = UI.CreateContainer(nil, canvas), UI.CreateContainer(nil, canvas)
     local visibility, inherited = UI.CreateContainer(nil, canvas), UI.CreateContainer(nil, canvas)
-    visibility:SetHeight(28); inherited:SetHeight(28)
-    local function Complete(ok, failure) return owner.Complete(ok, failure) end
+    local function Complete(ok, failure, skipRefresh) return owner.Complete(ok, failure, skipRefresh) end
     local function Checkbox(parentFrame, caption, key, getter, setter)
         return UI.Settings.CreateCheckbox(parentFrame, 0, 0, caption, key, nil,
             {ensure = function() end, get = getter, set = function(_, value) Complete(setter(value)) end})
@@ -47,7 +46,6 @@ function BarSettings.Create(parent, host, owner)
     local anchors = Checkbox(tools, "Show anchors", "showAnchors", function()
         local store = Bars.Database.Ensure(); return store and store.editorOptions.showAnchors == true
     end, function(value) return Runtime.SetEditorOption("showAnchors", value) end)
-    grid:SetPoint("TOPLEFT", tools, "TOPLEFT", 0, -34); anchors:SetPoint("TOPLEFT", tools, "TOPLEFT", 0, -68); tools:SetHeight(100)
     UI.AttachTooltip(unlock, "Unlock", "Drag anywhere on the normal bar. Mouse actions and icon dragging are blocked until you lock it.")
     UI.AttachTooltip(grid, "Show grid", "Show a static positioning grid while unlocked.")
     UI.AttachTooltip(anchors, "Show anchors", "Move placeholders for hidden or unavailable bars without enabling their buttons.")
@@ -102,6 +100,11 @@ function BarSettings.Create(parent, host, owner)
     })
     for _, row in ipairs(appearance.rows) do table.insert(view.rows, row) end
     view.appearance = appearance
+    local behaviors = Bars.Modules.BehaviorSettings.Create(canvas, {
+        GetSelection = function() return view.selected end, Complete = Complete,
+        Prepare = function() return appearance:Close() end,
+    })
+    view.behaviors = behaviors
     for _, id in ipairs(identities) do
         local button = UI.CreateSelectionButton(list, nil, Name(id), 124, 26); UI.SetButtonLabelInsets(button, 8, 4)
         button:SetScript("OnClick", function() view:Select(id) end); view.buttons[id] = button
@@ -120,12 +123,38 @@ function BarSettings.Create(parent, host, owner)
         region:ClearAllPoints(); region:SetPoint("TOPLEFT", canvas, "TOPLEFT", 12, -top); region:SetWidth(width)
         return top + region:GetHeight()
     end
+    local function MeasureCheckbox(control, width)
+        local labelWidth = math.max(1, width - control:GetWidth() - 7)
+        control.label:SetWidth(labelWidth)
+        local labelHeight = UI.MeasureTextHeight(control.label, labelWidth)
+        control.label:SetHeight(labelHeight); control.label:ClearAllPoints()
+        if labelHeight > control:GetHeight() then control.label:SetPoint("TOPLEFT", control, "TOPRIGHT", 6, 0)
+        else control.label:SetPoint("LEFT", control, "RIGHT", 6, 0) end
+        if control.labelHit then
+            control.labelHit:SetWidth(labelWidth + 5); control.labelHit:SetHeight(math.max(control:GetHeight(), labelHeight))
+            control.labelHit:ClearAllPoints()
+            if labelHeight > control:GetHeight() then control.labelHit:SetPoint("TOPLEFT", control, "TOPRIGHT", 1, 0)
+            else control.labelHit:SetPoint("LEFT", control, "RIGHT", 1, 0) end
+        end
+        return math.max(32, labelHeight + 4)
+    end
     local function Measure(width)
         local usable = math.max(1, width - 24)
         title:SetHeight(24); Place(title, usable, 8)
         description:SetHeight(UI.MeasureTextHeight(description, usable)); local top = Place(description, usable, 40) + 16
-        if view.selected == "layout" then return Place(tools, usable, top) + 12 end
-        if view.selected ~= "global" then top = Place(visibility, usable, top) + 6; top = Place(inherited, usable, top) + 8 end
+        if view.selected == "layout" then
+            local height = 0
+            for _, check in ipairs({unlock, grid, anchors}) do
+                check:ClearAllPoints(); check:SetPoint("TOPLEFT", tools, "TOPLEFT", 0, -height)
+                height = height + MeasureCheckbox(check, usable)
+            end
+            tools:SetHeight(height); return Place(tools, usable, top) + 12
+        end
+        if view.selected ~= "global" then
+            visibility:SetHeight(MeasureCheckbox(show, usable)); inherited:SetHeight(MeasureCheckbox(useGlobal, usable))
+            top = Place(visibility, usable, top) + 6; top = Place(inherited, usable, top) + 8
+        end
+        if behaviors.frame:IsShown() then behaviors:Measure(usable); top = Place(behaviors.frame, usable, top) + 8 end
         if settings:IsShown() then
             local content = 0
             for _, row in ipairs(view.rows) do
@@ -134,20 +163,7 @@ function BarSettings.Create(parent, host, owner)
                     if row.kind == "slider" then row.control:SetWidth(math.min(260, usable))
                     elseif row.kind == "heading" or row.kind == "choice" or row.kind == "color" then row.control:SetWidth(usable) end
                     if row.label then row.label:SetWidth(usable) end
-                    if row.kind == "check" then
-                        local labelWidth = math.max(1, usable - row.control:GetWidth() - 7)
-                        row.control.label:SetWidth(labelWidth)
-                        local labelHeight = UI.MeasureTextHeight(row.control.label, labelWidth)
-                        row.control.label:SetHeight(labelHeight); row.control.label:ClearAllPoints()
-                        if labelHeight > row.control:GetHeight() then
-                            row.control.label:SetPoint("TOPLEFT", row.control, "TOPRIGHT", 6, 0)
-                        else row.control.label:SetPoint("LEFT", row.control, "RIGHT", 6, 0) end
-                        if row.control.labelHit then
-                            row.control.labelHit:SetWidth(labelWidth + 5)
-                            row.control.labelHit:SetHeight(math.max(row.control:GetHeight(), labelHeight))
-                        end
-                        row:SetHeight(math.max(32, labelHeight + 4))
-                    end
+                    if row.kind == "check" then row:SetHeight(MeasureCheckbox(row.control, usable)) end
                     content = content + row:GetHeight()
                 end
             end
@@ -180,6 +196,7 @@ function BarSettings.Create(parent, host, owner)
     function view:Select(id)
         if not self.buttons[id] then return false, "Choose a listed bar or Layout/Global." end
         local closed, failure = appearance:Close(); if not closed then return false, failure end
+        closed, failure = behaviors:Close(); if not closed then return false, failure end
         self.selected = id; if type(id) == "number" then owner.selectedBar = id end
         self:Refresh(); return true
     end
@@ -195,6 +212,7 @@ function BarSettings.Create(parent, host, owner)
             or id >= 7 and "Shown when a pet or form is available. Use Layout and Show anchors to position it while absent."
             or "Actions use fixed slots. Hiding preserves layout, actions and keys.")
         if isLayout then tools:Show() else tools:Hide() end
+        behaviors:Refresh()
         if not isLayout and not isGlobal then visibility:Show(); inherited:Show(); reset:Show()
         else visibility:Hide(); inherited:Hide(); reset:Hide() end
         local layout = GetLayout()
@@ -230,9 +248,17 @@ function BarSettings.Create(parent, host, owner)
     end
     function view:Show() frame:Show(); self:Refresh(); return true end
     function view:Hide()
-        local ok, failure = appearance:Close(); frame:Hide(); return ok, failure
+        local ok, failure = appearance:Close()
+        local closed, reason = behaviors:Close()
+        if not closed then ok, failure = false, failure and failure .. "; " .. tostring(reason) or reason end
+        frame:Hide(); return ok, failure
     end
-    frame:SetScript("OnHide", function() appearance:Close() end)
+    frame:SetScript("OnHide", function()
+        local ok, failure = appearance:Close()
+        local closed, reason = behaviors:Close()
+        if not closed then ok, failure = false, failure and failure .. "; " .. tostring(reason) or reason end
+        if not ok then error(failure) end
+    end)
     owner.barButtons, owner.showBarCheckbox, owner.useGlobalCheckbox = view.buttons, show, useGlobal
     owner.editCheckbox, owner.showGridCheckbox, owner.showAnchorsCheckbox = unlock, grid, anchors
     owner.scaleSlider, owner.columnsSlider, owner.spacingSlider = view.sliders.scalePct, view.sliders.columns, view.sliders.spacing

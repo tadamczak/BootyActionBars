@@ -133,7 +133,18 @@ function General.Create(parent, host, ownerView)
     local function Checkbox(owner, control, top, width)
         local labelWidth = math.max(1, width - control:GetWidth() - 7)
         control.label:SetWidth(labelWidth); control.labelHit:SetWidth(labelWidth + 5)
-        local height = math.max(26, UI.MeasureTextHeight(control.label, labelWidth))
+        local textHeight = UI.MeasureTextHeight(control.label, labelWidth)
+        control.label:SetHeight(textHeight); control.label:ClearAllPoints()
+        control.labelHit:ClearAllPoints()
+        if textHeight > control:GetHeight() then
+            control.label:SetPoint("TOPLEFT", control, "TOPRIGHT", 6, 0)
+            control.labelHit:SetPoint("TOPLEFT", control, "TOPRIGHT", 1, 0)
+        else
+            control.label:SetPoint("LEFT", control, "RIGHT", 6, 0)
+            control.labelHit:SetPoint("LEFT", control, "RIGHT", 1, 0)
+        end
+        control.labelHit:SetHeight(math.max(control:GetHeight(), textHeight))
+        local height = math.max(26, textHeight + 4)
         return Position(owner, top, width, height)
     end
     local function Measure(available)

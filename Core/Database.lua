@@ -21,6 +21,8 @@ local function Defaults(store)
     if not valid then error(failure) end
     valid, failure = Bars.Services.BarConfig.ValidateSpecial(store.specialBars)
     if not valid then error(failure) end
+    valid, failure = Bars.Services.BehaviorService.Validate(store.barBehaviors)
+    if not valid then error(failure) end
     valid, failure = Bars.Services.BarLayout.ValidateLayouts(store.barLayouts)
     if not valid then error(failure) end
     valid, failure = Bars.Services.BarLayout.ValidateGlobal(store.globalLayout)
@@ -40,6 +42,7 @@ local function Defaults(store)
     if type(store.nativeMainBarEnabled) ~= "boolean" then store.nativeMainBarEnabled = false end
     if store.customBars == nil then store.customBars = {} end
     if store.specialBars == nil then store.specialBars = {} end
+    if store.barBehaviors == nil then store.barBehaviors = {} end
     if store.barLayouts == nil then store.barLayouts = {} end
     if store.globalLayout == nil then store.globalLayout = {} end
     if store.mainBarShown == nil then store.mainBarShown = true end
@@ -68,6 +71,8 @@ function Database.Ensure()
         local valid, failure = Bars.Services.BarConfig.Validate(store.customBars)
         if not valid then return nil, failure end
         valid, failure = Bars.Services.BarConfig.ValidateSpecial(store.specialBars)
+        if not valid then return nil, failure end
+        valid, failure = Bars.Services.BehaviorService.Validate(store.barBehaviors)
         if not valid then return nil, failure end
         valid, failure = Bars.Services.BarLayout.ValidateLayouts(store.barLayouts)
         if not valid then return nil, failure end

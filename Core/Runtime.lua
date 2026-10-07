@@ -17,9 +17,9 @@ local function UnsubscribeNative()
     for _, name in ipairs(nativeEvents) do BootyLib.Unsubscribe(name, Runtime) end
     state.nativeSubscribed = false
 end
-local function CallLifecycle(callback, first, second, third)
+local function CallLifecycle(callback, first, second, third, fourth)
     local previousThis, previousEvent, previousArg = this, event, arg1
-    local ran, ok, failure = pcall(callback, first, second, third)
+    local ran, ok, failure = pcall(callback, first, second, third, fourth)
     this, event, arg1 = previousThis, previousEvent, previousArg
     if not ran then return false, tostring(ok) end
     if ok == false then return false, failure or "Action bar layout could not be updated." end
@@ -66,12 +66,8 @@ local function SpecialVisibilityChanged(pet, stance)
 end
 local SyncNative
 local function NativeEvent()
-    if event == "ACTIONBAR_PAGE_CHANGED" or event == "UPDATE_BONUS_ACTIONBAR" or event == "UPDATE_SHAPESHIFT_FORMS" then
-        -- Shared subscribers have no ordering contract. Repair the actual BAB
-        -- mapping before deciding whether its primary native buttons can hide.
-        local ok, failure = CallLifecycle(Bars.Core.Engine.HandleEvent, event, arg1)
-        if not ok then AbortNative(failure); RefreshView(); return end
-    end
+    -- Native ownership follows live BAB identities, independently of their
+    -- mapped source. Engine's own subscriber reads/remaps each event once.
     SyncNative(); RefreshView()
 end
 SyncNative = function()
@@ -131,9 +127,15 @@ local function EngineActivity(active)
     return true
 end
 local function SyncEngine()
-    local store = Bars.Database.Ensure()
-    if not store then return false end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
     state.store = store
+    if Bars.Modules.BehaviorEditor then
+        local configured, reason = Bars.Modules.BehaviorEditor.Configure(store)
+        if not configured then return false, reason end
+        configured, reason = Bars.Core.Engine.ConfigureBehaviors(store.barBehaviors)
+        if not configured then return false, reason end
+    end
     local layoutOK, layoutFailure = Bars.Modules.Editor.Configure(store)
     if not layoutOK then return false, layoutFailure end
     local options = store.editorOptions or {}
@@ -525,11 +527,66 @@ function Runtime.DeleteLayoutProfile(name)
     return ok, result
 end
 
+function Runtime.GetBarBehaviors(id)
+    if not Runtime.IsAvailable() then return nil, "BootyActionBars is stopped or waiting for login." end
+    return Bars.Modules.BehaviorEditor.GetRules(id)
+end
+function Runtime.GetBehaviorCatalog()
+    if not Runtime.IsAvailable() then return nil, "BootyActionBars is stopped or waiting for login." end
+    return Bars.Modules.BehaviorEditor.ReadCatalog()
+end
+function Runtime.CaptureBarBehaviors(id)
+    if not Runtime.IsAvailable() then return nil, "BootyActionBars is stopped or waiting for login." end
+    return Bars.Modules.BehaviorEditor.Capture(id)
+end
+function Runtime.ValidateBarBehaviorCapture(id, token)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    return CallLifecycle(Bars.Modules.BehaviorEditor.ValidateCapture, token, id)
+end
+local function CompleteBehavior(callback, id, index, value, token)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local capture = token
+    if callback == Bars.Modules.BehaviorEditor.Remove then capture = value end
+    if capture ~= nil then
+        local current, reason = Runtime.ValidateBarBehaviorCapture(id, capture)
+        -- A stale modal cannot run the defaults pipeline indirectly through a
+        -- UI refresh. The third result tells the caller to report only.
+        if not current then return false, reason, true end
+    end
+    local owner = BootyActionBarsDB
+    local ok, failure = CallLifecycle(callback, id, index, value, token)
+    if not ok and capture ~= nil then
+        local current = Runtime.ValidateBarBehaviorCapture(id, capture)
+        if not current then return false, failure, true end
+    end
+    if not ok and BootyActionBarsDB ~= owner then
+        local restored, reason = CallLifecycle(SyncEngine)
+        if not restored then failure = tostring(failure) .. " Resynchronization: " .. tostring(reason) end
+    end
+    RefreshView()
+    return ok, failure
+end
+function Runtime.SetBarBehavior(id, index, rule, token)
+    return CompleteBehavior(Bars.Modules.BehaviorEditor.Update, id, index, rule, token)
+end
+function Runtime.RemoveBarBehavior(id, index, token)
+    return CompleteBehavior(Bars.Modules.BehaviorEditor.Remove, id, index, token)
+end
+function Runtime.MoveBarBehavior(id, index, destination, token)
+    return CompleteBehavior(Bars.Modules.BehaviorEditor.Move, id, index, destination, token)
+end
+
+local function OwnsBehaviors(store, reference, snapshot)
+    local current = store.barBehaviors
+    if current ~= reference then return false end
+    local valid = Bars.Services.BehaviorService.Validate(current)
+    return valid and Bars.Services.BehaviorService.Equal(current, snapshot)
+end
 local function ApplyLayoutSnapshot(snapshot)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
-    local prepared, reason = Bars.Services.LayoutProfiles.Prepare(snapshot, store.barLayouts, store.globalLayout)
+    local prepared, reason = Bars.Services.LayoutProfiles.Prepare(snapshot, store.barLayouts, store.globalLayout, store.barBehaviors)
     if not prepared then return false, reason end
     local ended, endFailure = Bars.Modules.Editor.End()
     if not ended then return false, endFailure end
@@ -539,19 +596,29 @@ local function ApplyLayoutSnapshot(snapshot)
     end
     local oldLayouts, oldCustom, oldSpecial = store.barLayouts, store.customBars, store.specialBars
     local oldGlobal, oldMain = store.globalLayout, store.mainBarShown
+    local oldBehaviors = store.barBehaviors
+    local oldBehaviorValues = Bars.Services.BehaviorService.Copy(oldBehaviors)
+    local preparedBehaviors = prepared.replaceBehaviors and Bars.Services.BehaviorService.Copy(prepared.barBehaviors) or nil
     local enabled = store.trialBarEnabled
     local stopped, stopFailure = CallLifecycle(Bars.Core.Engine.Disable)
     if not stopped then return false, stopFailure end
-    if BootyActionBarsDB ~= store then return false, "Layout settings ownership changed before loading." end
+    if BootyActionBarsDB ~= store or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues) then
+        local restored, restoration = CallLifecycle(SyncEngine)
+        local ownershipFailure = "Layout settings ownership changed before loading."
+        if not restored then ownershipFailure = ownershipFailure .. " Resynchronization: " .. tostring(restoration) end
+        return false, ownershipFailure
+    end
     store.barLayouts, store.customBars, store.specialBars = prepared.barLayouts, prepared.customBars, prepared.specialBars
     if prepared.replaceGlobal then store.globalLayout = prepared.globalLayout end
     if prepared.mainBarShown ~= nil then store.mainBarShown = prepared.mainBarShown end
+    if prepared.replaceBehaviors then store.barBehaviors = prepared.barBehaviors end
     Bars.Core.Engine.MarkLayoutChanged()
     local ok, message = CallLifecycle(SyncEngine)
     local owned = BootyActionBarsDB == store and store.barLayouts == prepared.barLayouts
         and store.customBars == prepared.customBars and store.specialBars == prepared.specialBars
         and (not prepared.replaceGlobal or store.globalLayout == prepared.globalLayout)
         and (prepared.mainBarShown == nil or store.mainBarShown == prepared.mainBarShown)
+        and (not prepared.replaceBehaviors or OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors))
     if ok and owned then return true end
     local firstFailure = message or "Layout settings ownership changed while loading."
     local cleaned, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
@@ -562,6 +629,7 @@ local function ApplyLayoutSnapshot(snapshot)
         if store.specialBars == prepared.specialBars then store.specialBars = oldSpecial end
         if prepared.replaceGlobal and store.globalLayout == prepared.globalLayout then store.globalLayout = oldGlobal end
         if prepared.mainBarShown ~= nil and store.mainBarShown == prepared.mainBarShown then store.mainBarShown = oldMain end
+        if prepared.replaceBehaviors and OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors) then store.barBehaviors = oldBehaviors end
         -- Keep native ownership refusals; a profile must not undo conflict policy.
         store.trialBarEnabled = enabled
         local restored, restoreFailure = CallLifecycle(SyncEngine)
