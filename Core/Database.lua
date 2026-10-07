@@ -3,6 +3,15 @@ local Database = {}
 Bars.Database = Database
 Database.SCHEMA_VERSION = 1
 
+local function EditorOptions(value)
+    if value == nil then return true end
+    if type(value) ~= "table" or value.showGrid ~= nil and type(value.showGrid) ~= "boolean"
+        or value.showAnchors ~= nil and type(value.showAnchors) ~= "boolean" then
+        return false, "Invalid saved layout tools. Preserve the saved file before repairing it."
+    end
+    return true
+end
+
 local function Defaults(store)
     -- Fail before writing defaults when a newer build owns this saved format.
     if store.schemaVersion ~= nil and store.schemaVersion ~= Database.SCHEMA_VERSION then
@@ -18,6 +27,8 @@ local function Defaults(store)
         valid, failure = Bars.Services.LayoutProfiles.ValidateStore(store.layoutProfiles)
         if not valid then error(failure) end
     end
+    valid, failure = EditorOptions(store.editorOptions)
+    if not valid then error(failure) end
     store.schemaVersion = Database.SCHEMA_VERSION
     if type(store.hideMinimapIcon) ~= "boolean" then store.hideMinimapIcon = false end
     if type(store.trialBarEnabled) ~= "boolean" then store.trialBarEnabled = false end
@@ -26,6 +37,7 @@ local function Defaults(store)
     if store.specialBars == nil then store.specialBars = {} end
     if store.barLayouts == nil then store.barLayouts = {} end
     if store.layoutProfiles == nil then store.layoutProfiles = {} end
+    if store.editorOptions == nil then store.editorOptions = {} end
     if type(store.presentation) ~= "table" then store.presentation = {} end
     if type(store.presentation.windows) ~= "table" then store.presentation.windows = {} end
     if type(store.presentation.minimap) ~= "table" then store.presentation.minimap = {angle = 270} end
@@ -56,6 +68,8 @@ function Database.Ensure()
             valid, failure = Bars.Services.LayoutProfiles.ValidateStore(store.layoutProfiles)
             if not valid then return nil, failure end
         end
+        valid, failure = EditorOptions(store.editorOptions)
+        if not valid then return nil, failure end
     end
     return BootyLib.Data.Ensure("actionbars")
 end

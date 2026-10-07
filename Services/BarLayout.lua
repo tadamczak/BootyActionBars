@@ -92,9 +92,10 @@ function Layout.Resolve(id, record, width, height)
     local barWidth, barHeight = size * columns + (columns - 1) * spacing, size * rows + (rows - 1) * spacing
     local halfWidth, halfHeight = barWidth / 2 * scale, barHeight / 2 * scale
     local showTitle, showHotkeys, showCounts = record.showTitle ~= false, record.showHotkeys ~= false, record.showCounts ~= false
-    local titleHeight = (showTitle and 28 or 0) * scale
-    local x = Clamp(record.x, -width / 2 + 8 + halfWidth, width / 2 - 8 - halfWidth)
-    local y = Clamp(record.y, -height / 2 + 8 + halfHeight, height / 2 - 8 - halfHeight - titleHeight)
+    -- The bar's own rectangle reaches the screen edge. A caption is a child
+    -- outside that rectangle and must not push a user-selected center inward.
+    local x = Clamp(record.x, -width / 2 + halfWidth, width / 2 - halfWidth)
+    local y = Clamp(record.y, -height / 2 + halfHeight, height / 2 - halfHeight)
     return {scale = scale, x = x, y = y, anchorX = x / scale, anchorY = y / scale,
         width = width, height = height, columns = columns, spacing = spacing,
         barWidth = barWidth, barHeight = barHeight, showTitle = showTitle, showHotkeys = showHotkeys, showCounts = showCounts,

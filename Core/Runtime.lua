@@ -132,6 +132,13 @@ local function SyncEngine()
     state.store = store
     local layoutOK, layoutFailure = Bars.Modules.Editor.Configure(store)
     if not layoutOK then return false, layoutFailure end
+    local options = store.editorOptions or {}
+    if Bars.Modules.Editor.SetShowGrid then
+        layoutOK, layoutFailure = Bars.Modules.Editor.SetShowGrid(options.showGrid == true)
+        if not layoutOK then return false, layoutFailure end
+        layoutOK, layoutFailure = Bars.Modules.Editor.SetShowAnchors(options.showAnchors == true)
+        if not layoutOK then return false, layoutFailure end
+    end
     local configured, reason = Bars.Core.Engine.ConfigureCustomBars(store.customBars)
     if not configured then return false, reason end
     if Bars.Modules.SpecialBars then
@@ -322,6 +329,30 @@ function Runtime.GetBarLayout(id)
     return Bars.Modules.Editor.GetLayout(id)
 end
 
+function Runtime.SetEditorOption(key, value)
+    if (key ~= "showGrid" and key ~= "showAnchors") or type(value) ~= "boolean" then
+        return false, "Choose a grid or anchor setting."
+    end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local options, previous = store.editorOptions, store.editorOptions and store.editorOptions[key]
+    local setter = key == "showGrid" and Bars.Modules.Editor.SetShowGrid or Bars.Modules.Editor.SetShowAnchors
+    if not setter then return false, "The layout tools are unavailable." end
+    local ok, reason = CallLifecycle(setter, value)
+    if ok and (BootyActionBarsDB ~= store or store.editorOptions ~= options
+        or options and options[key] ~= previous) then
+        ok, reason = false, "Layout tool settings ownership changed during editing."
+        local restored, restoreFailure = CallLifecycle(setter, previous == true)
+        if not restored then reason = reason .. " Restoration: " .. tostring(restoreFailure) end
+    end
+    if ok then
+        if not store.editorOptions then store.editorOptions = {} end
+        store.editorOptions[key] = value and true or nil
+    end
+    RefreshView()
+    return ok, reason
+end
+
 local function LayoutAvailable(id)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     if not Bars.Services.BarLayout.ValidID(id) then
@@ -396,13 +427,12 @@ function Runtime.SetBindingEditing(enabled)
     if not module then return false, "The binding editor is unavailable." end
     if not enabled then return module.Cancel() end
     if not Runtime.IsAvailable() or not state.view or not state.view.frame:IsVisible() then return false, "Open Action Bars before assigning keys." end
+    if module.IsEditing() then return true end
     local ok, failure = Bars.Modules.Editor.End()
     if not ok then return false, failure end
     ok, failure = module.Begin(state.host.window)
     if not ok then return false, failure end
-    ok, failure = module.SetSelection(state.view.selectedBar, state.view.bindingIndex)
-    if not ok then module.Cancel() end
-    return ok, failure
+    return true
 end
 
 function Runtime.SaveLayoutProfile(name, replace)
