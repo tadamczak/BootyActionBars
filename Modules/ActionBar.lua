@@ -21,6 +21,69 @@ local function LayoutMode()
     return editor and editor.IsEditing and editor.IsEditing() or false
 end
 local UpdateEmpty
+local function CaptureFrame(frame, snapshot)
+    snapshot.parent, snapshot.scale, snapshot.alpha = frame:GetParent(), frame:GetScale(), frame:GetAlpha()
+    snapshot.points = snapshot.points or {}
+    local count = frame:GetNumPoints()
+    for index = 1, count do
+        local point = snapshot.points[index] or {}; snapshot.points[index] = point
+        point[1], point[2], point[3], point[4], point[5] = frame:GetPoint(index)
+    end
+    for index = count + 1, table.getn(snapshot.points) do snapshot.points[index] = nil end
+end
+local function ParentFrame(frame, parent)
+    if frame:SetParent(parent) == false or frame:GetParent() ~= parent then error("The client declined the merged action bar parent.") end
+end
+local function ScaleFrame(frame, scale)
+    local result = frame:SetScale(scale)
+    local actual = frame:GetScale()
+    if result == false or type(actual) ~= "number" or actual ~= actual or math.abs(actual - scale) > 0.0001 then error("The client declined the merged action bar scale.") end
+end
+local function ClearFrame(frame)
+    if frame:ClearAllPoints() == false then error("The client declined merged action bar anchors.") end
+end
+local function AlphaFrame(frame, alpha)
+    local result = frame:SetAlpha(alpha)
+    local actual = frame:GetAlpha()
+    if result == false or type(actual) ~= "number" or actual ~= actual or math.abs(actual - alpha) > 0.0001 then error("The client declined the merged action bar opacity.") end
+end
+local function PointFrame(frame, point)
+    if frame:SetPoint(point[1], point[2], point[3], point[4], point[5]) == false then error("The client declined a restored action bar anchor.") end
+end
+local function RestoreFrame(frame, snapshot)
+    local firstFailure
+    local ok, reason = pcall(ParentFrame, frame, snapshot.parent)
+    if not ok then firstFailure = tostring(reason) end
+    ok, reason = pcall(ScaleFrame, frame, snapshot.scale)
+    if not ok and not firstFailure then firstFailure = tostring(reason) end
+    ok, reason = pcall(AlphaFrame, frame, snapshot.alpha)
+    if not ok and not firstFailure then firstFailure = tostring(reason) end
+    ok, reason = pcall(ClearFrame, frame)
+    if not ok and not firstFailure then firstFailure = tostring(reason) end
+    for _, point in ipairs(snapshot.points) do
+        ok, reason = pcall(PointFrame, frame, point)
+        if not ok and not firstFailure then firstFailure = tostring(reason) end
+    end
+    return firstFailure == nil, firstFailure
+end
+local function MergeTitle(view, shown)
+    local result
+    if shown then result = view.title:Show() else result = view.title:Hide() end
+    local actual = view.title:IsShown()
+    actual = actual ~= nil and actual ~= false and actual ~= 0
+    if result == false or actual ~= shown then error("The client declined the merged action bar title visibility.") end
+end
+local function ComposeFrame(view, host)
+    if host ~= view then
+        if not view.mergeOriginal then view.mergeOriginal = {}; CaptureFrame(view.frame, view.mergeOriginal) end
+        ParentFrame(view.frame, host.frame); ScaleFrame(view.frame, 1); AlphaFrame(view.frame, 1); ClearFrame(view.frame)
+        if view.frame:SetAllPoints(host.frame) == false then error("The client declined the merged action bar bounds.") end
+        MergeTitle(view, false)
+    elseif view.mergeOriginal then
+        local ok, failure = RestoreFrame(view.frame, view.mergeOriginal)
+        if not ok then error(failure) end
+    end
+end
 local function LabelFont(label, size)
     local face, oldSize, flags = label:GetFont()
     if face and oldSize ~= size then label:SetFont(face, size, flags) end
@@ -28,6 +91,10 @@ end
 
 local function UpdateCaption(view)
     if not view.showTitle then return end
+    if view.mergeViews then
+        view.title:SetText("Bar " .. view.id .. " (" .. table.getn(view.layoutButtons) .. " slots)")
+        return
+    end
     if view.gridWidth < 320 then
         local label = "Bar " .. view.id
         if view.behaviorMatched then label = view.gridWidth < 80 and view.id .. ">" .. view.page or label .. " >" .. view.page end
@@ -236,6 +303,8 @@ function ActionBar.Create(callbacks, barId)
     local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks, gridWidth = 524,
         showTitle = true, showHotkeys = true, showCounts = true, showMacroNames = true,
         showEmptyButtons = true, editing = false, displayReady = true}
+    view.mergeHost, view.mergeOrdinal, view.mergeLayoutButtons = view, 0, {}
+    view.layoutButtons = view.buttons
     frame.bar = view
     -- Native position APIs require a movable/resizable frame even while the
     -- editor is locked. Only the editor handle owns drag scripts.
@@ -304,15 +373,61 @@ function ActionBar.Create(callbacks, barId)
         self.page, self.offset, self.behaviorMatched = page, offset, matched
         UpdateCaption(self)
     end
+    function view:SetMergeGroup(host, ordinal, members)
+        host, ordinal = host or self, ordinal or 0
+        if type(host) ~= "table" or not host.frame or not host.buttons or type(ordinal) ~= "number"
+            or ordinal < 0 or ordinal > 5 or ordinal ~= math.floor(ordinal) then return false, "Invalid merged action bar composition." end
+        local signature = 0
+        if host == self then
+            members = members or {self}
+            if table.getn(members) < 1 or table.getn(members) > 6 or members[1] ~= self then return false, "Invalid merged source order." end
+            for _, source in ipairs(members) do
+                if type(source) ~= "table" or not source.buttons or table.getn(source.buttons) ~= 12 then return false, "Merged sources must retain twelve buttons." end
+                signature = signature * 7 + source.id
+            end
+        end
+        local expectedParent = host ~= self and host.frame or self.mergeOriginal and self.mergeOriginal.parent or self.frame:GetParent()
+        if self.mergeHost == host and self.mergeOrdinal == ordinal and self.mergeSignature == signature
+            and self.frame:GetParent() == expectedParent and not self.mergeRepairPending then return true end
+        self.mergeRollback = self.mergeRollback or {}
+        CaptureFrame(self.frame, self.mergeRollback)
+        local shown = self.title:IsShown()
+        self.mergeRollback.titleShown = shown ~= nil and shown ~= false and shown ~= 0
+        local oldThis, oldEvent, oldArg = this, event, arg1
+        local ok, failure = pcall(ComposeFrame, self, host)
+        if not ok then
+            local restored, reason = RestoreFrame(self.frame, self.mergeRollback)
+            local titleOK, titleReason = pcall(MergeTitle, self, self.mergeRollback.titleShown)
+            if not titleOK and restored then restored, reason = false, tostring(titleReason) end
+            self.mergeRepairPending, self.layoutDrawing, self.displayReady = not restored, nil, false
+            this, event, arg1 = oldThis, oldEvent, oldArg
+            return false, tostring(failure) .. (not restored and " Restoration: " .. tostring(reason) or "")
+        end
+        this, event, arg1 = oldThis, oldEvent, oldArg
+        self.mergeHost, self.mergeOrdinal, self.mergeSignature = host, ordinal, signature
+        self.mergeRepairPending, self.layoutDrawing, self.displayReady = nil, nil, false
+        if host == self then
+            self.mergeOriginal = nil
+            self.mergeViews = table.getn(members) > 1 and members or nil
+            if self.mergeViews then
+                local count = 0
+                for _, source in ipairs(members) do for _, button in ipairs(source.buttons) do count = count + 1; self.mergeLayoutButtons[count] = button end end
+                for index = count + 1, table.getn(self.mergeLayoutButtons) do self.mergeLayoutButtons[index] = nil end
+                self.layoutButtons = self.mergeLayoutButtons
+            else self.layoutButtons = self.buttons end
+        else self.mergeViews, self.layoutButtons = nil, self.buttons end
+        return true
+    end
     function view:SetGrid(value)
+        if self.mergeHost ~= self then return self.mergeHost:SetGrid(value) end
         self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
         local size, inset, fontSize = value.buttonSize or 40, value.iconInset or 4, value.labelFontSize or 10
         local step, columns = size + value.spacing, value.columns
         self.frame:SetAlpha((value.opacityPct or 100) / 100)
-        for index = 1, 12 do
+        for index, button in ipairs(self.layoutButtons) do
             local row = math.floor((index - 1) / columns)
             local column = index - 1 - row * columns
-            local button = self.buttons[index]
+            button.layoutIndex = index
             button:SetWidth(size); button:SetHeight(size)
             button:ClearAllPoints()
             button:SetPoint("TOPLEFT", self.frame, "TOPLEFT", column * step, -row * step)
@@ -328,11 +443,12 @@ function ActionBar.Create(callbacks, barId)
         UpdateCaption(self)
         return true
     end
-    function view:SetDisplay(value, repair)
+    function view:SetOwnDisplay(value, repair)
         Appearance.ApplyView(self, value, repair)
         Countdown("ConfigureView", self, value)
         local rebuild = repair == true or not self.displayReady
-        local titleChanged = rebuild or self.showTitle ~= value.showTitle
+        local caption = value.showTitle and self.mergeHost == self
+        local titleChanged = rebuild or self.showTitle ~= caption
         local hotkeysChanged = rebuild or self.showHotkeys ~= value.showHotkeys
         local countsChanged = rebuild or self.showCounts ~= value.showCounts
         local names = value.showMacroNames ~= false
@@ -340,7 +456,7 @@ function ActionBar.Create(callbacks, barId)
         local namesChanged, emptiesChanged = rebuild or self.showMacroNames ~= names, rebuild or self.showEmptyButtons ~= empties
         if not titleChanged and not hotkeysChanged and not countsChanged and not namesChanged and not emptiesChanged then return true end
         self.displayReady = false
-        self.showTitle, self.showHotkeys, self.showCounts = value.showTitle, value.showHotkeys, value.showCounts
+        self.showTitle, self.showHotkeys, self.showCounts = caption, value.showHotkeys, value.showCounts
         self.showMacroNames, self.showEmptyButtons = names, empties
         if titleChanged then
             if self.showTitle then UpdateCaption(self); title:Show() else title:Hide() end
@@ -364,8 +480,20 @@ function ActionBar.Create(callbacks, barId)
         self.displayReady = true
         return true
     end
+    function view:SetDisplay(value, repair)
+        if self.mergeHost == self and self.mergeViews then
+            for index = 2, table.getn(self.mergeViews) do
+                local ok, failure = self.mergeViews[index]:SetOwnDisplay(value, repair)
+                if ok == false then return false, failure end
+            end
+        end
+        return self:SetOwnDisplay(value, repair)
+    end
     function view:SetEditing(value)
         self.editing = value == true
+        if self.mergeHost == self and self.mergeViews then
+            for index = 2, table.getn(self.mergeViews) do self.mergeViews[index]:SetEditing(value) end
+        end
         for _, button in ipairs(self.buttons) do UpdateEmpty(button) end
         return true
     end
@@ -417,18 +545,20 @@ function ActionBar.Create(callbacks, barId)
         this, event, arg1 = previousThis, previousEvent, previousArg
         return firstFailure == nil, firstFailure
     end
-    function view:CancelInput()
+    function view:CancelInput(onlyHeld, preserveHover)
         local previousThis, previousEvent, previousArg = this, event, arg1
         local firstFailure
-        for _, button in ipairs(self.buttons) do
+        for _, button in ipairs(self.mergeHost == self and self.layoutButtons or self.buttons) do
             local ok, failure = pcall(CancelPressed, button)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
             ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
-            ok, failure = pcall(Appearance.Hover, button, false)
-            if not ok and not firstFailure then firstFailure = tostring(failure) end
-            ok, failure = pcall(ClearTooltip, button)
-            if not ok and not firstFailure then firstFailure = tostring(failure) end
+            if not preserveHover then
+                ok, failure = pcall(Appearance.Hover, button, false)
+                if not ok and not firstFailure then firstFailure = tostring(failure) end
+                ok, failure = pcall(ClearTooltip, button)
+                if not ok and not firstFailure then firstFailure = tostring(failure) end
+            end
         end
         this, event, arg1 = previousThis, previousEvent, previousArg
         return firstFailure == nil, firstFailure

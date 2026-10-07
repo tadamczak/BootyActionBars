@@ -8,6 +8,7 @@
 
 Core\Bootstrap.lua
 Services\BarConfig.lua
+Services\BarMerging.lua
 Services\BarLayout.lua
 Services\UtilityLayout.lua
 Services\BehaviorService.lua
@@ -21,6 +22,7 @@ Services\SpecialActionService.lua
 Services\ActionPageService.lua
 Services\NativeBarPolicy.lua
 Services\CooldownTextService.lua
+Modules\CooldownEffects.lua
 Modules\CooldownText.lua
 Services\NativeDecorationLayout.lua
 Modules\ButtonAppearance.lua

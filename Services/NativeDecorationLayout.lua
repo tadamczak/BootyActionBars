@@ -8,9 +8,9 @@ Layout.GryphonTexture = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf"
 Layout.SlotUV = {47 / 256, 90 / 256, 213 / 256, 1}
 Layout.BackingUV = {56 / 256, 248 / 256, 94 / 256, 126 / 256}
 Layout.BackingPixels = {192, 32}
-Layout.MaxBackingPieces = 100 -- Complete legal 10/12-slot grid range, both orientations.
-local keys = {"count", "columns", "buttonSize", "spacing", "nativeTexture", "slotArtwork", "gryphons",
-    "textureScale", "gryphonScale", "width", "height", "tileSize", "socketSize", "step", "left", "top", "right", "bottom",
+Layout.MaxBackingPieces = 693 -- Worst legal 72-slot partial row at 50% body / 200% socket scale; lazy only.
+local keys = {"count", "columns", "buttonSize", "spacing", "nativeTexture", "nativeBackground", "nativeBorder", "slotArtwork", "gryphons",
+    "textureScale", "buttonScale", "gryphonScale", "width", "height", "tileSize", "socketSize", "step", "left", "top", "right", "bottom",
     "innerLeft", "innerTop", "innerRight", "innerBottom", "padLeft", "padRight", "padTop", "padBottom",
     "gryphonSize", "gryphonOverlap", "gryphonBottom", "level", "strata", "backingLeft", "backingTop",
     "backingWidth", "backingHeight", "backingColumns", "backingRows", "backingCount", "backingRotated",
@@ -52,15 +52,16 @@ end
 function Layout.Resolve(drawing, count, target)
     target = target or {}
     drawing = drawing or {}
-    count = math.floor(Number(count, 12, 1, 12))
+    count = math.floor(Number(count, 12, 1, 72))
     local columns = math.floor(Number(drawing.columns, count, 1, count))
     local size = Number(drawing.buttonSize, 40, 24, 64)
     local spacing = Number(drawing.spacing, 4, 0, 20)
     local textureScale = Number(drawing.nativeTextureScalePct, 100, 50, 200) / 100
+    local buttonScale = Number(drawing.nativeButtonScalePct, textureScale * 100, 50, 200) / 100
     local gryphonScale = Number(drawing.gryphonScalePct, 100, 50, 200) / 100
     local rows = math.ceil(count / columns)
     local width, height = columns * size + (columns - 1) * spacing, rows * size + (rows - 1) * spacing
-    local tileSize = 43 * textureScale
+    local tileSize = 43 * buttonScale
     -- Fit the complete square uniformly into its own cell. Cropping a larger
     -- sprite would remove the entire six-pixel bevel at common settings.
     local socketSize = math.min(tileSize, size + spacing)
@@ -68,12 +69,17 @@ function Layout.Resolve(drawing, count, target)
     if slots == nil then slots = drawing.nativeTexture == true and drawing.nativeTextureBackground ~= false end
     local extent = slots and math.max(0, (socketSize - size) / 2) or 0
     target.count, target.columns, target.buttonSize, target.spacing = count, columns, size, spacing
-    target.nativeTexture, target.slotArtwork = drawing.nativeTexture == true, slots == true
+    local background, border = drawing.nativeBackground, drawing.nativeBorder
+    if background == nil then background = drawing.nativeTexture == true end
+    if border == nil then border = drawing.nativeTexture == true end
+    target.nativeBackground, target.nativeBorder = background == true, border == true
+    target.nativeTexture, target.slotArtwork = background == true or border == true, slots == true
     target.gryphons, target.textureScale, target.gryphonScale = drawing.gryphons or "none", textureScale, gryphonScale
     target.width, target.height, target.tileSize, target.step = width, height, tileSize, size + spacing
     target.socketSize = socketSize
+    target.buttonScale = buttonScale
     target.innerLeft, target.innerTop, target.innerRight, target.innerBottom = -extent, -extent, width + extent, height + extent
-    local padding = drawing.nativeTexture and 6 * textureScale or 0
+    local padding = border and 6 * textureScale or 0
     target.padLeft, target.padRight, target.padTop, target.padBottom = padding, padding, padding, padding
     target.left, target.top = target.innerLeft - target.padLeft, target.innerTop - target.padTop
     target.right, target.bottom = target.innerRight + target.padRight, target.innerBottom + target.padBottom
@@ -82,7 +88,7 @@ function Layout.Resolve(drawing, count, target)
     target.gryphonBottom = size + extent + target.padBottom
     Layout.ResolveBacking(target.innerLeft, target.innerTop, target.innerRight - target.innerLeft,
         target.innerBottom - target.innerTop, textureScale * 100, target)
-    if not target.nativeTexture then target.backingCount = 0 end
+    if not target.nativeBackground then target.backingCount = 0 end
     return target
 end
 function Layout.Copy(source, target)
