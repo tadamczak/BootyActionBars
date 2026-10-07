@@ -5,6 +5,18 @@ Bars.Modules.Editor = Editor
 local state = {active = false, editing = false, subscribed = false, handles = {}, drags = {}, handleFailures = {},
     anchors = {}, anchorFailures = {}, showAnchors = false, showGrid = false}
 local CancelDrag, EnsureHandle, ContextEvent
+local function MergeOwner(id)
+    if id > 6 or not Bars.Services.BarMerging then return id, Layout.SlotCount(id) end
+    return Bars.Services.BarMerging.Read(state.store and state.store.barMerges, id)
+end
+local function Slots(id)
+    local _, count = MergeOwner(id)
+    return count
+end
+local function Independent(id)
+    if MergeOwner(id) ~= id then return false, "This bar uses its merge owner's settings. Choose None to restore its individual settings." end
+    return true
+end
 
 local function Run(callback, first, second, third, fourth)
     local oldThis, oldEvent, oldArg = this, event, arg1
@@ -30,6 +42,7 @@ local function LiveView(id)
     return engine.views and engine.views[id] or id == 1 and engine.view or nil
 end
 local function View(id)
+    if MergeOwner(id) ~= id then return nil end
     local live = LiveView(id)
     if live and not live.editPreview and live.frame:IsVisible() then return live end
     local anchor = state.anchors[id]
@@ -71,7 +84,7 @@ local function Drawing(view, value, repair, geometry)
 end
 local function ApplyRecord(view, record, force)
     local context = Screen(false)
-    local value, failure = Layout.Resolve(view.id, record, context.width, context.height)
+    local value, failure = Layout.Resolve(view.id, record, context.width, context.height, Slots(view.id))
     if not value then return false, failure end
     value.parentScale = context.scale
     local previous = view.layoutDrawing
@@ -101,11 +114,14 @@ function Editor.Configure(store)
     return true
 end
 function Editor.GetLayout(id)
-    return Layout.Read(state.store and state.store.barLayouts, id, state.store and state.store.globalLayout)
+    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
+    id = MergeOwner(id)
+    return Layout.Read(state.store and state.store.barLayouts, id, state.store and state.store.globalLayout, Slots(id))
 end
 function Editor.GetGlobalLayout() return Layout.ReadGlobal(state.store and state.store.globalLayout) end
 function Editor.ApplyView(view, force)
     if not view or not Layout.ValidID(view.id) then return false, "Action bar view identity is unavailable." end
+    if MergeOwner(view.id) ~= view.id then return true end
     local record, failure = Editor.GetLayout(view.id)
     if not record then return false, failure end
     local ran, ok, reason = Run(ApplyRecord, view, record, force)
@@ -120,7 +136,14 @@ local function Owner()
     if not ok then return nil, reason end
     ok, reason = Layout.ValidateGlobal(store.globalLayout)
     if not ok then return nil, reason end
+    if Bars.Services.BarMerging then
+        ok, reason = Bars.Services.BarMerging.Validate(store.barMerges)
+        if not ok then return nil, reason end
+    end
     return store
+end
+local function SameMerges(store, reference, snapshot)
+    return store.barMerges == reference and (not Bars.Services.BarMerging or Bars.Services.BarMerging.Equal(reference, snapshot))
 end
 local function Equal(first, second)
     return Layout.EqualShared(first, second) and first.x == second.x and first.y == second.y
@@ -141,19 +164,23 @@ local function LocalRecord(id, value, original)
     record.scalePct, record.x, record.y = value.scalePct, value.x, value.y
     for _, key in ipairs(Layout.GlobalKeys) do
         if key ~= "scalePct" then
-            if key ~= "nativeSlotArtwork" and value[key] == Layout.DefaultValue(key, id) then record[key] = nil else record[key] = value[key] end
+            if not Layout.ExplicitKeys[key] and value[key] == Layout.DefaultValue(key, id) then record[key] = nil else record[key] = value[key] end
         end
     end
     record.useGlobalLayout, record.localLayoutSaved = value.useGlobalLayout, value.localLayoutSaved
     return record
 end
 local function Commit(id, candidate, reset, expected, positionOnly, rawCandidate)
+    local independent, detail = Independent(id)
+    if not independent then return false, detail end
     local store, failure = Owner()
     if not store then return false, failure end
     local layouts, original = store.barLayouts, store.barLayouts and store.barLayouts[id]
     local global, beforeGlobal = store.globalLayout, Copy(store.globalLayout)
+    local merges = store.barMerges
+    local beforeMerges = Bars.Services.BarMerging and Bars.Services.BarMerging.Copy(merges)
     local beforeRecord = Copy(original)
-    local previous, reason = Layout.Read(layouts, id, global)
+    local previous, reason = Layout.Read(layouts, id, global, Slots(id))
     if not previous then return false, reason end
     if expected and (store ~= expected.store or layouts ~= expected.layouts or original ~= expected.record
         or not Equal(previous, expected.original)) then return false, "Action bar layout changed while dragging." end
@@ -170,8 +197,12 @@ local function Commit(id, candidate, reset, expected, positionOnly, rawCandidate
         record.x, record.y = candidate.x, candidate.y
     else record = rawCandidate or LocalRecord(id, candidate, original) end
     local view = View(id)
+    -- Cancel held input as before, while pure styling preserves the pointer
+    -- state so the new hover style can repaint immediately.
     if view then
-        local ok, message = Try(view.CancelInput, view)
+        local preserveHover = not reset and Layout.EqualGeometry(previous, candidate)
+            and previous.x == candidate.x and previous.y == candidate.y
+        local ok, message = Try(view.CancelInput, view, false, preserveHover)
         if not ok then return false, message end
     end
     -- Profiling must also see attempted geometry changes which are rolled
@@ -182,10 +213,10 @@ local function Commit(id, candidate, reset, expected, positionOnly, rawCandidate
         if not ok then return false, message end
     end
     local current, message = Owner()
-    local after = Layout.Read(store.barLayouts, id, store.globalLayout)
+    local after = Layout.Read(store.barLayouts, id, store.globalLayout, Slots(id))
     if current ~= store or store.barLayouts ~= layouts or (layouts and layouts[id]) ~= original
         or store.globalLayout ~= global or not Same(global, beforeGlobal) or not Same(original, beforeRecord)
-        or not Equal(after, previous) then
+        or not Equal(after, previous) or not SameMerges(store, merges, beforeMerges) then
         -- The later saved value wins. Refresh it without writing our candidate.
         local rejected = message or "Action bar saved layout ownership changed during editing."
         if view and current == store then
@@ -201,6 +232,8 @@ local function Commit(id, candidate, reset, expected, positionOnly, rawCandidate
     return true
 end
 local function LocalSettings(id)
+    local independent, reason = Independent(id)
+    if not independent then return nil, reason end
     local record, failure = Editor.GetLayout(id)
     if not record then return nil, failure end
     if record.useGlobalLayout then return nil, "Turn off Use global settings before changing this bar's local settings." end
@@ -234,8 +267,9 @@ function Editor.SetScale(id, percent)
 end
 local function SetGrid(id, columns, spacing)
     if not Layout.ValidID(id) or not Layout.ValidColumns(columns) or not Layout.ValidSpacing(spacing) then
-        return false, "Choose bar 1-8, integer columns from 1 to 12 and spacing from 0 to 20."
+        return false, "Choose a valid bar, column count and spacing from 0 to 20."
     end
+    if columns > Slots(id) then return false, "The column count exceeds this bar's slots." end
     local record, failure = LocalSettings(id)
     if not record then return false, failure end
     if record.columns == columns and record.spacing == spacing then return true end
@@ -272,6 +306,7 @@ local function SetDisplay(id, key, value)
     record, failure = LocalSettings(id)
     if not record then return false, failure end
     record[key] = value
+    if key == "nativeTexture" then record.nativeBackground, record.nativeBorder = value, value end
     return Commit(id, record, false)
 end
 function Editor.SetDisplay(id, key, value)
@@ -294,6 +329,9 @@ local function SetAppearance(id, key, value)
         record.x, record.y = x, y
     end
     record[key] = value
+    if key == "hoverMode" then
+        record.hoverBackgroundShadow, record.hoverBorderShadow, record.hoverBorder = value == "shadow", value == "default", value == "border"
+    end
     return Commit(id, record, false)
 end
 function Editor.SetAppearance(id, key, value)
@@ -339,7 +377,7 @@ local function Reset(id)
     if not current then return false, reason end
     local localRecord = Layout.ReadLocal(nil, id)
     localRecord.useGlobalLayout, localRecord.localLayoutSaved = current.useGlobalLayout, current.localLayoutSaved
-    local candidate = Layout.Read({[id] = localRecord}, id, state.store.globalLayout)
+    local candidate = Layout.Read({[id] = localRecord}, id, state.store.globalLayout, Slots(id))
     return Commit(id, candidate, true, nil, false, LocalRecord(id, localRecord, state.store.barLayouts and state.store.barLayouts[id]))
 end
 function Editor.Reset(id)
@@ -372,11 +410,13 @@ local function CancelAll()
 end
 local function SetUseGlobalLayout(id, enabled)
     if not Layout.ValidID(id) or type(enabled) ~= "boolean" then return false, "Choose bar 1-8 and whether to use global settings." end
+    local independent, detail = Independent(id)
+    if not independent then return false, detail end
     local cancelled, failure = CancelDrag(id)
     if not cancelled then return false, failure end
     local store, reason = Owner()
     if not store then return false, reason end
-    local effective = Layout.Read(store.barLayouts, id, store.globalLayout)
+    local effective = Layout.Read(store.barLayouts, id, store.globalLayout, Slots(id))
     if effective.useGlobalLayout == enabled then return true end
     local localValue = Layout.ReadLocal(store.barLayouts, id)
     if not enabled and not localValue.localLayoutSaved then
@@ -385,7 +425,7 @@ local function SetUseGlobalLayout(id, enabled)
     localValue.useGlobalLayout, localValue.localLayoutSaved = enabled, true
     local raw = LocalRecord(id, localValue, store.barLayouts and store.barLayouts[id])
     local proposed = Copy(store.barLayouts); proposed[id] = raw
-    local candidate = Layout.Read(proposed, id, store.globalLayout)
+    local candidate = Layout.Read(proposed, id, store.globalLayout, Slots(id))
     return Commit(id, candidate, false, nil, false, raw)
 end
 function Editor.SetUseGlobalLayout(id, enabled)
@@ -408,17 +448,19 @@ local function SetGlobalPatch(patch)
     store, reason = Owner()
     if not store then return false, reason end
     local layouts, global = store.barLayouts, store.globalLayout
+    local merges = store.barMerges
+    local beforeMerges = Bars.Services.BarMerging and Bars.Services.BarMerging.Copy(merges)
     local beforeGlobal, beforeLayouts, records = Copy(global), Copy(layouts), {}
     for id = 1, 8 do records[id] = Copy(layouts and layouts[id]) end
     local proposed = Copy(global)
-    proposed.nativeSlotArtwork = Layout.ReadGlobal(global).nativeSlotArtwork
+    for key in pairs(Layout.ExplicitKeys) do proposed[key] = current[key] end
     for key, value in pairs(patch) do
-        if key ~= "nativeSlotArtwork" and value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
+        if not Layout.ExplicitKeys[key] and value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
     end
     local function Owned()
         local owner = Owner()
         if owner ~= store or store.barLayouts ~= layouts or store.globalLayout ~= global
-            or not Same(global, beforeGlobal) or not Same(layouts, beforeLayouts) then return false end
+            or not Same(global, beforeGlobal) or not Same(layouts, beforeLayouts) or not SameMerges(store, merges, beforeMerges) then return false end
         for id = 1, 8 do if not Same(layouts and layouts[id], records[id]) then return false end end
         return true
     end
@@ -440,7 +482,10 @@ local function SetGlobalPatch(patch)
     for id = 1, 8 do
         local view = View(id)
         if view then
-            local ok, message = Try(view.CancelInput, view)
+            local previous = Layout.Read(layouts, id, global, Slots(id))
+            local candidate = Layout.Read(layouts, id, proposed, Slots(id))
+            if not previous or not candidate then return false, "Global action bar geometry is unavailable." end
+            local ok, message = Try(view.CancelInput, view, false, Layout.EqualGeometry(previous, candidate))
             if not ok then return false, message end
         end
     end
@@ -450,7 +495,7 @@ local function SetGlobalPatch(patch)
     for id = 1, 8 do
         local view = View(id)
         if view and view.frame:IsVisible() then
-            local candidate, message = Layout.Read(layouts, id, proposed)
+            local candidate, message = Layout.Read(layouts, id, proposed, Slots(id))
             local ok
             if candidate then ok, message = Try(ApplyRecord, view, candidate, false) else ok = false end
             if not ok then firstFailure = message; break end
@@ -465,7 +510,12 @@ local function SetGlobalPatch(patch)
 end
 function Editor.SetGlobalLayout(key, value)
     if not Layout.ValidGlobalValue(key, value) then return false, "Invalid global action bar setting." end
-    local ran, ok, failure = Run(SetGlobalPatch, {[key] = value})
+    local patch = {[key] = value}
+    if key == "nativeTexture" then patch.nativeBackground, patch.nativeBorder = value, value end
+    if key == "hoverMode" then
+        patch.hoverBackgroundShadow, patch.hoverBorderShadow, patch.hoverBorder = value == "shadow", value == "default", value == "border"
+    end
+    local ran, ok, failure = Run(SetGlobalPatch, patch)
     if not ran then return false, ok end
     return ok, failure
 end
@@ -485,7 +535,7 @@ local function DragStart(id)
     if not store then return false, failure end
     local ok, reason = CancelAll()
     if not ok then return false, reason end
-    local context, original = Screen(true), Layout.Read(store.barLayouts, id, store.globalLayout)
+    local context, original = Screen(true), Layout.Read(store.barLayouts, id, store.globalLayout, Slots(id))
     ok, reason = Try(view.CancelInput, view)
     if not ok then return false, reason end
     state.drags[id] = {view = view, store = store, layouts = store.barLayouts,
@@ -632,7 +682,7 @@ function Editor.End()
     return firstFailure == nil, firstFailure
 end
 function Editor.OnBarHidden(id)
-    if id == 1 then return Editor.End() end
+    if id == 1 and MergeOwner(id) == id then return Editor.End() end
     local ok, firstFailure = CancelDrag(id)
     local detached, failure = Detach(id)
     if not detached and not firstFailure then firstFailure = failure end
@@ -723,8 +773,9 @@ local function Sync()
     local firstFailure
     for id = 1, 8 do
         local live, view = LiveView(id), nil
-        if live and not live.editPreview and live.frame:IsVisible() then view = live end
-        if not view and state.editing and state.showAnchors then
+        local independent = MergeOwner(id) == id
+        if independent and live and not live.editPreview and live.frame:IsVisible() then view = live end
+        if independent and not view and state.editing and state.showAnchors then
             local reason
             view, reason = Anchor(id)
             if not view and not firstFailure then firstFailure = reason end

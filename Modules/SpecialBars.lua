@@ -108,10 +108,11 @@ end
 local function ClearTooltip(button)
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
 end
-local function Cancel(button)
+local function Cancel(button, preserveHover)
     if button.mouseHeld then button.skipClick = true end
     button.keyHeld, button.mousePressed, button.mouseHeld = false, false, false
-    button.pressFeedback:Hide(); Appearance.Hover(button, false); ClearTooltip(button)
+    button.pressFeedback:Hide()
+    if not preserveHover then Appearance.Hover(button, false); ClearTooltip(button) end
     return true
 end
 UpdateEmpty = function(button)
@@ -366,11 +367,11 @@ local function Create(owner)
         if not ended and not firstFailure then firstFailure = failure end
         return firstFailure == nil, firstFailure
     end
-    function view:CancelInput(onlyHeld)
+    function view:CancelInput(onlyHeld, preserveHover)
         local firstFailure
         for _, button in ipairs(self.buttons) do
             if not onlyHeld or button.keyHeld or button.mouseHeld then
-                local ok, failure = Run(Cancel, button)
+                local ok, failure = Run(Cancel, button, preserveHover)
                 if not ok and not firstFailure then firstFailure = failure end
             end
         end

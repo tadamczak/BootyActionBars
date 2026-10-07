@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.27 — 2026-10-07
+
+- Merge ordinary bars under one layout while retaining their actions, keybindings and individual settings for later separation.
+- Separate native stone, frame and button artwork, including independent bar and button texture scales.
+- Combine Background shadow, Border shadow and Border hover effects with separate area, thickness and corner radius.
+- Keep colored circular or top-to-bottom cooldown indicators inside icons, with optional colored blinking in the last three seconds.
+
 ## 0.1.0-dev.26 — 2026-10-07
 
 - Fit complete native sockets into their own cells and draw them above button fills, preserving icon visibility.

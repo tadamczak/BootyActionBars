@@ -35,7 +35,7 @@ function Profiles.Validate(profile)
     if type(profile) ~= "table" or (profile.version ~= 1 and profile.version ~= Profiles.VERSION) then return false, "Unsupported action bar layout profile." end
     for key in pairs(profile) do
         if key ~= "version" and key ~= "barLayouts" and key ~= "customBars" and key ~= "specialBars"
-            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown" or key == "barBehaviors" or key == "utilityLayouts")) then return false, "Unexpected layout profile data." end
+            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown" or key == "barBehaviors" or key == "utilityLayouts" or key == "barMerges")) then return false, "Unexpected layout profile data." end
     end
     local ok, failure = Bars.Services.BarConfig.Validate(profile.customBars)
     if not ok then return false, failure end
@@ -43,6 +43,11 @@ function Profiles.Validate(profile)
     if not ok then return false, failure end
     if type(profile.customBars) ~= "table" or type(profile.specialBars) ~= "table" then return false, "Layout profile bar visibility is missing." end
     if profile.version == 2 then
+        if profile.barMerges ~= nil then
+            if not Bars.Services.BarMerging then return false, "Merged layouts are unavailable." end
+            ok, failure = Bars.Services.BarMerging.Validate(profile.barMerges)
+            if not ok then return false, failure end
+        end
         ok, failure = Behavior.Validate(profile.barBehaviors)
         if not ok then return false, failure end
         if profile.utilityLayouts ~= nil then
@@ -93,6 +98,10 @@ function Profiles.Capture(store)
     local result = {version = Profiles.VERSION, barLayouts = {}, customBars = Flags(store.customBars), specialBars = Flags(store.specialBars),
         globalLayout = GlobalCopy(store.globalLayout), mainBarShown = store.mainBarShown ~= false,
         barBehaviors = Behavior.Copy(store.barBehaviors)}
+    if Bars.Services.BarMerging then
+        result.barMerges, failure = Bars.Services.BarMerging.Copy(store.barMerges)
+        if not result.barMerges then return nil, failure end
+    end
     if Bars.Services.UtilityLayout then
         result.utilityLayouts, failure = Bars.Services.UtilityLayout.Copy(store.utilityLayouts)
         if not result.utilityLayouts then return nil, failure end
@@ -115,6 +124,11 @@ function Profiles.Prepare(profile, existingLayouts, existingGlobal, existingBeha
     if not ok then return nil, failure end
     local result = {barLayouts = {}, customBars = Flags(profile.customBars), specialBars = Flags(profile.specialBars),
         replaceGlobal = profile.version == 2, replaceBehaviors = profile.version == 2 and profile.barBehaviors ~= nil}
+    if profile.version == 2 and profile.barMerges ~= nil then
+        result.barMerges, failure = Bars.Services.BarMerging.Copy(profile.barMerges)
+        if not result.barMerges then return nil, failure end
+        result.replaceMerges = true
+    end
     if profile.version == 2 and profile.utilityLayouts ~= nil then
         result.utilityLayouts, failure = Bars.Services.UtilityLayout.Copy(profile.utilityLayouts)
         if not result.utilityLayouts then return nil, failure end

@@ -4,6 +4,7 @@ local floor, ceil = math.floor, math.ceil
 -- Match the installed cooldown-number behavior: omit the global cooldown
 -- while preserving the independent native Model animation for every timer.
 Service.MIN_DURATION = 2
+Service.EFFECT_STEPS = 63
 
 function Service.Finite(value)
     return type(value) == "number" and value == value and math.abs(value) < 1e300
@@ -15,6 +16,33 @@ end
 function Service.ValidColor(value) return Service.Finite(value) and value >= 0 and value <= 1 end
 function Service.ValidFontSize(value)
     return Service.Finite(value) and value == floor(value) and value >= 8 and value <= 32
+end
+function Service.ValidEffectMode(value) return value == "circle" or value == "vertical" end
+function Service.Progress(start, duration, now)
+    if not Service.ValidCooldown(start, duration) or not Service.Finite(now) then return nil, "Invalid cooldown progress." end
+    if duration == 0 then return 0 end
+    return math.max(0, math.min(1, (start + duration - now) / duration))
+end
+function Service.EffectBucket(progress)
+    if not Service.ValidColor(progress) then return nil, "Invalid cooldown progress." end
+    return ceil(progress * Service.EFFECT_STEPS)
+end
+function Service.EffectUV(bucket)
+    if type(bucket) ~= "number" or bucket ~= floor(bucket) or bucket < 0 or bucket > Service.EFFECT_STEPS then
+        return nil, "Invalid cooldown effect bucket."
+    end
+    local row, column = floor(bucket / 8), bucket - floor(bucket / 8) * 8
+    -- Sample the centres of the boundary texels, keeping adjacent atlas cells
+    -- out of bilinear filtering. The source contains a transparent guard.
+    return (column * 32 + 0.5) / 256, (column * 32 + 31.5) / 256,
+        (row * 32 + 0.5) / 256, (row * 32 + 31.5) / 256
+end
+function Service.FlashPhase(remaining, duration)
+    if not Service.Finite(remaining) or not Service.Finite(duration) then return false end
+    -- Global cooldowns do not flash. A four-phase clock gives two flashes per
+    -- second during the final three seconds of a real ability cooldown.
+    return duration >= Service.MIN_DURATION and remaining > 0 and remaining <= 3
+        and floor(remaining * 4) - floor(remaining * 4 / 2) * 2 == 1
 end
 function Service.Bucket(remaining)
     if not Service.Finite(remaining) then return nil, "Invalid cooldown time." end

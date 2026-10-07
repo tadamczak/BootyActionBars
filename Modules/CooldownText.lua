@@ -1,5 +1,6 @@
 local Bars = BootyActionBars
 local Service, UI = Bars.Services.CooldownTextService, Bars.UI.Components
+local Effects = Bars.Modules.CooldownEffects
 local Module = {}
 Bars.Modules.CooldownText = Module
 local records, views, active = {}, {}, {}
@@ -32,27 +33,45 @@ local function Remove(record)
         active[state.activeCount] = nil; state.activeCount = state.activeCount - 1
         record.activeIndex = nil
     end
-    if record.shown then Call(record, "Hide"); record.shown = false end
+    local failure
+    if record.shown then
+        local ran, reason = pcall(Call, record, "Hide")
+        if ran then record.shown = false else failure = tostring(reason) end
+    end
+    local ran, reason = pcall(Effects.Hide, record)
+    if not ran then failure = failure and failure .. " " .. tostring(reason) or tostring(reason) end
+    if failure then error(failure, 0) end
+end
+local function TextEligible(record)
+    local view = record.owner
+    return view.enabled and view.a > 0 and record.duration >= Service.MIN_DURATION
 end
 local function Eligible(record)
     local view = record.owner
     local count = view.view.count or (view.view.id <= 6 and 12 or 0)
-    return view.visible and view.enabled and view.a > 0 and not record.suspended and not record.expired
+    return view.visible and not record.suspended and not record.expired
         and record.button.index <= count and record.button.emptyHidden ~= true
-        and record.enabled and record.start > 0 and record.duration >= Service.MIN_DURATION
+        and record.enabled and record.start > 0 and record.duration > 0
+        and (TextEligible(record) or Effects.Demand(record))
 end
 local function Sync(record)
     if Eligible(record) then
+        if not TextEligible(record) and record.shown then Call(record, "Hide"); record.shown = false end
         if not record.activeIndex then
             state.activeCount = state.activeCount + 1
             active[state.activeCount] = record; record.activeIndex = state.activeCount
         end
+        -- Repaint style/timer changes from the latest shared clock, without
+        -- another GetTime read. Fresh timers begin with the complete mask.
+        Effects.Paint(record, state.lastNow or record.start)
     else Remove(record) end
 end
 local function Owner(view)
     local owner = views[view]
     if not owner then
         owner = {view = view, visible = false, enabled = true, size = 14, r = 1, g = 1, b = 1, a = 1, records = {}}
+        local ok, failure = Effects.Configure(owner, {})
+        if not ok then error(failure, 0) end
         views[view] = owner
     end
     return owner
@@ -112,8 +131,11 @@ local function ConfigureView(view, drawing)
         or not Service.ValidFontSize(size) or not Service.ValidColor(r) or not Service.ValidColor(g)
         or not Service.ValidColor(b) or not Service.ValidColor(a) then return false, "Invalid cooldown appearance." end
     local owner = Owner(view)
+    local configured, effectsChanged = Effects.Configure(owner, drawing)
+    if not configured then return false, effectsChanged end
     owner.enabled, owner.size, owner.r, owner.g, owner.b, owner.a = enabled, size, r, g, b, a
     for _, record in pairs(owner.records) do
+        if effectsChanged then record.revision = (record.revision or 0) + 1 end
         Style(record)
         if owner.visible then record.suspended = false end
         Sync(record)
@@ -128,6 +150,10 @@ local function Update(button, start, duration, enabled)
     local record = Record(button)
     if not record or record.creationFailure then return false, record and record.creationFailure or "The cooldown text is not attached." end
     if not Service.ValidCooldown(start, duration) then return false, "Invalid cooldown timer." end
+    -- The stock Model owns animation scripts, but its projected indicator can
+    -- exceed the icon and has no verified 1.12 RGBA adapter. Our pooled regions
+    -- draw both styles inside the icon; hiding stops its native animation too.
+    Effects.HideNative(record)
     local changed = record.start ~= start or record.duration ~= duration
     local activeTimer = enabled ~= nil and enabled ~= false and enabled ~= 0
     if changed or record.enabled ~= activeTimer or record.suspended then record.revision = (record.revision or 0) + 1 end
@@ -161,6 +187,7 @@ local function SetViewVisible(view, visible)
 end
 local function Tick(now)
     if not Service.Finite(now) then return false, "Invalid cooldown clock." end
+    state.lastNow = now
     local index = 1
     while index <= state.activeCount do
         local record = active[index]
@@ -171,7 +198,9 @@ local function Tick(now)
             if kind == 0 then record.expired = true; Remove(record)
             else
                 local revision = record.revision
-                if record.kind ~= kind or record.value ~= value then
+                Effects.Paint(record, now)
+                if record.revision == revision and record.activeIndex and TextEligible(record)
+                    and (record.kind ~= kind or record.value ~= value) then
                     local text, failure = Service.Format(kind, value)
                     if not text then return false, failure end
                     Call(record, "SetText", text)
@@ -179,7 +208,7 @@ local function Tick(now)
                 end
                 -- A native text/visibility hook can cancel or replace a timer.
                 -- Keep that new state; do not resurrect the outer snapshot.
-                if record.revision == revision and record.activeIndex and Eligible(record) and not record.shown then
+                if record.revision == revision and record.activeIndex and Eligible(record) and TextEligible(record) and not record.shown then
                     record.shown = true; Call(record, "Show")
                 end
                 if active[index] == record then index = index + 1 end

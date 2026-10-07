@@ -4,7 +4,8 @@ Bars.Core.Engine = Engine
 local state = {active = false, requested = false, subscribed = false, views = {}, customBars = {},
     customActive = {}, customRevision = 0, customConfiguredCount = 0, customActiveCount = 0, macroDirty = {},
     mainShown = true, mainActive = false, mappingOffsets = {}, mappingPages = {}, mappingMatches = {},
-    mappingChanged = {}, mappingCaptions = {}, behaviorLive = {}}
+    mappingChanged = {}, mappingCaptions = {}, behaviorLive = {}, mergeOwners = {}, mergeCounts = {},
+    mergeOrdinals = {}, mergeViewLists = {}, mergeMemberIDs = {}, mergePlans = {}}
 local events = {"PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_UPDATE_COOLDOWN",
     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_STATE", "PLAYER_TARGET_CHANGED", "PLAYER_AURAS_CHANGED",
     "UNIT_INVENTORY_CHANGED", "UPDATE_INVENTORY_ALERTS", "BAG_UPDATE", "UPDATE_BINDINGS", "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT",
@@ -28,6 +29,46 @@ local function Valid(index)
 end
 local function ValidBar(barId)
     return type(barId) == "number" and barId >= 1 and barId <= 6 and barId == math.floor(barId)
+end
+local function MergeOwner(id) return state.mergeOwners[id] or id end
+local function RequestedBar(id)
+    local owner = MergeOwner(id)
+    return owner == 1 and state.mainShown or owner ~= 1 and state.customBars[owner] == true
+end
+function Engine.GetMergeOwner(id)
+    if not ValidBar(id) then return nil, "Only ordinary action bars can be merged." end
+    return MergeOwner(id)
+end
+function Engine.GetMergeCount(id)
+    if not ValidBar(id) then return nil, "Only ordinary action bars can be merged." end
+    return state.mergeCounts[id] or 12
+end
+function Engine.GetMergeMembers(id, target)
+    if not ValidBar(id) then return nil, "Only ordinary action bars can be merged." end
+    local factory = Bars.Services.BarMerging
+    if factory then return factory.Members(state.merges, MergeOwner(id), target) end
+    target = target or {}; target[1] = id
+    for index = 2, table.getn(target) do target[index] = nil end
+    return target
+end
+function Engine.ConfigureMerges(groups)
+    local factory = Bars.Services.BarMerging
+    if not factory then
+        if groups == nil or type(groups) == "table" and next(groups) == nil then return true end
+        return false, "Merged action bar settings are unavailable."
+    end
+    local valid, failure = factory.Validate(groups)
+    if not valid then return false, failure end
+    if factory.Equal(state.merges, groups) then return true end
+    local copy; copy, failure = factory.Copy(groups)
+    if not copy then return false, failure end
+    state.merges, state.hasMerges, state.mergeDirty = copy, next(copy) ~= nil, true
+    for id = 1, 6 do
+        local host, count, ordinal = factory.Read(copy, id)
+        state.mergeOwners[id], state.mergeCounts[id], state.mergeOrdinals[id] = host, count, ordinal
+    end
+    state.customRevision = state.customRevision + 1
+    return true
 end
 local function Report(message)
     message = tostring(message)
@@ -216,8 +257,8 @@ local function SyncBehaviorDemand(force, prospectiveBar)
     local demand = false
     for barId = 1, 6 do
         local live
-        if state.enabling then live = state.active and (barId == 1 and state.mainShown or barId ~= 1 and state.customBars[barId] == true)
-        else live = IsActive(barId) or barId == prospectiveBar and state.active and state.customBars[barId] == true end
+        if state.enabling then live = state.active and RequestedBar(barId)
+        else live = IsActive(barId) or barId == prospectiveBar and state.active and RequestedBar(barId) end
         live = live == true
         if state.behaviorLive[barId] ~= live then state.behaviorLive[barId], changed = live, true end
         local list = state.behaviorRules and state.behaviorRules[barId]
@@ -497,6 +538,45 @@ local function CreateView(barId)
     if barId == 1 then state.view = view end
     return view
 end
+local function SetMergeView(view, plan) return view:SetMergeGroup(plan.host, plan.ordinal, plan.members) end
+local function ComposeMerges()
+    local factory = Bars.Services.BarMerging
+    if not factory then return true end
+    if state.mergeDirty then
+        state.mainActive = false
+        for id = 2, 6 do SetCustomActive(id, false, false) end
+    end
+    for host = 1, 6 do
+        if MergeOwner(host) == host then
+            local ids = state.mergeMemberIDs[host] or {}; state.mergeMemberIDs[host] = ids
+            local members, failure = factory.Members(state.merges, host, ids)
+            if not members then return false, failure end
+            local needed = state.active and RequestedBar(host)
+            for _, id in ipairs(ids) do if state.views[id] then needed = true end end
+            if needed then
+                local views = state.mergeViewLists[host] or {}; state.mergeViewLists[host] = views
+                for index, id in ipairs(ids) do
+                    local view; view, failure = CreateView(id)
+                    if not view then return false, failure end
+                    views[index] = view
+                end
+                for index = table.getn(ids) + 1, table.getn(views) do views[index] = nil end
+            end
+        end
+    end
+    for id = 1, 6 do
+        local view = state.views[id]
+        if view then
+            local owner = MergeOwner(id)
+            local plan = state.mergePlans[id] or {}; state.mergePlans[id] = plan
+            plan.host, plan.ordinal, plan.members = state.views[owner], state.mergeOrdinals[id] or 0, state.mergeViewLists[owner]
+            local ok, failure = ProtectedCall(SetMergeView, view, plan)
+            if not ok then return false, failure end
+        end
+    end
+    state.mergeDirty = nil
+    return true
+end
 local function ParentVisible()
     if not UIParent or type(UIParent.IsVisible) ~= "function" then return true end
     local value = UIParent:IsVisible()
@@ -519,7 +599,7 @@ local function CreateDriver()
     return true
 end
 SyncContext = function()
-    local wanted = state.requested and not state.mainShown
+    local wanted = state.requested and (not RequestedBar(1) or MergeOwner(1) ~= 1)
     if wanted then
         local ok, failure = ProtectedCall(CreateDriver)
         if not ok then state.driverFailure = failure; return false, failure end
@@ -536,7 +616,7 @@ SyncContext = function()
     return true
 end
 SyncMain = function()
-    if not state.mainShown then
+    if not RequestedBar(1) then
         state.mainActive = false
         if state.view then
             state.hidingMain = true
@@ -603,7 +683,7 @@ local function ActivateCustom(barId, revise)
 end
 local function SyncCustoms(revise)
     for barId = 2, 6 do
-        if state.customBars[barId] and state.active then
+        if RequestedBar(barId) and state.active then
             local ok, failure = ActivateCustom(barId, revise)
             if not ok then return false, failure end
         elseif state.views[barId] then
@@ -654,6 +734,7 @@ function Engine.MacroEvent(slot)
 end
 function Engine.HandleEvent(name, unit)
     if not state.active then return end
+    if state.composing then state.mergePendingRefresh = true; return end
     if name == "ACTIONBAR_SHOWGRID" or name == "ACTIONBAR_HIDEGRID" then
         -- Vanilla sends a balanced grid request for action, spell, item and
         -- macro cursor gestures. Reveal the existing drop targets without a
@@ -770,6 +851,7 @@ local function SyncSubscriptions()
 end
 function Engine.OnHide(barId)
     barId = barId or 1
+    if state.composing then return true end
     local firstFailure
     local intentional = barId == 1 and state.hidingMain
     local binding = Bars.Modules.BindingEditor
@@ -781,13 +863,13 @@ function Engine.OnHide(barId)
         local ok, failure = ProtectedCall(Bars.Modules.Editor.OnBarHidden, barId)
         if not ok and not firstFailure then firstFailure = failure end
     end
-    if barId ~= 1 then
+    if barId ~= 1 or MergeOwner(barId) ~= barId and not state.contextHiding then
         if ValidBar(barId) and state.views[barId] then
             if state.requested and state.active and not ParentVisible() then
                 local ok, failure = Engine.OnContextHide()
                 return firstFailure == nil and ok, firstFailure or failure
             end
-            SetCustomActive(barId, false, not state.hidingCustoms)
+            if barId == 1 then state.mainActive = false else SetCustomActive(barId, false, not state.hidingCustoms) end
             local ok, failure = ProtectedCall(state.views[barId].Suspend, state.views[barId])
             if ok then ok, failure = SyncSubscriptions() end
             if ok then ok, failure = SyncRange() end
@@ -826,7 +908,10 @@ function Engine.OnContextHide()
     if state.hidingDriver or state.cleaning or not state.requested or not state.active then return true end
     -- Keep a shown lifecycle frame available for the parent's eventual OnShow.
     -- Native cooldown animations and all action subscriptions stop meanwhile.
-    return Engine.OnHide(1)
+    state.contextHiding = true
+    local ok, failure = Engine.OnHide(1)
+    state.contextHiding = nil
+    return ok, failure
 end
 function Engine.OnContextShow()
     if state.hidingDriver or state.enabling or not state.requested or state.active then return true end
@@ -836,10 +921,20 @@ function Engine.OnContextShow()
 end
 function Engine.OnShow(barId)
     barId = barId or 1
-    if state.enabling or state.showingMain then return end
+    if state.enabling or state.showingMain or state.composing then return end
+    if barId == 1 and MergeOwner(1) ~= 1 then
+        if not state.active and state.requested and ParentVisible() then return Engine.OnContextShow() end
+        if not state.active or not RequestedBar(1) or state.mainActive then return end
+        local ok, failure = SyncMain()
+        if ok and Bars.Modules.Editor then ok, failure = ProtectedCall(Bars.Modules.Editor.Sync) end
+        if ok then ok, failure = SyncSubscriptions() end
+        if ok then ok, failure = SyncRange() end
+        if not ok then Engine.Disable(); Report(failure) end
+        return ok, failure
+    end
     if barId ~= 1 then
         if not state.active and state.requested and ParentVisible() then return Engine.OnContextShow() end
-        if not ValidBar(barId) or not state.active or not state.customBars[barId] or state.customActive[barId] then return end
+        if not ValidBar(barId) or not state.active or not RequestedBar(barId) or state.customActive[barId] then return end
         local ok, failure = ActivateCustom(barId, true)
         if ok and Bars.Modules.Editor then ok, failure = ProtectedCall(Bars.Modules.Editor.Sync) end
         if ok then ok, failure = SyncSubscriptions() end
@@ -847,26 +942,46 @@ function Engine.OnShow(barId)
         if not ok then Engine.Disable(); Report(failure) end
         return
     end
-    if not state.mainShown or not state.requested or state.active then return end
+    if not RequestedBar(1) or not state.requested or state.active then return end
     local ok, failure = Engine.Enable()
     if not ok then Report(failure) end
 end
 local function Activate(wasActive)
     state.active = ParentVisible()
-    local ok, failure = SyncBehaviorDemand()
+    local ok, failure = true, nil
+    if state.hasMerges or state.mergeDirty then
+        state.composing = true
+        ok, failure = ComposeMerges()
+        state.composing = nil
+    end
+    if ok then ok, failure = SyncBehaviorDemand() end
     if ok and state.active and state.behaviorService and state.behaviorPendingConfig then
         ok, failure = ProtectedCall(state.behaviorService.Refresh, "BOOTY_ACTIONBARS_BEHAVIOR_CONFIG")
         if ok then state.behaviorPendingConfig = nil; state.behaviorActivationPending = true end
     end
     if ok then ok, failure = SyncContext() end
+    if ok and state.hasMerges and state.active then
+        -- A custom primary must be visible before its main-source child is
+        -- activated. Every source still uses its original twelve-slot pipeline.
+        for id = 2, 6 do
+            if MergeOwner(id) == id and RequestedBar(id) then
+                ok, failure = ActivateCustom(id, wasActive)
+                if not ok then break end
+            end
+        end
+    end
     if ok then ok, failure = SyncMain() end
-    if ok and state.mainShown and not state.mainActive then state.active = false end
+    if ok and RequestedBar(1) and not state.mainActive then state.active = false end
     if ok then ok, failure = SyncCustoms(wasActive) end
     if ok and state.behaviorActivationPending then
         ok, failure = UpdateMappings()
         state.behaviorActivationPending = nil
     end
     if ok then ok, failure = SyncSubscriptions() end
+    if ok and state.mergePendingRefresh then
+        state.mergePendingRefresh = nil
+        ok, failure = UpdateMappings("PLAYER_ENTERING_WORLD", true)
+    end
     if ok then ok, failure = FlushMacroChanges() end
     return ok, failure
 end

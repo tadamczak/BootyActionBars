@@ -13,14 +13,18 @@ function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or 12 end
 -- Colors stay scalar so picker inputs and saved snapshots never share tables.
 local fields, colorKeys = {}, {}
 Layout.Fields, Layout.GlobalKeys = fields, {}
-Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "border", "cooldown"}
+Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "border", "cooldown", "cooldownEffect", "cooldownFlash"}
+-- These values have legacy fallbacks; explicit false/default values must not
+-- disappear from sparse saves and reactivate an older preference.
+Layout.ExplicitKeys = {nativeSlotArtwork = true, nativeBackground = true, nativeBorder = true,
+    nativeButtonScalePct = true, hoverBackgroundShadow = true, hoverBorderShadow = true, hoverBorder = true}
 local function Define(key, kind, value, minimum, maximum, version, geometry, choices)
     fields[key] = {kind = kind, default = value, minimum = minimum, maximum = maximum,
         version = version, geometry = geometry, choices = choices}
     table.insert(Layout.GlobalKeys, key)
 end
 Define("scalePct", "integer", 100, 50, 200, 1, true)
-Define("columns", "integer", 12, 1, 12, 1, true)
+Define("columns", "integer", 12, 1, 72, 1, true)
 Define("spacing", "integer", 4, 0, 20, 1, true)
 Define("showTitle", "boolean", true, nil, nil, 1)
 Define("showHotkeys", "boolean", true, nil, nil, 1)
@@ -32,20 +36,30 @@ Define("iconInset", "integer", 4, 0, 8, 1, true)
 Define("opacityPct", "integer", 100, 20, 100, 1, true)
 Define("labelFontSize", "integer", 10, 8, 16, 1, true)
 Define("hoverMode", "enum", "default", nil, nil, 2, nil, {default = true, border = true, shadow = true})
-Define("hoverSize", "integer", 2, 1, 6, 2)
+Define("hoverSize", "integer", 2, 1, 10, 2)
+Define("hoverBackgroundShadow", "boolean", false, nil, nil, 2)
+Define("hoverBorderShadow", "boolean", true, nil, nil, 2)
+Define("hoverBorder", "boolean", false, nil, nil, 2)
+Define("hoverBorderSize", "integer", 2, 1, 10, 2)
+Define("hoverRadius", "integer", 0, 0, 10, 2)
 Define("showButtonBorder", "boolean", true, nil, nil, 2)
 Define("borderSize", "integer", 2, 1, 6, 2)
 Define("buttonBackground", "boolean", true, nil, nil, 2)
 Define("cooldownFontSize", "integer", 14, 8, 32, 2)
 Define("showCooldownText", "boolean", true, nil, nil, 2)
+Define("cooldownEffectMode", "enum", "circle", nil, nil, 2, nil, {circle = true, vertical = true})
+Define("cooldownFlash", "boolean", false, nil, nil, 2)
 Define("nativeTexture", "boolean", false, nil, nil, 2)
 Define("nativeTextureBackground", "boolean", true, nil, nil, 2)
 Define("nativeSlotArtwork", "boolean", false, nil, nil, 2)
+Define("nativeBackground", "boolean", false, nil, nil, 2)
+Define("nativeBorder", "boolean", false, nil, nil, 2)
 Define("nativeTextureScalePct", "integer", 100, 50, 200, 2)
+Define("nativeButtonScalePct", "integer", 100, 50, 200, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
 Define("gryphonScalePct", "integer", 100, 50, 200, 2)
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,0.2,0.2,1}, hover = {1,1,1,0.6},
-    border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}}
+    border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownEffect = {0,0,0,0.6}, cooldownFlash = {1,0.2,0.2,0.65}}
 local channels = {"R", "G", "B", "A"}
 for _, group in ipairs(Layout.ColorGroups) do
     colorKeys[group] = {}
@@ -102,7 +116,7 @@ function Layout.EqualGeometry(first, second)
     for _, key in ipairs(Layout.GlobalKeys) do
         if fields[key].geometry and first[key] ~= second[key] then return false end
     end
-    return first.scale == second.scale and first.anchorX == second.anchorX and first.anchorY == second.anchorY
+    return first.count == second.count and first.scale == second.scale and first.anchorX == second.anchorX and first.anchorY == second.anchorY
         and first.width == second.width and first.height == second.height and first.parentScale == second.parentScale
         and first.barWidth == second.barWidth and first.barHeight == second.barHeight
 end
@@ -128,6 +142,17 @@ local function NativeSlots(record)
     if record and record.nativeSlotArtwork ~= nil then return record.nativeSlotArtwork end
     return record ~= nil and record.nativeTexture == true and record.nativeTextureBackground ~= false
 end
+local function LegacyValues(result, record)
+    result.nativeSlotArtwork = NativeSlots(record)
+    for _, key in ipairs({"nativeBackground", "nativeBorder"}) do
+        if not record or record[key] == nil then result[key] = record ~= nil and record.nativeTexture == true end
+    end
+    if not record or record.nativeButtonScalePct == nil then result.nativeButtonScalePct = result.nativeTextureScalePct end
+    local mode = record and record.hoverMode or "default"
+    if not record or record.hoverBackgroundShadow == nil then result.hoverBackgroundShadow = mode == "shadow" end
+    if not record or record.hoverBorderShadow == nil then result.hoverBorderShadow = mode == "default" end
+    if not record or record.hoverBorder == nil then result.hoverBorder = mode == "border" end
+end
 function Layout.ReadGlobal(record)
     local ok, failure = Layout.ValidateGlobal(record)
     if not ok then return nil, failure end
@@ -137,7 +162,7 @@ function Layout.ReadGlobal(record)
         if value == nil then value = fields[key].default end
         result[key] = value
     end
-    result.nativeSlotArtwork = NativeSlots(record)
+    LegacyValues(result, record)
     return result
 end
 function Layout.UsesGlobal(layouts, id)
@@ -186,10 +211,10 @@ function Layout.ReadLocal(layouts, id)
         if value == nil then value = Layout.DefaultValue(key, id) end
         result[key] = value
     end
-    result.nativeSlotArtwork = NativeSlots(record)
+    LegacyValues(result, record)
     return result
 end
-function Layout.Read(layouts, id, global)
+function Layout.Read(layouts, id, global, slots)
     local result, failure = Layout.ReadLocal(layouts, id)
     if not result then return nil, failure end
     local ok, reason = Layout.ValidateGlobal(global)
@@ -200,9 +225,9 @@ function Layout.Read(layouts, id, global)
             if value == nil then value = Layout.DefaultValue(key, id) end
             result[key] = value
         end
-        result.columns = math.min(result.columns, Layout.SlotCount(id))
-        result.nativeSlotArtwork = NativeSlots(global)
+        LegacyValues(result, global)
     end
+    result.columns = math.min(result.columns, slots or Layout.SlotCount(id))
     return result
 end
 local function Clamp(value, minimum, maximum)
@@ -210,7 +235,7 @@ local function Clamp(value, minimum, maximum)
     if minimum > maximum then return 0 end
     return math.max(minimum, math.min(maximum, value))
 end
-function Layout.Resolve(id, record, width, height)
+function Layout.Resolve(id, record, width, height, slots)
     if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
     if record == nil then record = Layout.Read(nil, id) end
     local ok, failure = Layout.Validate(record)
@@ -219,7 +244,8 @@ function Layout.Resolve(id, record, width, height)
         return nil, "Action bar screen dimensions are unavailable."
     end
     local scale = record.scalePct / 100
-    local slots = Layout.SlotCount(id)
+    slots = slots or Layout.SlotCount(id)
+    if not Layout.Finite(slots) or slots < 1 or slots > 72 or slots ~= math.floor(slots) then return nil, "Invalid action bar slot count." end
     local columns, spacing = math.min(record.columns or slots, slots), record.spacing or 4
     local rows = math.ceil(slots / columns)
     local size = record.buttonSize or 40
@@ -231,7 +257,7 @@ function Layout.Resolve(id, record, width, height)
     local x = Clamp(record.x, -width / 2 + halfWidth, width / 2 - halfWidth)
     local y = Clamp(record.y, -height / 2 + halfHeight, height / 2 - halfHeight)
     local result = {scale = scale, x = x, y = y, anchorX = x / scale, anchorY = y / scale,
-        width = width, height = height, columns = columns, spacing = spacing,
+        width = width, height = height, count = slots, columns = columns, spacing = spacing,
         barWidth = barWidth, barHeight = barHeight, showTitle = showTitle, showHotkeys = showHotkeys, showCounts = showCounts,
         showMacroNames = record.showMacroNames ~= false, showEmptyButtons = record.showEmptyButtons ~= false,
         buttonSize = size, iconInset = record.iconInset or 4, opacityPct = record.opacityPct or 100,
@@ -242,7 +268,7 @@ function Layout.Resolve(id, record, width, height)
         result[key] = value
     end
     result.columns = columns
-    result.nativeSlotArtwork = NativeSlots(record)
+    LegacyValues(result, record)
     return result
 end
 function Layout.Capture(centerX, centerY, barScale, parentScale, parentX, parentY)

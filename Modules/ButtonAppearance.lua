@@ -3,15 +3,17 @@ local UI = Bars.UI.Components
 local Appearance = {}
 Bars.Modules.ButtonAppearance = Appearance
 local NativeLayout = Bars.Services.NativeDecorationLayout
-local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeSlotArtwork", "nativeTextureScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
+local fields = {"hoverMode", "hoverSize", "hoverBackgroundShadow", "hoverBorderShadow", "hoverBorder", "hoverBorderSize", "hoverRadius",
+    "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
+    "nativeTextureScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
 for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
 local defaultHover = "Interface\\Buttons\\ButtonHilight-Square"
-local shadowHover = "Interface\\Buttons\\UI-ActionButton-Border"
-local borderFields = {hoverMode = true, hoverSize = true, showButtonBorder = true, borderSize = true,
+local borderFields = {hoverMode = true, hoverBorder = true, hoverSize = true, hoverBorderSize = true, hoverRadius = true, showButtonBorder = true, borderSize = true,
     hoverR = true, hoverG = true, hoverB = true, hoverA = true, borderR = true, borderG = true, borderB = true, borderA = true}
-local hoverFields = {hoverMode = true, hoverSize = true, hoverR = true, hoverG = true, hoverB = true, hoverA = true}
+local hoverFields = {hoverMode = true, hoverSize = true, hoverBackgroundShadow = true, hoverBorderShadow = true,
+    hoverBorder = true, hoverBorderSize = true, hoverRadius = true, hoverR = true, hoverG = true, hoverB = true, hoverA = true}
 local sides = {"left", "right"}
 local function Style(view, drawing)
     local style = view.buttonAppearance
@@ -24,6 +26,11 @@ local function Style(view, drawing)
         local value = drawing and drawing[key]
         if value == nil then
             if key == "nativeSlotArtwork" then value = drawing and drawing.nativeTexture == true and drawing.nativeTextureBackground ~= false or false
+            elseif key == "nativeBackground" or key == "nativeBorder" then value = drawing and drawing.nativeTexture == true or false
+            elseif key == "nativeButtonScalePct" then value = drawing and drawing.nativeTextureScalePct or Bars.Services.BarLayout.DefaultValue("nativeTextureScalePct")
+            elseif key == "hoverBackgroundShadow" then value = drawing and drawing.hoverMode == "shadow" or false
+            elseif key == "hoverBorderShadow" then value = not drawing or not drawing.hoverMode or drawing.hoverMode == "default"
+            elseif key == "hoverBorder" then value = drawing and drawing.hoverMode == "border" or false
             else value = Bars.Services.BarLayout.DefaultValue(key) end
         end
         if style[key] ~= value then
@@ -35,7 +42,7 @@ local function Style(view, drawing)
     style.borderColor[1], style.borderColor[2], style.borderColor[3] = style.borderR, style.borderG, style.borderB
     style.hoverColor[1], style.hoverColor[2], style.hoverColor[3] = style.hoverR, style.hoverG, style.hoverB
     local size, inset = drawing and drawing.buttonSize or 40, drawing and drawing.iconInset or 4
-    if style.buttonSize ~= size or style.iconInset ~= inset then hoverChanged = true end
+    if style.buttonSize ~= size or style.iconInset ~= inset then hoverChanged, borderChanged = true, true end
     if drawing then
         style.width, style.height = drawing.barWidth or style.width, drawing.barHeight or style.height
     end
@@ -46,46 +53,58 @@ local function Style(view, drawing)
 end
 local function Border(button, repair)
     local style = button.bar.buttonAppearance
-    local hover = button.appearanceHovered and style.hoverMode == "border"
+    local hover = button.appearanceHovered and style.hoverBorder
     local visible = style.showButtonBorder or hover
-    local size = hover and style.hoverSize or style.borderSize
+    local size = hover and style.hoverBorderSize or style.borderSize
     local color = hover and style.hoverColor or style.borderColor
     local alpha = hover and style.hoverA or style.borderA
     if not repair and button.appearanceBorderReady and button.appearanceBorderRevision == style.borderRevision
         and button.appearanceBorderHovered == hover then return end
     button.appearanceBorderReady = false
     if visible or button.mosProjectOutline then
-        UI.SetProjectButtonOutline(button, visible, size, color)
-        button.mosProjectOutline:SetBackdropBorderColor(color[1], color[2], color[3], alpha)
+        local minimum = math.max(button:GetFrameLevel(), button.cooldown and button.cooldown:GetFrameLevel() or 0) + 1
+        UI.SetProjectButtonOutline(button, visible, size, color, nil, minimum, hover and style.hoverRadius or nil)
+        local outline = button.mosProjectOutline
+        if hover then
+            local expansion = style.hoverSize - 1
+            outline:ClearAllPoints(); outline:SetPoint("TOPLEFT", button, "TOPLEFT", -expansion, expansion)
+            outline:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", expansion, -expansion)
+            outline:SetAlpha(alpha)
+        else outline:SetBackdropBorderColor(color[1], color[2], color[3], alpha) end
     end
     button.appearanceBorderRevision, button.appearanceBorderHovered = style.borderRevision, hover
     button.appearanceBorderReady = true
 end
 local function Feedback(button, repair)
     local style, feedback = button.bar.buttonAppearance, button.hoverFeedback
-    local shown = button.appearanceHovered and style.hoverMode ~= "border"
+    local shown = button.appearanceHovered and style.hoverBorderShadow
+    local backgroundShown = button.appearanceHovered and style.hoverBackgroundShadow
     if not repair and button.appearanceHoverReady and button.appearanceHoverRevision == style.hoverRevision
-        and button.appearanceHoverShown == shown then return end
+        and button.appearanceHoverShown == shown and button.appearanceBackgroundHoverShown == backgroundShown then return end
     button.appearanceHoverReady = false
-    local shadow = style.hoverMode == "shadow"
-    feedback:SetTexture(shadow and shadowHover or defaultHover)
-    feedback:SetBlendMode(shadow and "BLEND" or "ADD")
-    local shade = shadow and 0.2 or 1
-    feedback:SetVertexColor(style.hoverR * shade, style.hoverG * shade, style.hoverB * shade, 1)
-    feedback:SetAlpha(style.hoverA)
-    feedback:ClearAllPoints()
-    if shadow then
-        local extent = style.buttonSize + style.hoverSize * 4
-        feedback:SetPoint("CENTER", button, "CENTER", 0, 0)
-        feedback:SetWidth(extent); feedback:SetHeight(extent)
-    elseif style.hoverSize == 2 then feedback:SetAllPoints(button.icon)
-    else
-        local expansion = style.hoverSize - 2
-        feedback:SetPoint("TOPLEFT", button.icon, "TOPLEFT", -expansion, expansion)
-        feedback:SetPoint("BOTTOMRIGHT", button.icon, "BOTTOMRIGHT", expansion, -expansion)
+    local savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9 = this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9
+    local background = button.backgroundHoverFeedback
+    if backgroundShown and not background then
+        background = UI.CreateTexture(button, nil, "ARTWORK"); button.backgroundHoverFeedback = background
     end
-    if shown then feedback:Show() else feedback:Hide() end
+    local failure
+    if background then
+        if repair and background.mosRoundedHover then background.mosRoundedHover.ready = false end
+        local ok, reason = pcall(UI.SetRoundedHoverSurface, button, background, backgroundShown, "background",
+            style.buttonSize * style.hoverSize / 5, style.hoverRadius,
+            style.hoverR, style.hoverG, style.hoverB, style.hoverA)
+        if not ok then failure = tostring(reason) end
+    end
+    this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
+    if repair and feedback.mosRoundedHover then feedback.mosRoundedHover.ready = false end
+    local ok, reason = pcall(UI.SetRoundedHoverSurface, button, feedback, shown, "shadow",
+        style.buttonSize + 2 * (style.hoverSize - 1), style.hoverRadius,
+        style.hoverR, style.hoverG, style.hoverB, style.hoverA)
+    if not ok then failure = failure or tostring(reason) end
+    this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
+    if failure then error(failure) end
     button.appearanceHoverRevision, button.appearanceHoverShown = style.hoverRevision, shown
+    button.appearanceBackgroundHoverShown = backgroundShown
     button.appearanceHoverReady = true
 end
 function Appearance.ApplyColor(button, data, repair)
@@ -110,13 +129,19 @@ function Appearance.ApplyColor(button, data, repair)
 end
 function Appearance.Hover(button, enabled)
     button.appearanceHovered = enabled == true
-    Border(button); Feedback(button)
+    local savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9 = this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9
+    local ok, reason = pcall(Border, button)
+    local painted, failure = pcall(Feedback, button)
+    this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
+    if not ok then error(reason) elseif not painted then error(failure) end
 end
 function Appearance.InitializeButton(button)
     if not button.bar.buttonAppearance then Style(button.bar) end
     UI.ApplyDropdownChoiceSurface(button)
     button:SetBackdropBorderColor(0, 0, 0, 0)
     button.hoverFeedback = UI.CreateTexture(button, nil, "OVERLAY")
+    button.hoverFeedback:SetTexture(defaultHover); button.hoverFeedback:SetBlendMode("ADD")
+    button.hoverFeedback:SetAllPoints(button.icon)
     button.appearanceHovered = false
     Border(button, true); Feedback(button, true)
     button.appearanceBackground = true
@@ -176,13 +201,13 @@ local function Piece(view, scene, kind, index, repair, cleanup)
     if kind == "tile" then
         shown = scene.slotArtwork and index <= scene.count
         texture = art.panels[index]
-        parent = view.buttons[index]
+        parent = (view.layoutButtons or view.buttons)[index]
         x, y, width, height, left, right, top, bottom = NativeLayout.Tile(scene, index)
     elseif kind == "edge" then
-        shown, texture = scene.nativeTexture, art.edges[index]
+        shown, texture = scene.nativeBorder, art.edges[index]
         x, y, width, height, left, right, top, bottom = NativeLayout.Edge(scene, index)
     elseif kind == "backing" then
-        shown, texture = scene.nativeTexture and index <= scene.backingCount, art.backings[index]
+        shown, texture = scene.nativeBackground and index <= scene.backingCount, art.backings[index]
         x, y, width, height, left, right, top, bottom, rotated = NativeLayout.Backing(scene, index)
     else
         side = sides[index]
@@ -272,16 +297,20 @@ local function DrawScene(view, scene, repair, cleanup)
 end
 local function Decorations(view, style, repair)
     local art = view.buttonDecorations
-    if not art and not style.nativeTexture and not style.nativeSlotArtwork and style.gryphons == "none" then return end
+    local mergedChild = view.mergeHost ~= nil and view.mergeHost ~= view
+    if not art and (mergedChild or not style.nativeBackground and not style.nativeBorder and not style.nativeSlotArtwork and style.gryphons == "none") then return end
+    local buttons = view.layoutButtons or view.buttons
     if not art then
         art = {panels = {}, edges = {}, backings = {}, current = {}, committed = {}, off = {}}
         view.buttonDecorations = art
-        NativeLayout.Resolve({nativeTexture = false, gryphons = "none"}, table.getn(view.buttons), art.off)
+        NativeLayout.Resolve({nativeTexture = false, nativeBackground = false, nativeBorder = false, nativeSlotArtwork = false, gryphons = "none"}, table.getn(buttons), art.off)
     end
-    local scene = NativeLayout.Resolve(style, table.getn(view.buttons), art.current)
+    local scene
+    if mergedChild then scene = NativeLayout.Copy(art.off, art.current)
+    else scene = NativeLayout.Resolve(style, table.getn(buttons), art.current) end
     if scene.gryphons ~= "none" then
         scene.strata, scene.level = view.frame:GetFrameStrata(), view.frame:GetFrameLevel()
-        for _, button in ipairs(view.buttons) do
+        for _, button in ipairs(buttons) do
             scene.level = math.max(scene.level, button:GetFrameLevel(), button.cooldown:GetFrameLevel())
         end
         scene.level = scene.level + 1
@@ -303,7 +332,7 @@ local function Decorations(view, style, repair)
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     CommitPaint(view, scene); NativeLayout.Copy(scene, art.committed); art.ready, art.hasCommitted = true, true
 end
-function Appearance.ApplyView(view, drawing, repair)
+local function ApplyView(view, drawing, repair)
     local style = Style(view, drawing)
     for _, button in ipairs(view.buttons) do
         if repair or button.appearanceBackground ~= style.buttonBackground then
@@ -315,5 +344,12 @@ function Appearance.ApplyView(view, drawing, repair)
         if button.appearanceHasState then Appearance.ApplyColor(button, button.rendered, repair) end
     end
     Decorations(view, style, repair)
+    return true
+end
+function Appearance.ApplyView(view, drawing, repair)
+    local savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9 = this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9
+    local ok, reason = pcall(ApplyView, view, drawing, repair)
+    this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
+    if not ok then error(reason) end
     return true
 end
