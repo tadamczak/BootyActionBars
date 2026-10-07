@@ -165,6 +165,17 @@ function ActionService.Create(api)
         return true
     end
 
+    function service.ReadCursorGrid()
+        -- The 1.12 client maintains this counter even while the native bar is
+        -- hidden. Seed missed SHOWGRID/HIDEGRID events when BAB resumes during
+        -- a cursor gesture; reading the counter never takes native ownership.
+        local button = api.ActionButton1
+        if type(button) ~= "table" then return 0 end
+        local depth = button.showgrid
+        if type(depth) ~= "number" or depth ~= depth or depth < 0 or depth >= 1e300 or depth ~= floor(depth) then return 0 end
+        return depth
+    end
+
     function service.GetBindingKeys(index, barId)
         if not ValidIndex(index, 12) then return nil, nil, "invalid-button" end
         if barId ~= nil and (not ValidIndex(barId, 6) or barId < 2) then return nil, nil, "invalid-bar" end

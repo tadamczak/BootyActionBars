@@ -691,7 +691,7 @@ local function DrawGrid()
     end
     if not grid.ready then
         grid.frame:Hide(); grid.frame:SetAllPoints(UIParent); grid.frame:EnableMouse(false)
-        grid.frame:SetFrameStrata("HIGH"); grid.frame:SetFrameLevel(1)
+        grid.frame:SetFrameStrata("BACKGROUND"); grid.frame:SetFrameLevel(1)
         grid.ready = true
     end
     if grid.width ~= context.width or grid.height ~= context.height or grid.scale ~= context.scale then
@@ -813,6 +813,11 @@ ContextEvent = function()
     local ok, failure = CancelAll()
     state.context = context
     local synced, reason = Editor.Sync()
+    local utilities = Bars.Modules.NativeUtilityBars
+    if utilities then
+        local updated, detail = Try(utilities.OnContextChanged)
+        if not updated and synced then synced, reason = false, detail end
+    end
     if not ok then Report(failure) elseif not synced then Report(reason) end
 end
 function Editor.OnActivity(active)

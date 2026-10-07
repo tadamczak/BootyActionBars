@@ -8,16 +8,17 @@ function Appearance.Create(parent, context)
     local function Complete(ok, failure) return context.Complete(ok, failure) end
     local function Row(height)
         local row = UI.CreateContainer(nil, parent); row:SetHeight(height)
+        row.mosTextSizeDelta = math.min(-2, UI.GetTextSizeDelta(parent))
         table.insert(view.rows, row); return row
     end
     local function Section(text)
-        local row = Row(30)
+        local row = Row(24)
         row.kind, row.control = "heading", UI.CreateHeading(row, text, 3, "gold")
-        row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -4); row.control:SetHeight(20)
+        row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3); row.control:SetHeight(16)
     end
     local function Slider(key, caption, low, high, getter, setter)
-        local row = Row(58)
-        local control = UI.Settings.CreateSlider(row, "BootyActionBarsAppearance" .. key, 0, -18,
+        local row = Row(44)
+        local control = UI.Settings.CreateSlider(row, "BootyActionBarsAppearance" .. key, 0, -15,
             caption, key, low, high, nil, {ensure = function() end,
                 get = getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end,
                 set = function(_, value) Complete((setter or function(item) return context.SetPreference(key, item) end)(value)) end})
@@ -30,12 +31,13 @@ function Appearance.Create(parent, context)
             {ensure = function() end, get = function() local layout = context.GetLayout(); return layout and layout[key] == true end,
                 set = function(_, value) Complete(context.SetPreference(key, value)) end})
         row.kind, row.control, row.key = "check", control, key; view.checks[key] = control
+        return control
     end
     local function Choice(key, caption, options)
-        local row = Row(56)
+        local row = Row(46)
         local label = UI.CreateComponentLabel(row, caption, "white")
-        label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0); label:SetHeight(18)
-        local _, control = UI.CreateChoiceField({parent = row, x = 0, y = -22, label = "", initialText = options[1].text,
+        label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0); label:SetHeight(14)
+        local _, control = UI.CreateChoiceField({parent = row, x = 0, y = -18, label = "", initialText = options[1].text,
             width = 180, height = table.getn(options) * 22 + 14, firstY = -7, step = 22, buttonOffset = 0,
             labelValue = true, choices = options, getValue = function() local layout = context.GetLayout(); return layout and layout[key] end,
             onSelect = function(value) Complete(context.SetPreference(key, value)) end,
@@ -69,7 +71,7 @@ function Appearance.Create(parent, context)
         return ok, failure
     end
     local function Color(group, caption)
-        local row = Row(30)
+        local row = Row(26)
         local control
         control = UI.Settings.CreateColor(row, 0, 0, caption, group, function()
             view:Refresh(context.GetLayout())
@@ -144,6 +146,9 @@ function Appearance.Create(parent, context)
     Slider("cooldownFontSize", "Font size", 8, 32)
     Section("Decoration")
     Checkbox("nativeTexture", "Native menu texture")
+    Slider("nativeTextureScalePct", "Texture scale (%)", 50, 200)
+    local nativeBackground = Checkbox("nativeTextureBackground", "Native slot artwork")
+    UI.AttachTooltip(nativeBackground, "Native slot artwork", "Show the recessed squares in the native menu texture, behind both occupied and empty buttons. Turn off to keep only its outer edge.")
     Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
         {value = "right", text = "Right"}, {value = "both", text = "Both"}})
     function view:Refresh(layout)

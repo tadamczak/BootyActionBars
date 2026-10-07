@@ -3,6 +3,7 @@ local Runtime = {}
 Bars.Core.Runtime = Runtime
 local state = {initialized = false, stopped = false, batchDepth = 0}
 local nativeEvents = {"ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORMS", "ADDON_LOADED"}
+local hiddenNativeBars = {[3] = true, [4] = true, [5] = true, [6] = true}
 local function RefreshView()
     if state.view then state.view:Refresh() end
 end
@@ -50,6 +51,11 @@ local function AbortNative(failure)
     if state.store then state.store.nativeMainBarEnabled = false end
     UnsubscribeNative()
     local restored, reason = ReleaseNative()
+    local utilities = Bars.Modules.NativeUtilityBars
+    if utilities then
+        local released, detail = CallLifecycle(utilities.Release)
+        if not released then restored, reason = false, tostring(reason or "") .. " Utilities: " .. tostring(detail) end
+    end
     if not restored and tostring(reason) ~= tostring(failure) then
         failure = tostring(failure) .. " Restoration: " .. tostring(reason)
     end
@@ -64,13 +70,13 @@ local function NativeLeaseFailure(failure)
 end
 local function NativeRequested()
     local store = state.store
-    return store ~= nil and not state.stopped and store.trialBarEnabled == true
-        and store.nativeMainBarEnabled == true and Bars.Core.Engine.GetState().active == true
+    return store ~= nil and not state.stopped and store.nativeMainBarEnabled == true
 end
 local function SyncNativeSpecial(pet, stance)
     local controller = Bars.Modules.NativeSpecialBars
     if not controller then return true end
-    local ok, failure = CallLifecycle(controller.Sync, NativeRequested(), pet == true, stance == true)
+    local requested = NativeRequested()
+    local ok, failure = CallLifecycle(controller.Sync, requested, requested, requested)
     if not ok then return AbortNative(failure) end
     return true
 end
@@ -83,12 +89,22 @@ local function SpecialVisibilityChanged(pet, stance)
 end
 local SyncNative
 local function NativeEvent()
-    -- Native ownership follows live BAB identities, independently of their
-    -- mapped source. Engine's own subscriber reads/remaps each event once.
+    -- Stock events may show native frames again; the independent master switch
+    -- retains their visibility lease without reading BAB action mappings.
     SyncNative(); RefreshView()
 end
 SyncNative = function()
+    state.utilityFailure = nil
     local controller = Bars.Modules.NativeBar
+    local utilities = Bars.Modules.NativeUtilityBars
+    if utilities then
+        local configured, failure = CallLifecycle(utilities.Configure, state.store)
+        if not configured then state.utilityFailure = failure; return AbortNative(failure) end
+        local active = not state.stopped and state.store and state.store.trialBarEnabled == true
+            and Bars.Core.Engine.GetState().active == true
+        local ok, reason = CallLifecycle(utilities.Sync, active == true, NativeRequested())
+        if not ok then state.utilityFailure = reason; return AbortNative(reason) end
+    end
     if not NativeRequested() then
         UnsubscribeNative()
         local ok, failure = ReleaseNative()
@@ -97,29 +113,16 @@ SyncNative = function()
     end
     local safe, reason = CallLifecycle(Bars.Services.NativeBarPolicy.CheckCompeting)
     if not safe then return AbortNative(reason) end
-    -- Capture the settled live identities, not their redirected source slots.
-    -- Native parents, animation, options and keyboard dispatch keep ownership.
-    local previousThis, previousEvent, previousArg = this, event, arg1
-    local read, mainVisible, customVisible = pcall(Bars.Core.Engine.GetLiveVisibility)
-    this, event, arg1 = previousThis, previousEvent, previousArg
-    if not read then return AbortNative(mainVisible) end
-    local acquired, acquireFailure = CallLifecycle(controller.Sync, mainVisible, customVisible)
+    -- The two master switches are independent, including both sets hidden.
+    -- Hiding a BAB identity never releases a requested native visibility lease.
+    local acquired, acquireFailure = CallLifecycle(controller.Sync, true, hiddenNativeBars)
     if not acquired then return AbortNative(acquireFailure) end
     local artwork = Bars.Modules.NativeArtwork
     if artwork then
-        acquired, acquireFailure = CallLifecycle(artwork.Sync, controller.GetState().mainActive == true)
+        acquired, acquireFailure = CallLifecycle(artwork.Sync, true)
         if not acquired then return AbortNative(acquireFailure) end
     end
-    local special = Bars.Modules.SpecialBars
-    local pet, stance = false, false
-    if special and special.GetLiveVisibility then
-        local previousThis, previousEvent, previousArg = this, event, arg1
-        local read
-        read, pet, stance = pcall(special.GetLiveVisibility)
-        this, event, arg1 = previousThis, previousEvent, previousArg
-        if not read then return AbortNative(pet) end
-    end
-    local specialOK, specialFailure = SyncNativeSpecial(pet, stance)
+    local specialOK, specialFailure = SyncNativeSpecial(true, true)
     if not specialOK then return false, specialFailure end
     if not NativeRequested() then
         return AbortNative("Native replacement was cancelled while changing visibility.")
@@ -148,11 +151,16 @@ local function EngineActivity(active)
     local specialOK, specialFailure = CallLifecycle(SyncSpecial, active)
     local nativeOK, nativeFailure = CallLifecycle(SyncNative)
     local editorOK, editorFailure = CallLifecycle(Bars.Modules.Editor.OnActivity, active)
+    local utilities = Bars.Modules.NativeUtilityBars
+    if utilities and not active then
+        local ended, reason = CallLifecycle(utilities.SetEditing, false, false)
+        if not ended and editorOK then editorOK, editorFailure = false, reason end
+    end
     if not specialOK then return false, specialFailure end
     if not editorOK then return false, editorFailure end
     -- A rejected native lease is already reported and leaves valid trial bars
     -- usable. Restoration errors still fail inactive cleanup.
-    if not nativeOK and not active then return false, nativeFailure end
+    if not nativeOK and (not active or state.utilityFailure) then return false, nativeFailure end
     return true
 end
 local function SyncEngine()
@@ -190,7 +198,11 @@ local function SyncEngine()
             return false, reason
         end
     end
-    if state.stopped or not store.trialBarEnabled then return Bars.Core.Engine.Disable() end
+    if state.stopped or not store.trialBarEnabled then
+        local ok, reason = Bars.Core.Engine.Disable()
+        if not ok then return false, reason end
+        return SyncNative()
+    end
     local ok, failure = Bars.Core.Engine.Enable(store.customBars)
     if not ok then
         store.trialBarEnabled = false
@@ -203,7 +215,8 @@ local function SyncEngine()
             Bars.Core.Engine.Disable()
             return false, specialFailure
         end
-        SyncNative()
+        local nativeOK, nativeFailure = SyncNative()
+        if not nativeOK and state.utilityFailure then return false, nativeFailure end
         local applied, reason = CallLifecycle(Bars.Modules.Editor.OnActivity, Bars.Core.Engine.GetState().active)
         if not applied then
             store.trialBarEnabled = false
@@ -221,12 +234,14 @@ function Runtime.Initialize()
     if not store then state.failure = failure; return false, failure end
     state.initialized, state.failure = true, nil
     state.store = store
-    if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
     if Bars.Modules.NativeBar.SetFailureObserver then
         Bars.Modules.NativeBar.SetFailureObserver(NativeLeaseFailure)
     end
     if Bars.Modules.NativeSpecialBars and Bars.Modules.NativeSpecialBars.SetFailureObserver then
         Bars.Modules.NativeSpecialBars.SetFailureObserver(NativeLeaseFailure)
+    end
+    if Bars.Modules.NativeUtilityBars and Bars.Modules.NativeUtilityBars.SetFailureObserver then
+        Bars.Modules.NativeUtilityBars.SetFailureObserver(NativeLeaseFailure)
     end
     if Bars.Modules.SpecialBars and Bars.Modules.SpecialBars.SetVisibilityObserver then
         Bars.Modules.SpecialBars.SetVisibilityObserver(SpecialVisibilityChanged)
@@ -284,6 +299,8 @@ end
 function Runtime.Stop()
     state.stopped = true
     local ok, failure = Bars.Core.Engine.Disable()
+    local restored, reason = CallLifecycle(SyncNative)
+    if not restored then ok, failure = false, failure and tostring(failure) .. "; " .. tostring(reason) or reason end
     if state.view then state.view:Hide() end
     return ok, failure
 end
@@ -303,7 +320,6 @@ function Runtime.SetTrialEnabled(value)
     local store = Bars.Database.Ensure()
     if not store then return false, "BootyActionBars settings are unavailable." end
     store.trialBarEnabled = value == true
-    if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
     local ok, failure = SyncEngine()
     if state.view then state.view:Refresh() end
     return ok, failure
@@ -314,11 +330,6 @@ function Runtime.SetNativeEnabled(value)
     local store = Bars.Database.Ensure()
     if not store then return false, "BootyActionBars settings are unavailable." end
     state.store = store
-    if value == true and (not store.trialBarEnabled or not Bars.Core.Engine.GetState().active) then
-        store.nativeMainBarEnabled = false
-        RefreshView()
-        return NativeFailure("Enable BootyActionBars before hiding native buttons.")
-    end
     store.nativeMainBarEnabled = value == true
     local ok, failure = SyncNative()
     if ok and value ~= true then state.nativeFailure = nil end
@@ -383,6 +394,39 @@ function Runtime.SetEditEnabled(enabled)
         end
         ok, failure = Bars.Modules.Editor.Begin()
     else ok, failure = Bars.Modules.Editor.End() end
+    local utilities = Bars.Modules.NativeUtilityBars
+    if utilities then
+        local editing = ok and enabled == true
+        local anchors = state.store and state.store.editorOptions and state.store.editorOptions.showAnchors == true
+        local applied, reason = CallLifecycle(utilities.SetEditing, editing, anchors == true)
+        if not applied then
+            local ended, detail = CallLifecycle(Bars.Modules.Editor.End)
+            ok, failure = false, reason
+            if not ended then failure = tostring(failure) .. " Editor cleanup: " .. tostring(detail) end
+        end
+    end
+    RefreshView()
+    return ok, failure
+end
+
+function Runtime.GetUtilityLayout(id)
+    local store, failure = Bars.Database.Ensure()
+    if not store then return nil, failure end
+    return Bars.Services.UtilityLayout.Read(store.utilityLayouts, id)
+end
+function Runtime.SetUtilityPreference(id, key, value)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local utilities = Bars.Modules.NativeUtilityBars
+    if not utilities then return false, "Utility bars are unavailable." end
+    local ok, failure = CallLifecycle(utilities.SetPreference, id, key, value)
+    RefreshView()
+    return ok, failure
+end
+function Runtime.ResetUtilityLayout(id)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local utilities = Bars.Modules.NativeUtilityBars
+    if not utilities then return false, "Utility bars are unavailable." end
+    local ok, failure = CallLifecycle(utilities.Reset, id)
     RefreshView()
     return ok, failure
 end
@@ -449,6 +493,16 @@ function Runtime.SetEditorOption(key, value)
     if ok then
         if not store.editorOptions then store.editorOptions = {} end
         store.editorOptions[key] = value and true or nil
+    end
+    if ok and key == "showAnchors" and Bars.Modules.NativeUtilityBars then
+        ok, reason = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, Runtime.IsEditing(), value)
+        if not ok then
+            store.editorOptions[key] = previous
+            local restored, detail = CallLifecycle(setter, previous == true)
+            if not restored then reason = tostring(reason) .. " Restoration: " .. tostring(detail) end
+            restored, detail = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, Runtime.IsEditing(), previous == true)
+            if not restored then reason = tostring(reason) .. " Utility restoration: " .. tostring(detail) end
+        end
     end
     RefreshView()
     return ok, reason
@@ -620,6 +674,11 @@ local function OwnsBehaviors(store, reference, snapshot)
     local valid = Bars.Services.BehaviorService.Validate(current)
     return valid and Bars.Services.BehaviorService.Equal(current, snapshot)
 end
+local function OwnsUtilities(store, reference, snapshot)
+    if store.utilityLayouts ~= reference then return false end
+    local service = Bars.Services.UtilityLayout
+    return not service or service.Validate(reference) and service.Equal(reference, snapshot)
+end
 local function ApplyLayoutSnapshot(snapshot)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     local store, failure = Bars.Database.Ensure()
@@ -628,19 +687,26 @@ local function ApplyLayoutSnapshot(snapshot)
     if not prepared then return false, reason end
     local ended, endFailure = Bars.Modules.Editor.End()
     if not ended then return false, endFailure end
+    if Bars.Modules.NativeUtilityBars then
+        ended, endFailure = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, false, false)
+        if not ended then return false, endFailure end
+    end
     if Bars.Modules.BindingEditor then
         ended, endFailure = Bars.Modules.BindingEditor.Cancel()
         if not ended then return false, endFailure end
     end
     local oldLayouts, oldCustom, oldSpecial = store.barLayouts, store.customBars, store.specialBars
     local oldGlobal, oldMain = store.globalLayout, store.mainBarShown
-    local oldBehaviors = store.barBehaviors
+    local oldBehaviors, oldUtilities = store.barBehaviors, store.utilityLayouts
+    local utilityValues = Bars.Services.UtilityLayout and Bars.Services.UtilityLayout.Copy(oldUtilities)
+    local preparedUtilities = prepared.replaceUtilities and Bars.Services.UtilityLayout.Copy(prepared.utilityLayouts) or nil
     local oldBehaviorValues = Bars.Services.BehaviorService.Copy(oldBehaviors)
     local preparedBehaviors = prepared.replaceBehaviors and Bars.Services.BehaviorService.Copy(prepared.barBehaviors) or nil
     local enabled = store.trialBarEnabled
     local stopped, stopFailure = CallLifecycle(Bars.Core.Engine.Disable)
     if not stopped then return false, stopFailure end
-    if BootyActionBarsDB ~= store or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues) then
+    if BootyActionBarsDB ~= store or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues)
+        or not OwnsUtilities(store, oldUtilities, utilityValues) then
         local restored, restoration = CallLifecycle(SyncEngine)
         local ownershipFailure = "Layout settings ownership changed before loading."
         if not restored then ownershipFailure = ownershipFailure .. " Resynchronization: " .. tostring(restoration) end
@@ -650,6 +716,7 @@ local function ApplyLayoutSnapshot(snapshot)
     if prepared.replaceGlobal then store.globalLayout = prepared.globalLayout end
     if prepared.mainBarShown ~= nil then store.mainBarShown = prepared.mainBarShown end
     if prepared.replaceBehaviors then store.barBehaviors = prepared.barBehaviors end
+    if prepared.replaceUtilities then store.utilityLayouts = prepared.utilityLayouts end
     Bars.Core.Engine.MarkLayoutChanged()
     local ok, message = CallLifecycle(SyncEngine)
     local owned = BootyActionBarsDB == store and store.barLayouts == prepared.barLayouts
@@ -657,6 +724,7 @@ local function ApplyLayoutSnapshot(snapshot)
         and (not prepared.replaceGlobal or store.globalLayout == prepared.globalLayout)
         and (prepared.mainBarShown == nil or store.mainBarShown == prepared.mainBarShown)
         and (not prepared.replaceBehaviors or OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors))
+        and (not prepared.replaceUtilities or OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities))
     if ok and owned then return true end
     local firstFailure = message or "Layout settings ownership changed while loading."
     local cleaned, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
@@ -668,6 +736,7 @@ local function ApplyLayoutSnapshot(snapshot)
         if prepared.replaceGlobal and store.globalLayout == prepared.globalLayout then store.globalLayout = oldGlobal end
         if prepared.mainBarShown ~= nil and store.mainBarShown == prepared.mainBarShown then store.mainBarShown = oldMain end
         if prepared.replaceBehaviors and OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors) then store.barBehaviors = oldBehaviors end
+        if prepared.replaceUtilities and OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities) then store.utilityLayouts = oldUtilities end
         -- Keep native ownership refusals; a profile must not undo conflict policy.
         store.trialBarEnabled = enabled
         local restored, restoreFailure = CallLifecycle(SyncEngine)

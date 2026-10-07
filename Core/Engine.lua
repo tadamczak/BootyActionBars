@@ -9,7 +9,8 @@ local events = {"PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_UP
     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_STATE", "PLAYER_TARGET_CHANGED", "PLAYER_AURAS_CHANGED",
     "UNIT_INVENTORY_CHANGED", "UPDATE_INVENTORY_ALERTS", "BAG_UPDATE", "UPDATE_BINDINGS", "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT",
     "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL", "CRAFT_SHOW", "CRAFT_CLOSE", "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE",
-    "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORMS", "ADDON_LOADED"}
+    "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORMS", "ADDON_LOADED",
+    "ACTIONBAR_SHOWGRID", "ACTIONBAR_HIDEGRID"}
 local pageEvents = {ACTIONBAR_PAGE_CHANGED = true, UPDATE_BONUS_ACTIONBAR = true, UPDATE_SHAPESHIFT_FORMS = true}
 local behaviorEvents = {PLAYER_ENTERING_WORLD = true, PLAYER_AURAS_CHANGED = true,
     ACTIONBAR_PAGE_CHANGED = true, UPDATE_BONUS_ACTIONBAR = true, UPDATE_SHAPESHIFT_FORMS = true,
@@ -351,6 +352,7 @@ local function Unsubscribe()
     if not state.subscribed then return end
     for _, name in ipairs(events) do BootyLib.Unsubscribe(name, Engine) end
     state.subscribed = false
+    state.cursorGridDepth = 0
 end
 local function ActivityChanged()
     -- Runtime may synchronize native leases here before the outer visibility
@@ -363,10 +365,14 @@ local function PrepareDisplay(view)
     -- Apply saved visibility before page text, forced action reads and binding
     -- formatting, including reactivation of an already pooled hidden view.
     local editor = Bars.Modules.Editor
-    if not editor then return true end
-    local layout, failure = editor.GetLayout(view.id)
-    if not layout then return false, failure end
-    return view:SetDisplay(layout)
+    if editor then
+        local layout, failure = editor.GetLayout(view.id)
+        if not layout then return false, failure end
+        local ok, reason = view:SetDisplay(layout)
+        if ok == false then return false, reason end
+    end
+    if view.SetCursorGrid then return view:SetCursorGrid((state.cursorGridDepth or 0) > 0) end
+    return true
 end
 local function HideView(view)
     local firstFailure
@@ -648,6 +654,24 @@ function Engine.MacroEvent(slot)
 end
 function Engine.HandleEvent(name, unit)
     if not state.active then return end
+    if name == "ACTIONBAR_SHOWGRID" or name == "ACTIONBAR_HIDEGRID" then
+        -- Vanilla sends a balanced grid request for action, spell, item and
+        -- macro cursor gestures. Reveal the existing drop targets without a
+        -- cursor timer or rebuilding actions on every mouse movement.
+        local before = state.cursorGridDepth or 0
+        local depth = math.max(0, before + (name == "ACTIONBAR_SHOWGRID" and 1 or -1))
+        state.cursorGridDepth = depth
+        if (before > 0) ~= (depth > 0) then
+            for barId = 1, 6 do
+                local view = state.views[barId]
+                if IsActive(barId) and view.SetCursorGrid then
+                    local ok, failure = ProtectedCall(view.SetCursorGrid, view, depth > 0)
+                    if not ok then Engine.Disable(); Report(failure); return end
+                end
+            end
+        end
+        return
+    end
     if name == "BOOTY_ACTIONBARS_MACRO_UPDATE" and ((state.readingDepth or 0) > 0 or state.mappingUpdating) then
         if type(unit) == "number" and unit >= 1 and unit <= 120 and unit == math.floor(unit) then
             state.macroDirty[unit] = true
@@ -708,15 +732,27 @@ end
 local function Event() Engine.HandleEvent(event, arg1) end
 local function Subscribe()
     if state.subscribed then return end
+    if state.service.ReadCursorGrid then state.cursorGridDepth = state.service.ReadCursorGrid() end
     for _, name in ipairs(events) do BootyLib.Subscribe(name, Engine, Event) end
     state.subscribed = true
+    if (state.cursorGridDepth or 0) > 0 then
+        for barId = 1, 6 do
+            local view = state.views[barId]
+            if IsActive(barId) and view.SetCursorGrid then
+                local ok, failure = ProtectedCall(view.SetCursorGrid, view, true)
+                if not ok then return false, failure end
+            end
+        end
+    end
+    return true
 end
 local function SyncSubscriptions()
     local configured, reason = SyncBehaviorDemand()
     if not configured then return false, reason end
     local wanted = state.active and (state.mainActive or state.customActiveCount > 0)
     if wanted then
-        Subscribe()
+        local subscribed, failure = Subscribe()
+        if subscribed == false then return false, failure end
         if not state.macroEnabled and state.service.EnableMacroEvents then
             local ok, failure = ProtectedCall(state.service.EnableMacroEvents, Engine.MacroEvent)
             if not ok then return false, failure end

@@ -36,6 +36,10 @@ local function Defaults(store)
     end
     valid, failure = EditorOptions(store.editorOptions)
     if not valid then error(failure) end
+    if Bars.Services.UtilityLayout then
+        valid, failure = Bars.Services.UtilityLayout.Validate(store.utilityLayouts)
+        if not valid then error(failure) end
+    end
     store.schemaVersion = Database.SCHEMA_VERSION
     if type(store.hideMinimapIcon) ~= "boolean" then store.hideMinimapIcon = false end
     if type(store.trialBarEnabled) ~= "boolean" then store.trialBarEnabled = false end
@@ -48,6 +52,7 @@ local function Defaults(store)
     if store.mainBarShown == nil then store.mainBarShown = true end
     if store.layoutProfiles == nil then store.layoutProfiles = {} end
     if store.editorOptions == nil then store.editorOptions = {} end
+    if store.utilityLayouts == nil then store.utilityLayouts = {} end
     if type(store.presentation) ~= "table" then store.presentation = {} end
     if type(store.presentation.windows) ~= "table" then store.presentation.windows = {} end
     if type(store.presentation.minimap) ~= "table" then store.presentation.minimap = {angle = 270} end
@@ -87,6 +92,10 @@ function Database.Ensure()
         end
         valid, failure = EditorOptions(store.editorOptions)
         if not valid then return nil, failure end
+        if Bars.Services.UtilityLayout then
+            valid, failure = Bars.Services.UtilityLayout.Validate(store.utilityLayouts)
+            if not valid then return nil, failure end
+        end
     end
     return BootyLib.Data.Ensure("actionbars")
 end

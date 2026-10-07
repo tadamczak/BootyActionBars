@@ -35,7 +35,7 @@ function Profiles.Validate(profile)
     if type(profile) ~= "table" or (profile.version ~= 1 and profile.version ~= Profiles.VERSION) then return false, "Unsupported action bar layout profile." end
     for key in pairs(profile) do
         if key ~= "version" and key ~= "barLayouts" and key ~= "customBars" and key ~= "specialBars"
-            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown" or key == "barBehaviors")) then return false, "Unexpected layout profile data." end
+            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown" or key == "barBehaviors" or key == "utilityLayouts")) then return false, "Unexpected layout profile data." end
     end
     local ok, failure = Bars.Services.BarConfig.Validate(profile.customBars)
     if not ok then return false, failure end
@@ -45,6 +45,11 @@ function Profiles.Validate(profile)
     if profile.version == 2 then
         ok, failure = Behavior.Validate(profile.barBehaviors)
         if not ok then return false, failure end
+        if profile.utilityLayouts ~= nil then
+            if not Bars.Services.UtilityLayout then return false, "Utility-bar layouts are unavailable." end
+            ok, failure = Bars.Services.UtilityLayout.Validate(profile.utilityLayouts)
+            if not ok then return false, failure end
+        end
     end
     ok, failure = Bars.Services.BarLayout.ValidateLayouts(profile.barLayouts)
     if not ok then return false, failure end
@@ -88,6 +93,10 @@ function Profiles.Capture(store)
     local result = {version = Profiles.VERSION, barLayouts = {}, customBars = Flags(store.customBars), specialBars = Flags(store.specialBars),
         globalLayout = GlobalCopy(store.globalLayout), mainBarShown = store.mainBarShown ~= false,
         barBehaviors = Behavior.Copy(store.barBehaviors)}
+    if Bars.Services.UtilityLayout then
+        result.utilityLayouts, failure = Bars.Services.UtilityLayout.Copy(store.utilityLayouts)
+        if not result.utilityLayouts then return nil, failure end
+    end
     for id = 1, 8 do
         local record, reason = Bars.Services.BarLayout.ReadLocal(store.barLayouts, id)
         if not record then return nil, reason end
@@ -106,6 +115,11 @@ function Profiles.Prepare(profile, existingLayouts, existingGlobal, existingBeha
     if not ok then return nil, failure end
     local result = {barLayouts = {}, customBars = Flags(profile.customBars), specialBars = Flags(profile.specialBars),
         replaceGlobal = profile.version == 2, replaceBehaviors = profile.version == 2 and profile.barBehaviors ~= nil}
+    if profile.version == 2 and profile.utilityLayouts ~= nil then
+        result.utilityLayouts, failure = Bars.Services.UtilityLayout.Copy(profile.utilityLayouts)
+        if not result.utilityLayouts then return nil, failure end
+        result.replaceUtilities = true
+    end
     if result.replaceBehaviors then result.barBehaviors = Behavior.Copy(profile.barBehaviors) end
     if profile.version == 2 then
         result.globalLayout = GlobalCopy(profile.globalLayout, existingGlobal)
