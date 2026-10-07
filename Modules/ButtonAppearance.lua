@@ -2,24 +2,11 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Appearance = {}
 Bars.Modules.ButtonAppearance = Appearance
-local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeTextureBackground", "nativeTextureScalePct", "gryphons"}
+local NativeLayout = Bars.Services.NativeDecorationLayout
+local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeTextureBackground", "nativeTextureScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
 for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
--- Stock 1.12 uses a 256x256 atlas for a 1024x43 menu. Keep the
--- 512x43 action section and close its right edge with the stock end cap.
--- Entries are x,y,width,height,left,right,top,bottom in native pixels/UV.
-local slices = {{0, 0, 256, 43, 0, 1, 213 / 256, 1},
-    {256, 0, 247, 43, 0, 247 / 256, 149 / 256, 192 / 256},
-    {503, 0, 9, 43, 246 / 256, 255 / 256, 21 / 256, 64 / 256}}
-local edges = {}
-for _, slice in ipairs(slices) do
-    table.insert(edges, {slice[1], 40, slice[3], 3, slice[5], slice[6], slice[7], slice[7] + 3 / 256})
-    table.insert(edges, {slice[1], 0, slice[3], 4, slice[5], slice[6], slice[8] - 4 / 256, slice[8]})
-end
--- Buttons occupy x8..506,y4..40. Exclude their complete recessed squares.
-table.insert(edges, {0, 4, 8, 36, 0, 8 / 256, 216 / 256, 252 / 256})
-table.insert(edges, {506, 4, 6, 36, 249 / 256, 255 / 256, 24 / 256, 60 / 256})
 local defaultHover = "Interface\\Buttons\\ButtonHilight-Square"
 local shadowHover = "Interface\\Buttons\\UI-ActionButton-Border"
 local borderFields = {hoverMode = true, hoverSize = true, showButtonBorder = true, borderSize = true,
@@ -133,69 +120,177 @@ function Appearance.InitializeButton(button)
     return true
 end
 local function ShowArt(texture, shown, repair)
-    if repair or texture.appearanceShown ~= shown then
+    if repair or not texture.appearanceReady or texture.appearanceShown ~= shown then
+        texture.appearanceReady = false
         if shown then texture:Show() else texture:Hide() end
-        texture.appearanceShown = shown
+        texture.appearanceShown, texture.appearanceReady = shown, true
     end
 end
-local function DrawArtwork(view, textures, pieces, shown, ratio, startX, repair)
-    for index, piece in ipairs(pieces) do
-        local texture = textures[index]
-        if shown and not texture then
-            texture = UI.CreateTexture(view.frame, nil, "BACKGROUND"); textures[index] = texture
-        end
-        if texture then
-            if shown then
-                texture:SetTexture("Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf")
-                texture:SetTexCoord(piece[5], piece[6], piece[7], piece[8])
-                texture:ClearAllPoints()
-                texture:SetPoint("BOTTOMLEFT", view.frame, "BOTTOMLEFT", startX + piece[1] * ratio, piece[2] * ratio)
-                texture:SetWidth(piece[3] * ratio); texture:SetHeight(piece[4] * ratio)
-            end
-            ShowArt(texture, shown, repair)
-        end
+local function Foreground(view, scene, repair)
+    local art = view.buttonDecorations
+    local shown = scene.gryphons ~= "none"
+    if shown and not art.foreground then
+        art.foreground = UI.CreateContainer(nil, view.frame)
+        art.foreground.appearanceInitialLevel = art.foreground:GetFrameLevel()
+        art.foreground.appearanceInitialStrata = art.foreground:GetFrameStrata()
     end
+    local host = art.foreground
+    if not host then return end
+    if shown then
+        host.appearanceReady = false
+        if not host.appearanceMouseConfigured then host:EnableMouse(false); host.appearanceMouseConfigured = true end
+        host:SetFrameStrata(scene.strata); host:SetFrameLevel(scene.level)
+        host:SetAllPoints(view.frame)
+    elseif repair then
+        host:SetFrameStrata(host.appearanceCommittedStrata or host.appearanceInitialStrata)
+        host:SetFrameLevel(host.appearanceCommittedLevel or host.appearanceInitialLevel)
+        if host.appearanceCommittedLevel then host:SetAllPoints(view.frame) else host:ClearAllPoints() end
+    end
+end
+local paintKeys = {"path", "x", "y", "width", "height", "left", "right", "top", "bottom", "anchor"}
+local function CopyPaint(source, target)
+    for _, key in ipairs(paintKeys) do target[key] = source[key] end
+end
+local function Geometry(texture, frame, paint)
+    texture.appearanceReady = false
+    texture:SetTexture(paint.path); texture:SetTexCoord(paint.left, paint.right, paint.top, paint.bottom)
+    texture:ClearAllPoints(); texture:SetPoint(paint.anchor, frame, "TOPLEFT", paint.x, paint.y)
+    texture:SetWidth(paint.width); texture:SetHeight(paint.height)
+end
+local function Piece(view, scene, kind, index, repair, cleanup)
+    local art, shown, texture = view.buttonDecorations
+    local x, y, width, height, left, right, top, bottom
+    local path = NativeLayout.Texture
+    local parent, side = view.frame
+    if kind == "tile" then
+        shown = scene.nativeTexture and scene.background and index <= scene.count
+        texture = art.panels[index]
+        x, y, width, height = NativeLayout.Tile(scene, index)
+        local uv = NativeLayout.SlotUV
+        left, right, top, bottom = uv[1], uv[2], uv[3], uv[4]
+    elseif kind == "edge" then
+        shown, texture = scene.nativeTexture, art.edges[index]
+        x, y, width, height, left, right, top, bottom = NativeLayout.Edge(scene, index)
+    elseif kind == "backing" then
+        shown, texture = scene.nativeTexture and scene.background, art.backing
+        x, y = scene.innerLeft, scene.innerTop
+        width, height = scene.innerRight - x, scene.innerBottom - y
+        local uv = NativeLayout.BackingUV
+        left, right, top, bottom = uv[1], uv[2], uv[3], uv[4]
+    else
+        side = sides[index]
+        shown = scene.gryphons == "both" or scene.gryphons == side
+        texture, parent, path = art[side], art.foreground, NativeLayout.GryphonTexture
+        width, height = scene.gryphonSize, scene.gryphonSize
+        left, right, top, bottom = side == "right" and 1 or 0, side == "right" and 0 or 1, 0, 1
+    end
+    if shown and not texture then
+        texture = UI.CreateTexture(parent, nil, side and "OVERLAY" or "BACKGROUND")
+        texture.appearancePaint, texture.appearanceCommittedPaint = {}, {}
+        if kind == "tile" then art.panels[index] = texture
+        elseif kind == "edge" then art.edges[index] = texture
+        elseif kind == "backing" then art.backing = texture else art[side] = texture end
+    end
+    if not texture then return end
+    local paint
+    if shown then
+        paint = texture.appearancePaint
+        paint.path, paint.width, paint.height = path, width, height
+        paint.left, paint.right, paint.top, paint.bottom = left, right, top, bottom
+        if side then
+            paint.anchor, paint.x, paint.y = side == "left" and "BOTTOMRIGHT" or "BOTTOMLEFT",
+                side == "left" and scene.left + scene.gryphonOverlap or scene.right - scene.gryphonOverlap, -scene.gryphonBottom
+        else paint.anchor, paint.x, paint.y = "TOPLEFT", x, -y end
+    elseif repair and texture.appearanceHasPaint then
+        -- Hidden regions can retain a previously painted geometry. Rollback
+        -- restores that geometry as well as their visibility.
+        paint = texture.appearanceCommittedPaint
+    end
+    if cleanup then
+        local ok, reason = true
+        if paint then ok, reason = pcall(Geometry, texture, view.frame, paint) end
+        local visible, visibilityReason = pcall(ShowArt, texture, shown, repair)
+        if not ok then error(reason) elseif not visible then error(visibilityReason) end
+    else
+        if paint then Geometry(texture, view.frame, paint) end
+        ShowArt(texture, shown, repair)
+    end
+    if paint and paint ~= texture.appearancePaint then CopyPaint(paint, texture.appearancePaint) end
+end
+local function CommitPiece(texture)
+    if texture and texture.appearancePaint.path then
+        CopyPaint(texture.appearancePaint, texture.appearanceCommittedPaint); texture.appearanceHasPaint = true
+    end
+end
+local function CommitPaint(view, scene)
+    local art = view.buttonDecorations
+    CommitPiece(art.backing)
+    for _, texture in ipairs(art.panels) do CommitPiece(texture) end
+    for _, texture in ipairs(art.edges) do CommitPiece(texture) end
+    CommitPiece(art.left); CommitPiece(art.right)
+    if art.foreground and scene.gryphons ~= "none" then
+        art.foreground.appearanceCommittedLevel, art.foreground.appearanceCommittedStrata = scene.level, scene.strata
+    end
+end
+local function DrawScene(view, scene, repair, cleanup)
+    -- Cleanup attempts every pooled region even when an individual native
+    -- setter fails, retaining the original error for the caller's transaction.
+    local failure
+    local ok, reason = pcall(Foreground, view, scene, repair)
+    if not ok then if not cleanup then error(reason) end; failure = reason end
+    if view.buttonDecorations.foreground then
+        ok, reason = pcall(ShowArt, view.buttonDecorations.foreground, scene.gryphons ~= "none", repair)
+        if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    end
+    ok, reason = pcall(Piece, view, scene, "backing", 1, repair, cleanup)
+    if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    local art = view.buttonDecorations
+    for index = 1, math.max(scene.count, table.getn(art.panels)) do
+        ok, reason = pcall(Piece, view, scene, "tile", index, repair, cleanup)
+        if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    end
+    for index = 1, 8 do
+        ok, reason = pcall(Piece, view, scene, "edge", index, repair, cleanup)
+        if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    end
+    for index = 1, 2 do
+        ok, reason = pcall(Piece, view, scene, "gryphon", index, repair, cleanup)
+        if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    end
+    return failure == nil, failure
 end
 local function Decorations(view, style, repair)
     local art = view.buttonDecorations
     if not art and not style.nativeTexture and style.gryphons == "none" then return end
-    if not art then art = {panels = {}}; view.buttonDecorations = art end
-    -- PrepareDisplay can provide the saved record before the first resolved
-    -- grid. Native dimensions are safe here; this is never an action read.
-    if not style.width then style.width = view.frame:GetWidth() end
-    if not style.height then style.height = view.frame:GetHeight() end
-    local changed = repair or not art.ready or art.width ~= style.width or art.height ~= style.height
-        or art.size ~= style.buttonSize or art.nativeTexture ~= style.nativeTexture or art.gryphons ~= style.gryphons
-        or art.background ~= style.nativeTextureBackground or art.scalePct ~= style.nativeTextureScalePct
-    if not changed then return end
-    art.ready = false
-    -- The decoration keeps its original aspect even for a multi-row grid.
-    local ratio = style.width / 512 * style.nativeTextureScalePct / 100
-    local startX = (style.width - 512 * ratio) / 2
-    DrawArtwork(view, art.panels, slices, style.nativeTexture and style.nativeTextureBackground, ratio, startX, repair)
-    local showEdges = style.nativeTexture and not style.nativeTextureBackground
-    if showEdges and not art.edges then art.edges = {} end
-    if art.edges then DrawArtwork(view, art.edges, edges, showEdges, ratio, startX, repair) end
-    for _, side in ipairs(sides) do
-        local shown = style.gryphons == "both" or style.gryphons == side
-        local texture = art[side]
-        if shown and not texture then texture = UI.CreateTexture(view.frame, nil, "BACKGROUND"); art[side] = texture end
-        if texture then
-            if shown then
-                texture:SetTexture("Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf")
-                if side == "right" then texture:SetTexCoord(1, 0, 0, 1) else texture:SetTexCoord(0, 1, 0, 1) end
-                local ratio = style.buttonSize / 40
-                texture:SetWidth(128 * ratio); texture:SetHeight(128 * ratio)
-                texture:ClearAllPoints()
-                texture:SetPoint(side == "left" and "BOTTOMRIGHT" or "BOTTOMLEFT", view.frame,
-                    side == "left" and "BOTTOMLEFT" or "BOTTOMRIGHT", side == "left" and 32 * ratio or -32 * ratio, 0)
-            end
-            ShowArt(texture, shown, repair)
-        end
+    if not art then
+        art = {panels = {}, edges = {}, current = {}, committed = {}, off = {}}
+        view.buttonDecorations = art
+        NativeLayout.Resolve({nativeTexture = false, gryphons = "none"}, table.getn(view.buttons), art.off)
     end
-    art.width, art.height, art.size, art.nativeTexture, art.gryphons = style.width, style.height, style.buttonSize, style.nativeTexture, style.gryphons
-    art.background, art.scalePct = style.nativeTextureBackground, style.nativeTextureScalePct
-    art.ready = true
+    local scene = NativeLayout.Resolve(style, table.getn(view.buttons), art.current)
+    if scene.gryphons ~= "none" then
+        scene.strata, scene.level = view.frame:GetFrameStrata(), view.frame:GetFrameLevel()
+        for _, button in ipairs(view.buttons) do
+            scene.level = math.max(scene.level, button:GetFrameLevel(), button.cooldown:GetFrameLevel())
+        end
+        scene.level = scene.level + 1
+    else scene.strata, scene.level = nil, nil end
+    if not repair and art.ready and NativeLayout.Equal(scene, art.committed) then return end
+    -- A client setter can mutate both a region and legacy callback globals
+    -- before raising. Restore the last complete decoration scene atomically.
+    local savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9 = this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9
+    local previous = art.hasCommitted and art.committed or art.off
+    art.ready = false
+    local ok, reason = pcall(DrawScene, view, scene, repair, false)
+    if not ok then
+        local restored, restoreReason = DrawScene(view, previous, true, true)
+        art.ready = restored and art.hasCommitted == true
+        this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
+        if not restored then reason = tostring(reason) .. "; decoration restoration failed: " .. tostring(restoreReason) end
+        error(reason)
+    end
+    this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
+    CommitPaint(view, scene); NativeLayout.Copy(scene, art.committed); art.ready, art.hasCommitted = true, true
 end
 function Appearance.ApplyView(view, drawing, repair)
     local style = Style(view, drawing)

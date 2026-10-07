@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.25 — 2026-10-07
+
+- Align individual native socket artwork with each button in every row and fill the gaps between slots.
+- Scale native artwork independently from button size and inset.
+- Anchor gryphons at the top row above buttons and add a separate Gryphon scale option.
+- Arrange bar controls in up to three columns with Decoration immediately after Appearance and compact choice menus.
+
 ## 0.1.0-dev.24 — 2026-10-07
 
 - Configure and move Experience/Reputation, Keyring, Latency, Bags and Micro Menu using their existing game controls.
