@@ -49,6 +49,7 @@ local function Invoke(callback)
 end
 
 function BehaviorSettings.Create(parent, context)
+    local function Available() return Runtime.IsAvailable() and (not context.IsAvailable or context.IsAvailable()) end
     local frame = UI.CreateContainer(nil, parent); frame.mosTextSizeDelta = -2
     local view = {frame = frame, rows = {}, rules = {}, catalog = {}}
     local heading = UI.CreateHeading(frame, "Behaviors", 3, "gold")
@@ -62,7 +63,7 @@ function BehaviorSettings.Create(parent, context)
     local function Current(session)
         local runtimeState = Runtime.GetState()
         return view.session == session and frame:IsVisible() and context.GetSelection() == session.id
-            and Runtime.IsAvailable() and (runtimeState.host and runtimeState.host.window) == session.owner
+            and Available() and (runtimeState.host and runtimeState.host.window) == session.owner
     end
     local function HideChoices()
         local first
@@ -149,7 +150,7 @@ function BehaviorSettings.Create(parent, context)
             local ok, reason = context.Prepare(); if not ok then return Complete(false, reason) end
         end
         local id = context.GetSelection()
-        if not Ordinary(id) or not frame:IsVisible() or not Runtime.IsAvailable() then return false, "Choose an action bar." end
+        if not Ordinary(id) or not frame:IsVisible() or not Available() then return false, "Choose an independent action bar." end
         local runtimeState = Runtime.GetState()
         local owner = runtimeState.host and runtimeState.host.window
         local token, tokenFailure = Runtime.CaptureBarBehaviors(id)
@@ -238,12 +239,12 @@ function BehaviorSettings.Create(parent, context)
             local source = self.rules[index].sourceBar
             row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog) .. " -> " .. (source == 1 and "Main Action Bar" or "Action Bar " .. source))
             row:Show()
-            UI.SetButtonEnabled(row.edit, Runtime.IsAvailable()); UI.SetButtonEnabled(row.remove, Runtime.IsAvailable())
-            UI.SetButtonEnabled(row.up, Runtime.IsAvailable() and index > 1)
-            UI.SetButtonEnabled(row.down, Runtime.IsAvailable() and index < count)
+            UI.SetButtonEnabled(row.edit, Available()); UI.SetButtonEnabled(row.remove, Available())
+            UI.SetButtonEnabled(row.up, Available() and index > 1)
+            UI.SetButtonEnabled(row.down, Available() and index < count)
         end
         for index = count + 1, table.getn(self.rows) do self.rows[index]:Hide() end
-        UI.SetButtonEnabled(add, Runtime.IsAvailable() and not self.failure and count < MAX_RULES and table.getn(available) > 0)
+        UI.SetButtonEnabled(add, Available() and not self.failure and count < MAX_RULES and table.getn(available) > 0)
         return self.failure == nil, self.failure
     end
     function view:Measure(width)

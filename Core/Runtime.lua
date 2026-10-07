@@ -175,6 +175,10 @@ local function SyncEngine()
     end
     local layoutOK, layoutFailure = Bars.Modules.Editor.Configure(store)
     if not layoutOK then return false, layoutFailure end
+    if Bars.Core.Engine.ConfigureMerges then
+        local configured, reason = Bars.Core.Engine.ConfigureMerges(store.barMerges)
+        if not configured then return false, reason end
+    end
     local options = store.editorOptions or {}
     if Bars.Modules.Editor.SetShowGrid then
         layoutOK, layoutFailure = Bars.Modules.Editor.SetShowGrid(options.showGrid == true)
@@ -515,7 +519,57 @@ local function LayoutAvailable(id)
     end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
+    if id <= 6 and Runtime.GetMergeOwner(id) ~= id then
+        return false, "This bar uses its merge owner's settings. Choose None to restore its individual settings."
+    end
     return true
+end
+function Runtime.GetMergeOwner(id)
+    local service = Bars.Services.BarMerging
+    if not service or type(id) ~= "number" or id > 6 then return id end
+    return service.Read(state.store and state.store.barMerges, id)
+end
+function Runtime.GetMergeCount(id)
+    if type(id) ~= "number" or id < 1 or id > 8 then return 12 end
+    if id > 6 then return 10 end
+    local _, count = Runtime.GetMergeOwner(id)
+    return count or 12
+end
+function Runtime.SetBarMerge(id, destination)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local service = Bars.Services.BarMerging
+    local candidate, reason = service.SetDestination(store.barMerges, id, destination)
+    if not candidate then return false, reason end
+    if service.Equal(candidate, store.barMerges) then return true end
+    local previous, before = store.barMerges, service.Copy(store.barMerges)
+    local enabled = store.trialBarEnabled
+    local ended, detail = CallLifecycle(Bars.Modules.Editor.End)
+    if not ended then return false, detail end
+    if Bars.Modules.BindingEditor then
+        ended, detail = CallLifecycle(Bars.Modules.BindingEditor.Cancel)
+        if not ended then return false, detail end
+    end
+    if BootyActionBarsDB ~= store or store.barMerges ~= previous or not service.Equal(previous, before)
+        or store.trialBarEnabled ~= enabled then
+        return false, "Action bar merge settings changed while cancelling input."
+    end
+    store.barMerges = candidate
+    local expected = service.Copy(candidate)
+    Bars.Core.Engine.MarkLayoutChanged()
+    local ok, message = CallLifecycle(SyncEngine)
+    local owned = BootyActionBarsDB == store and store.barMerges == candidate and service.Equal(candidate, expected)
+    if not ok or not owned then
+        message = message or "Action bar merge settings ownership changed while applying."
+        if BootyActionBarsDB == store and store.barMerges == candidate and service.Equal(candidate, expected) then
+            store.barMerges, store.trialBarEnabled = previous, enabled
+        end
+        local restored, restoration = CallLifecycle(SyncEngine)
+        if not restored then message = tostring(message) .. " Restoration: " .. tostring(restoration) end
+        RefreshView(); return false, message
+    end
+    RefreshView(); return true
 end
 
 function Runtime.SetBarScale(id, percent)
@@ -540,7 +594,9 @@ end
 
 function Runtime.SetBarColumns(id, columns)
     if (id == 7 or id == 8) and type(columns) == "number" and columns > 10 then return false, "Pet and form bars support at most 10 columns." end
-    return SetGridPreference(id, "columns", columns, Bars.Services.BarLayout.ValidColumns, 12)
+    local maximum = Runtime.GetMergeCount(id)
+    if type(columns) == "number" and columns > maximum then return false, "The column count exceeds this bar's slots." end
+    return SetGridPreference(id, "columns", columns, Bars.Services.BarLayout.ValidColumns, maximum)
 end
 
 function Runtime.SetBarSpacing(id, spacing)
@@ -679,6 +735,11 @@ local function OwnsUtilities(store, reference, snapshot)
     local service = Bars.Services.UtilityLayout
     return not service or service.Validate(reference) and service.Equal(reference, snapshot)
 end
+local function OwnsMerges(store, reference, snapshot)
+    if store.barMerges ~= reference then return false end
+    local service = Bars.Services.BarMerging
+    return not service or service.Equal(reference, snapshot)
+end
 local function ApplyLayoutSnapshot(snapshot)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     local store, failure = Bars.Database.Ensure()
@@ -698,6 +759,9 @@ local function ApplyLayoutSnapshot(snapshot)
     local oldLayouts, oldCustom, oldSpecial = store.barLayouts, store.customBars, store.specialBars
     local oldGlobal, oldMain = store.globalLayout, store.mainBarShown
     local oldBehaviors, oldUtilities = store.barBehaviors, store.utilityLayouts
+    local oldMerges = store.barMerges
+    local mergeValues = Bars.Services.BarMerging and Bars.Services.BarMerging.Copy(oldMerges)
+    local preparedMerges = prepared.replaceMerges and Bars.Services.BarMerging.Copy(prepared.barMerges) or nil
     local utilityValues = Bars.Services.UtilityLayout and Bars.Services.UtilityLayout.Copy(oldUtilities)
     local preparedUtilities = prepared.replaceUtilities and Bars.Services.UtilityLayout.Copy(prepared.utilityLayouts) or nil
     local oldBehaviorValues = Bars.Services.BehaviorService.Copy(oldBehaviors)
@@ -706,7 +770,7 @@ local function ApplyLayoutSnapshot(snapshot)
     local stopped, stopFailure = CallLifecycle(Bars.Core.Engine.Disable)
     if not stopped then return false, stopFailure end
     if BootyActionBarsDB ~= store or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues)
-        or not OwnsUtilities(store, oldUtilities, utilityValues) then
+        or not OwnsUtilities(store, oldUtilities, utilityValues) or not OwnsMerges(store, oldMerges, mergeValues) then
         local restored, restoration = CallLifecycle(SyncEngine)
         local ownershipFailure = "Layout settings ownership changed before loading."
         if not restored then ownershipFailure = ownershipFailure .. " Resynchronization: " .. tostring(restoration) end
@@ -717,6 +781,7 @@ local function ApplyLayoutSnapshot(snapshot)
     if prepared.mainBarShown ~= nil then store.mainBarShown = prepared.mainBarShown end
     if prepared.replaceBehaviors then store.barBehaviors = prepared.barBehaviors end
     if prepared.replaceUtilities then store.utilityLayouts = prepared.utilityLayouts end
+    if prepared.replaceMerges then store.barMerges = prepared.barMerges end
     Bars.Core.Engine.MarkLayoutChanged()
     local ok, message = CallLifecycle(SyncEngine)
     local owned = BootyActionBarsDB == store and store.barLayouts == prepared.barLayouts
@@ -725,6 +790,7 @@ local function ApplyLayoutSnapshot(snapshot)
         and (prepared.mainBarShown == nil or store.mainBarShown == prepared.mainBarShown)
         and (not prepared.replaceBehaviors or OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors))
         and (not prepared.replaceUtilities or OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities))
+        and (not prepared.replaceMerges or OwnsMerges(store, prepared.barMerges, preparedMerges))
     if ok and owned then return true end
     local firstFailure = message or "Layout settings ownership changed while loading."
     local cleaned, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
@@ -737,6 +803,7 @@ local function ApplyLayoutSnapshot(snapshot)
         if prepared.mainBarShown ~= nil and store.mainBarShown == prepared.mainBarShown then store.mainBarShown = oldMain end
         if prepared.replaceBehaviors and OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors) then store.barBehaviors = oldBehaviors end
         if prepared.replaceUtilities and OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities) then store.utilityLayouts = oldUtilities end
+        if prepared.replaceMerges and OwnsMerges(store, prepared.barMerges, preparedMerges) then store.barMerges = oldMerges end
         -- Keep native ownership refusals; a profile must not undo conflict policy.
         store.trialBarEnabled = enabled
         local restored, restoreFailure = CallLifecycle(SyncEngine)
@@ -866,6 +933,6 @@ function Runtime.Open(command)
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-8 50-200, /bab columns 1-8 1-12, /bab gap 1-8 0-20, /bab title|hotkeys|counts 1-8 on|off, or /bab reset 1-8.")
+    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-8 50-200, /bab columns 1-8 1-72 (up to the bar's slots), /bab gap 1-8 0-20, /bab title|hotkeys|counts 1-8 on|off, or /bab reset 1-8.")
     return false
 end
