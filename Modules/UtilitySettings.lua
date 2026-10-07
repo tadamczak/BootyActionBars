@@ -20,6 +20,13 @@ function Settings.Create(parent, context)
     })
     view.shown = shown
     UI.AttachTooltip(shown, "Show utility bar", "Move and scale these native controls separately. Their original actions and scripts keep working.")
+    local nativeTexture = UI.Settings.CreateCheckbox(frame, 0, 0, "Native menu texture", "nativeTexture", nil, {
+        ensure = function() end,
+        get = function() return view.layout and view.layout.nativeTexture == true end,
+        set = function(_, value) return Update("nativeTexture", value) end,
+    })
+    view.nativeTexture = nativeTexture
+    UI.AttachTooltip(nativeTexture, "Native menu texture", "Show this control group's native background. It follows the selected layout and scale.")
     for _, definition in ipairs({{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, 8}, {"spacing", "Spacing", 0, 20}}) do
         local key, caption, minimum, maximum = definition[1], definition[2], definition[3], definition[4]
         local row = UI.CreateContainer(nil, frame); row:SetHeight(44)
@@ -49,6 +56,9 @@ function Settings.Create(parent, context)
         shown.label:SetText("Show " .. Utility.Name(id)); shown:SetChecked(layout and layout.shown and 1 or nil)
         local available = Runtime.IsAvailable() and layout ~= nil
         UI.Settings.SetCheckboxEnabled(shown, available); UI.SetButtonEnabled(reset, available)
+        if Utility.SupportsNativeTexture(id) then nativeTexture:Show() else nativeTexture:Hide() end
+        nativeTexture:SetChecked(layout and layout.nativeTexture and 1 or nil)
+        UI.Settings.SetCheckboxEnabled(nativeTexture, available and Utility.SupportsNativeTexture(id))
         local grid = id == "bags" or id == "micro"
         for _, row in ipairs(self.rows) do
             if row.key == "scalePct" or grid then row:Show() else row:Hide() end
@@ -66,15 +76,20 @@ function Settings.Create(parent, context)
         status:SetText(failure or ""); if failure then status:Show() else status:Hide() end
         frame:Show(); return layout ~= nil, failure
     end
+    local function CheckboxLayout(control, width, top)
+        control:ClearAllPoints(); control:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top)
+        local labelWidth = math.max(1, width - control:GetWidth() - 7)
+        control.label:SetWidth(labelWidth); control.label:SetHeight(UI.MeasureTextHeight(control.label, labelWidth))
+        control.labelHit:SetWidth(labelWidth + 5); control.labelHit:SetHeight(math.max(control:GetHeight(), control.label:GetHeight()))
+        control.label:ClearAllPoints(); control.labelHit:ClearAllPoints()
+        local wrapped = control.label:GetHeight() > control:GetHeight()
+        control.label:SetPoint(wrapped and "TOPLEFT" or "LEFT", control, wrapped and "TOPRIGHT" or "RIGHT", 6, 0)
+        control.labelHit:SetPoint(wrapped and "TOPLEFT" or "LEFT", control, wrapped and "TOPRIGHT" or "RIGHT", 1, 0)
+        return top + math.max(26, control.label:GetHeight() + 4) + 8
+    end
     function view:Layout(width)
-        local labelWidth = math.max(1, width - shown:GetWidth() - 7)
-        shown.label:SetWidth(labelWidth); shown.label:SetHeight(UI.MeasureTextHeight(shown.label, labelWidth))
-        shown.labelHit:SetWidth(labelWidth + 5); shown.labelHit:SetHeight(math.max(shown:GetHeight(), shown.label:GetHeight()))
-        shown.label:ClearAllPoints(); shown.labelHit:ClearAllPoints()
-        local wrapped = shown.label:GetHeight() > shown:GetHeight()
-        shown.label:SetPoint(wrapped and "TOPLEFT" or "LEFT", shown, wrapped and "TOPRIGHT" or "RIGHT", 6, 0)
-        shown.labelHit:SetPoint(wrapped and "TOPLEFT" or "LEFT", shown, wrapped and "TOPRIGHT" or "RIGHT", 1, 0)
-        local top = math.max(26, shown.label:GetHeight() + 4) + 8
+        local top = CheckboxLayout(shown, width, 0)
+        if nativeTexture:IsShown() then top = CheckboxLayout(nativeTexture, width, top) end
         for _, row in ipairs(self.rows) do
             if row:IsShown() then
                 row:ClearAllPoints(); row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top); row:SetWidth(width)

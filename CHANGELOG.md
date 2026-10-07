@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.26 — 2026-10-07
+
+- Fit complete native sockets into their own cells and draw them above button fills, preserving icon visibility.
+- Use complete native socket/frame crops and tiled stone without stretched decorative strips.
+- Separate Native bar background and Native button background, preserving older layout profiles.
+- Add optional matching native backgrounds to Bags, Micro Menu, Latency and Keyring.
+
 ## 0.1.0-dev.25 — 2026-10-07
 
 - Align individual native socket artwork with each button in every row and fill the gaps between slots.

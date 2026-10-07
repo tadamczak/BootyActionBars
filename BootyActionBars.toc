@@ -2,7 +2,7 @@
 ## Title: BootyActionBars
 ## Notes: Optional action, pet and form bars with separate keys and native-button hiding. Standalone or integrated into Booty Suite. Early development build.
 ## Author: Mukla
-## Version: 0.1.0-dev.25
+## Version: 0.1.0-dev.26
 ## Dependencies: BootyLib
 ## SavedVariables: BootyActionBarsDB
 
