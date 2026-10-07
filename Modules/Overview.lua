@@ -7,9 +7,10 @@ function Overview.Create(parent, host)
     local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent)
     local body = UI.CreateContainer(nil, frame)
     local view = {frame = frame, panels = {}, tabs = {}, tabRow = {}, activeTab = "general", selectedBar = 2, bindingIndex = 1}
-    function view.Complete(ok, failure)
+    function view.Complete(ok, failure, skipRefresh)
         if not ok and failure then host.Print(failure) end
-        view:Refresh(); return ok, failure
+        if not skipRefresh then view:Refresh() end
+        return ok, failure, skipRefresh
     end
     local function EndEditors()
         local ok, failure = Bars.Core.Runtime.SetEditEnabled(false)

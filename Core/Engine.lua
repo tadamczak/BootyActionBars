@@ -3,17 +3,21 @@ local Engine = {}
 Bars.Core.Engine = Engine
 local state = {active = false, requested = false, subscribed = false, views = {}, customBars = {},
     customActive = {}, customRevision = 0, customConfiguredCount = 0, customActiveCount = 0, macroDirty = {},
-    mainShown = true, mainActive = false}
+    mainShown = true, mainActive = false, mappingOffsets = {}, mappingPages = {}, mappingMatches = {},
+    mappingChanged = {}, mappingCaptions = {}, behaviorLive = {}}
 local events = {"PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_UPDATE_COOLDOWN",
     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_STATE", "PLAYER_TARGET_CHANGED", "PLAYER_AURAS_CHANGED",
     "UNIT_INVENTORY_CHANGED", "UPDATE_INVENTORY_ALERTS", "BAG_UPDATE", "UPDATE_BINDINGS", "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT",
     "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL", "CRAFT_SHOW", "CRAFT_CLOSE", "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE",
     "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORMS", "ADDON_LOADED"}
 local pageEvents = {ACTIONBAR_PAGE_CHANGED = true, UPDATE_BONUS_ACTIONBAR = true, UPDATE_SHAPESHIFT_FORMS = true}
+local behaviorEvents = {PLAYER_ENTERING_WORLD = true, PLAYER_AURAS_CHANGED = true,
+    ACTIONBAR_PAGE_CHANGED = true, UPDATE_BONUS_ACTIONBAR = true, UPDATE_SHAPESHIFT_FORMS = true,
+    BOOTY_ACTIONBARS_BEHAVIOR_CONFIG = true}
 local stateEvents = {ACTIONBAR_UPDATE_STATE = true, PLAYER_ENTER_COMBAT = true, PLAYER_LEAVE_COMBAT = true,
     START_AUTOREPEAT_SPELL = true, STOP_AUTOREPEAT_SPELL = true, CRAFT_SHOW = true, CRAFT_CLOSE = true,
     TRADE_SKILL_SHOW = true, TRADE_SKILL_CLOSE = true}
-local SyncRange, SyncWorker, FlushMacroChanges, SyncMain, SyncContext
+local SyncRange, SyncWorker, FlushMacroChanges, SyncMain, SyncContext, UpdateMappings
 
 local function Valid(index)
     return type(index) == "number" and index >= 1 and index <= 12 and index == math.floor(index)
@@ -26,9 +30,9 @@ local function Report(message)
     if state.failure ~= message then BootyLib.Print("BootyActionBars: " .. message) end
     state.failure = message
 end
-local function ProtectedCall(callback, owner)
+local function ProtectedCall(callback, owner, second)
     local previousThis, previousEvent, previousArg = this, event, arg1
-    local ran, ok, failure = pcall(callback, owner)
+    local ran, ok, failure = pcall(callback, owner, second)
     this, event, arg1 = previousThis, previousEvent, previousArg
     if not ran then return false, tostring(ok) end
     if ok == false then return false, failure or "An action bar could not be suspended." end
@@ -175,7 +179,7 @@ local function SharedUpdate(elapsed)
     if not ok then Engine.Disable(); Report(failure) end
 end
 function Engine.CooldownChanged()
-    if state.enabling or state.cleaning or state.workerUpdating or (state.readingDepth or 0) > 0 then return true end
+    if state.enabling or state.cleaning or state.mappingUpdating or state.workerUpdating or (state.readingDepth or 0) > 0 then return true end
     local ok, failure = SyncWorker()
     if not ok then Engine.Disable(); Report(failure) end
     return ok, failure
@@ -201,26 +205,115 @@ SyncRange = function()
     state.rangeTracking = wanted
     return SyncWorker()
 end
-local function ApplyPage(offset, page)
-    if state.actionOffset == offset then return false end
-    -- A partial view failure invalidates the cache so the next enable repairs
-    -- every action even if it returns to the previously cached page.
-    state.actionOffset, state.page = nil, nil
-    local suspended, failure = state.view:Suspend(true)
-    if suspended == false then error(failure or "The old action page could not be suspended.") end
-    for index = 1, 12 do state.view.buttons[index].action = offset + index end
-    state.view:SetPage(page, offset)
-    state.actionOffset, state.page = offset, page
+local function SyncBehaviorDemand(force, prospectiveBar)
+    local service = state.behaviorService
+    if not service then return true, false end
+    local changed = state.behaviorMaskConfigured ~= true
+    local demand = false
+    for barId = 1, 6 do
+        local live
+        if state.enabling then live = state.active and (barId == 1 and state.mainShown or barId ~= 1 and state.customBars[barId] == true)
+        else live = IsActive(barId) or barId == prospectiveBar and state.active and state.customBars[barId] == true end
+        live = live == true
+        if state.behaviorLive[barId] ~= live then state.behaviorLive[barId], changed = live, true end
+        local list = state.behaviorRules and state.behaviorRules[barId]
+        if live and list and table.getn(list) > 0 then demand = true end
+    end
+    if changed or force then
+        local ok, failure = ProtectedCall(service.Configure, state.behaviorRules, state.behaviorLive)
+        state.behaviorMaskConfigured = ok == true
+        if not ok then return false, failure end
+        state.behaviorPendingConfig = true
+    end
+    state.behaviorDemand = demand
+    return true, changed
+end
+local function ResolveMapping(barId)
+    local offset, page = (barId - 1) * 12, barId
+    if barId == 1 then
+        offset, page = Bars.Services.ActionPageService.Read()
+        if offset == nil then return nil, page end
+    end
+    if state.behaviorService then return state.behaviorService.Resolve(barId, offset, page) end
+    return offset, page
+end
+local function SetMapping(view, offset, page, matched)
+    for index = 1, 12 do view.buttons[index].action = offset + index end
+    local ok, failure = view:SetPage(page, offset, matched)
+    if ok == false then return false, failure or "The action bar source could not be displayed." end
+    view.offset, view.page, view.behaviorMatched = offset, page, matched
+    if view.id == 1 or view == state.view then state.actionOffset, state.page = offset, page end
     return true
 end
-local function ReadPage()
-    local offset, page = Bars.Services.ActionPageService.Read()
-    if offset == nil then return false, page end
-    return true, ApplyPage(offset, page)
+local function ReadMappings(name, refreshAll)
+    local ok, changed = SyncBehaviorDemand()
+    if not ok then return false, changed end
+    if state.behaviorService and (behaviorEvents[name] or state.behaviorPendingConfig) then
+        local snapshotEvent = state.behaviorPendingConfig and "BOOTY_ACTIONBARS_BEHAVIOR_CONFIG" or name
+        ok, changed = state.behaviorService.Refresh(snapshotEvent)
+        if not ok then return false, changed end
+        state.behaviorPendingConfig = nil
+    end
+    local anyChanged = false
+    for barId = 1, 6 do
+        state.mappingChanged[barId], state.mappingCaptions[barId] = nil, nil
+        if IsActive(barId) then
+            local view = state.views[barId]
+            local offset, page, matched = ResolveMapping(barId)
+            if offset == nil then return false, page end
+            state.mappingOffsets[barId], state.mappingPages[barId], state.mappingMatches[barId] = offset, page, matched
+            state.mappingChanged[barId] = view.offset ~= offset
+            state.mappingCaptions[barId] = view.page ~= page or view.behaviorMatched ~= matched
+            if state.mappingChanged[barId] then anyChanged = true end
+        end
+    end
+    -- Every affected old input is cancelled before any bar takes its new source.
+    for barId = 1, 6 do
+        if state.mappingChanged[barId] then
+            local view = state.views[barId]
+            view.offset, view.page, view.behaviorMatched = nil, nil, nil
+            if barId == 1 then state.actionOffset, state.page = nil, nil end
+            ok, changed = view:Suspend(true)
+            if ok == false then return false, changed or "The old action source could not be suspended." end
+        end
+    end
+    for barId = 1, 6 do
+        if state.mappingChanged[barId] or state.mappingCaptions[barId] then
+            ok, changed = SetMapping(state.views[barId], state.mappingOffsets[barId], state.mappingPages[barId], state.mappingMatches[barId])
+            if not ok then return false, changed end
+        end
+    end
+    for barId = 1, 6 do
+        if IsActive(barId) and (state.mappingChanged[barId] or refreshAll) then
+            ok, changed = RefreshView(state.views[barId], "Read", state.mappingChanged[barId] or name == "PLAYER_ENTERING_WORLD")
+            if not ok then return false, changed end
+        end
+    end
+    return true, anyChanged
 end
-local function UpdatePage()
+UpdateMappings = function(name, refreshAll)
     local previousThis, previousEvent, previousArg = this, event, arg1
-    local ran, ok, result = pcall(ReadPage)
+    state.mappingUpdating = true
+    local ran, ok, result
+    for pass = 1, 2 do
+        state.mappingPending, state.mappingPendingRefresh = nil, nil
+        ran, ok, result = pcall(ReadMappings, name, refreshAll)
+        if not ran or not ok or not state.mappingPending then break end
+        name = "BOOTY_ACTIONBARS_BEHAVIOR_CONFIG"
+        refreshAll = refreshAll or state.mappingPendingRefresh
+    end
+    if ran and ok and state.mappingPending then ok, result = false, "Action bar source changes did not settle after two updates." end
+    if not ran or not ok then
+        for barId = 1, 6 do
+            if state.mappingChanged[barId] or state.mappingCaptions[barId] then
+                local view = state.views[barId]
+                if view then view.offset, view.page, view.behaviorMatched = nil, nil, nil end
+                if barId == 1 then state.actionOffset, state.page = nil, nil end
+            end
+        end
+    end
+    state.mappingUpdating = nil
+    state.mappingPending, state.mappingPendingRefresh = nil, nil
     this, event, arg1 = previousThis, previousEvent, previousArg
     if not ran then return false, ok end
     return ok, result
@@ -327,6 +420,50 @@ end
 function Engine.ConfigureCustomBars(customBars)
     return Configure(customBars)
 end
+function Engine.ConfigureBehaviors(rules)
+    local factory = Bars.Services.BehaviorService
+    if not factory then
+        if rules == nil or type(rules) == "table" and next(rules) == nil then return true end
+        return false, "Action bar behaviors are unavailable."
+    end
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ran, valid, failure = pcall(factory.Validate, rules)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ran then return false, tostring(valid) end
+    if not valid then return false, failure end
+    local equal = factory.Equal(rules, state.behaviorConfiguredValues)
+    if not state.behaviorService and equal then state.behaviorRules = rules; return true end
+    local candidate
+    if not equal then
+        candidate, failure = factory.Copy(rules)
+        if not candidate then return false, failure end
+    end
+    if not state.behaviorService then
+        local created, service = pcall(factory.Create)
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        if not created then return false, tostring(service) end
+        state.behaviorService = service
+    end
+    local previous = state.behaviorRules
+    state.behaviorRules = rules
+    local ok, reason = SyncBehaviorDemand(not equal)
+    if not ok then state.behaviorRules = previous; return false, reason end
+    if not equal then
+        state.behaviorConfiguredValues = candidate
+        state.customRevision = state.customRevision + 1
+    end
+    if state.mappingUpdating then state.mappingPending = true; return true end
+    if not state.active or not state.behaviorPendingConfig then return true end
+    ok, reason = UpdateMappings("BOOTY_ACTIONBARS_BEHAVIOR_CONFIG")
+    if ok then ok, reason = FlushMacroChanges() end
+    if ok then ok, reason = SyncRange() end
+    if not ok then
+        local cleaned, cleanupFailure = Engine.Disable()
+        if not cleaned then reason = tostring(reason) .. " Cleanup: " .. tostring(cleanupFailure) end
+        Report(reason); return false, reason
+    end
+    return true
+end
 function Engine.ConfigureMainVisibility(shown)
     if type(shown) ~= "boolean" then return false, "Choose whether to show the main action bar." end
     if state.mainShown ~= shown then
@@ -409,8 +546,8 @@ SyncMain = function()
     if not ok then return false, reason end
     if not view.frame:IsVisible() then state.mainActive = false; return true end
     state.mainActive = true
-    ok, reason = UpdatePage()
-    if ok then ok, reason = RefreshView(view, "Read", true) end
+    ok, reason = UpdateMappings()
+    if ok and not reason then ok, reason = RefreshView(view, "Read", true) end
     if ok then ok, reason = ViewBindings(view, 1) end
     return ok, reason
 end
@@ -418,15 +555,25 @@ local function ActivateCustom(barId, revise)
     local view, failure = CreateView(barId)
     if not view then return false, failure end
     if state.customActive[barId] then return true end
-    local offset = (barId - 1) * 12
+    local demand, demandFailure = SyncBehaviorDemand(false, barId)
+    if not demand then return false, demandFailure end
+    if state.behaviorService and state.behaviorPendingConfig then
+        demand, demandFailure = ProtectedCall(state.behaviorService.Refresh, "BOOTY_ACTIONBARS_BEHAVIOR_CONFIG")
+        if not demand then return false, demandFailure end
+        state.behaviorPendingConfig = nil
+    end
+    local offset, page, matched = ResolveMapping(barId)
+    if offset == nil then return false, page end
     local suspended, suspendFailure = ProtectedCall(view.Suspend, view)
     if not suspended then return false, suspendFailure end
     local prepared, prepareFailure = ProtectedCall(PrepareDisplay, view)
     if not prepared then return false, prepareFailure end
-    for index = 1, 12 do view.buttons[index].action = offset + index end
     local previousThis, previousEvent, previousArg = this, event, arg1
-    local ok, reason = pcall(view.SetPage, view, barId, offset)
+    view.offset, view.page, view.behaviorMatched = nil, nil, nil
+    local ran, ok, reason = pcall(SetMapping, view, offset, page, matched)
     this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ran or not ok then view.offset, view.page, view.behaviorMatched = nil, nil, nil end
+    if not ran then return false, ok end
     if not ok then return false, reason end
     ok, reason = RefreshView(view, "Read", true)
     if not ok then return false, reason end
@@ -462,8 +609,7 @@ local function RefreshSlot(slot)
     for barId = 1, 6 do
         if IsActive(barId) then
             local view = state.views[barId]
-            local offset = barId == 1 and state.actionOffset or (barId - 1) * 12
-            local index = slot - offset
+            local index = view.offset and slot - view.offset
             if Valid(index) then
                 local ok, failure = Refresh(view, index, "Read")
                 if not ok then return false, failure end
@@ -496,28 +642,31 @@ function Engine.MacroEvent(slot)
 end
 function Engine.HandleEvent(name, unit)
     if not state.active then return end
-    if name == "BOOTY_ACTIONBARS_SHARED_UPDATE" then SharedUpdate(unit); return end
-    if name == "BOOTY_ACTIONBARS_RANGE_UPDATE" then RangeUpdate(unit); return end
-    if name == "BOOTY_ACTIONBARS_MACRO_UPDATE" and (state.readingDepth or 0) > 0 then
+    if name == "BOOTY_ACTIONBARS_MACRO_UPDATE" and ((state.readingDepth or 0) > 0 or state.mappingUpdating) then
         if type(unit) == "number" and unit >= 1 and unit <= 120 and unit == math.floor(unit) then
             state.macroDirty[unit] = true
             state.macroPending = true
         end
         return
     end
+    if state.mappingUpdating then
+        if behaviorEvents[name] then state.mappingPending = true end
+        if name ~= "BOOTY_ACTIONBARS_SHARED_UPDATE" and name ~= "BOOTY_ACTIONBARS_RANGE_UPDATE" then
+            state.mappingPending, state.mappingPendingRefresh = true, true
+        end
+        return
+    end
+    if name == "BOOTY_ACTIONBARS_SHARED_UPDATE" then SharedUpdate(unit); return end
+    if name == "BOOTY_ACTIONBARS_RANGE_UPDATE" then RangeUpdate(unit); return end
     local ok, failure = true, nil
     if name == "BOOTY_ACTIONBARS_MACRO_UPDATE" then ok, failure = RefreshSlot(unit)
     elseif name == "ADDON_LOADED" then
         if state.service.RefreshMacroProvider then ok, failure = state.service.RefreshMacroProvider() end
         if ok then ok, failure = RefreshAll("Read") end
-    elseif pageEvents[name] and state.mainActive then
-        local changed
-        ok, changed = UpdatePage()
-        if not ok then failure = changed
-        elseif changed then ok, failure = RefreshView(state.view, "Read", true) end
+    elseif pageEvents[name] or name == "BOOTY_ACTIONBARS_BEHAVIOR_CONFIG" then
+        ok, failure = UpdateMappings(name)
     elseif name == "PLAYER_ENTERING_WORLD" then
-        if state.mainActive then ok, failure = UpdatePage() end
-        if ok then ok, failure = RefreshAll("Read", true) end
+        ok, failure = UpdateMappings(name, true)
     elseif name == "UPDATE_BINDINGS" then ok, failure = RefreshBindings()
     elseif name == "ACTIONBAR_SLOT_CHANGED" then
         if unit == nil or type(unit) == "number" and unit <= 0 then
@@ -525,8 +674,8 @@ function Engine.HandleEvent(name, unit)
         elseif type(unit) == "number" then
             for barId = 1, 6 do
                 if IsActive(barId) then
-                    local offset = barId == 1 and state.actionOffset or (barId - 1) * 12
-                    local index = unit - offset
+                    local view = state.views[barId]
+                    local index = view.offset and unit - view.offset
                     if Valid(index) then
                         ok, failure = Refresh(state.views[barId], index, "Read")
                         if not ok then break end
@@ -538,7 +687,8 @@ function Engine.HandleEvent(name, unit)
         ok, failure = RefreshAll("ReadAvailability")
     elseif name == "PLAYER_TARGET_CHANGED" or name == "PLAYER_AURAS_CHANGED" then
         -- Hooked macro icons/cooldowns may change without a native slot event.
-        ok, failure = RefreshAll("Read")
+        if name == "PLAYER_AURAS_CHANGED" and state.behaviorDemand then ok, failure = UpdateMappings(name, true)
+        else ok, failure = RefreshAll("Read") end
     elseif name == "ACTIONBAR_UPDATE_USABLE" then
         ok, failure = RefreshAll("ReadUsability")
     elseif stateEvents[name] then ok, failure = RefreshAll("ReadState")
@@ -556,6 +706,8 @@ local function Subscribe()
     state.subscribed = true
 end
 local function SyncSubscriptions()
+    local configured, reason = SyncBehaviorDemand()
+    if not configured then return false, reason end
     local wanted = state.active and (state.mainActive or state.customActiveCount > 0)
     if wanted then
         Subscribe()
@@ -659,10 +811,19 @@ function Engine.OnShow(barId)
 end
 local function Activate(wasActive)
     state.active = ParentVisible()
-    local ok, failure = SyncContext()
+    local ok, failure = SyncBehaviorDemand()
+    if ok and state.active and state.behaviorService and state.behaviorPendingConfig then
+        ok, failure = ProtectedCall(state.behaviorService.Refresh, "BOOTY_ACTIONBARS_BEHAVIOR_CONFIG")
+        if ok then state.behaviorPendingConfig = nil; state.behaviorActivationPending = true end
+    end
+    if ok then ok, failure = SyncContext() end
     if ok then ok, failure = SyncMain() end
     if ok and state.mainShown and not state.mainActive then state.active = false end
     if ok then ok, failure = SyncCustoms(wasActive) end
+    if ok and state.behaviorActivationPending then
+        ok, failure = UpdateMappings()
+        state.behaviorActivationPending = nil
+    end
     if ok then ok, failure = SyncSubscriptions() end
     if ok then ok, failure = FlushMacroChanges() end
     return ok, failure
@@ -725,6 +886,7 @@ function Engine.Disable()
     return firstFailure == nil, firstFailure
 end
 local function InputView(barId, index)
+    if state.mappingUpdating or state.enabling then return nil end
     local binding = Bars.Modules.BindingEditor
     if binding and binding.IsEditing() then return nil end
     local editor = Bars.Modules.Editor

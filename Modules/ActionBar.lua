@@ -28,9 +28,15 @@ end
 
 local function UpdateCaption(view)
     if not view.showTitle then return end
-    if view.gridWidth < 320 then view.title:SetText("Bar " .. view.id); return end
+    if view.gridWidth < 320 then
+        local label = "Bar " .. view.id
+        if view.behaviorMatched then label = view.gridWidth < 80 and view.id .. ">" .. view.page or label .. " >" .. view.page end
+        view.title:SetText(label); return
+    end
     if not view.page then view.title:SetText("BootyActionBars (slots 1-12)"); return end
-    local label = view.id == 1 and "BootyActionBars (page " .. view.page or "BootyActionBars custom " .. view.id .. " (fixed"
+    local label
+    if view.behaviorMatched then label = "BootyActionBars " .. view.id .. " (source " .. view.page
+    else label = view.id == 1 and "BootyActionBars (page " .. view.page or "BootyActionBars custom " .. view.id .. " (fixed" end
     view.title:SetText(label .. ", slots " .. (view.offset + 1) .. "-" .. (view.offset + 12) .. ")")
 end
 local function FormatHotkey(button, key, second, nativeEvent, nativeArg)
@@ -283,8 +289,8 @@ function ActionBar.Create(callbacks, barId)
         Countdown("SetViewVisible", self, true)
         return true
     end
-    function view:SetPage(page, offset)
-        self.page, self.offset = page, offset
+    function view:SetPage(page, offset, matched)
+        self.page, self.offset, self.behaviorMatched = page, offset, matched
         UpdateCaption(self)
     end
     function view:SetGrid(value)

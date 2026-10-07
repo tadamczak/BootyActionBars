@@ -1,6 +1,7 @@
 local Bars = BootyActionBars
 local Profiles = {}
 Bars.Services.LayoutProfiles = Profiles
+local Behavior = Bars.Services.BehaviorService
 Profiles.VERSION, Profiles.LIMIT = 2, 20
 local fields = {"x", "y"}
 for _, key in ipairs(Bars.Services.BarLayout.GlobalKeys) do table.insert(fields, key) end
@@ -34,13 +35,17 @@ function Profiles.Validate(profile)
     if type(profile) ~= "table" or (profile.version ~= 1 and profile.version ~= Profiles.VERSION) then return false, "Unsupported action bar layout profile." end
     for key in pairs(profile) do
         if key ~= "version" and key ~= "barLayouts" and key ~= "customBars" and key ~= "specialBars"
-            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown")) then return false, "Unexpected layout profile data." end
+            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown" or key == "barBehaviors")) then return false, "Unexpected layout profile data." end
     end
     local ok, failure = Bars.Services.BarConfig.Validate(profile.customBars)
     if not ok then return false, failure end
     ok, failure = Bars.Services.BarConfig.ValidateSpecial(profile.specialBars)
     if not ok then return false, failure end
     if type(profile.customBars) ~= "table" or type(profile.specialBars) ~= "table" then return false, "Layout profile bar visibility is missing." end
+    if profile.version == 2 then
+        ok, failure = Behavior.Validate(profile.barBehaviors)
+        if not ok then return false, failure end
+    end
     ok, failure = Bars.Services.BarLayout.ValidateLayouts(profile.barLayouts)
     if not ok then return false, failure end
     if type(profile.barLayouts) ~= "table" then return false, "Layout profile geometry is missing." end
@@ -75,11 +80,14 @@ function Profiles.Capture(store)
     if not ok then return nil, failure end
     ok, failure = Bars.Services.BarConfig.ValidateSpecial(store.specialBars)
     if not ok then return nil, failure end
+    ok, failure = Behavior.Validate(store.barBehaviors)
+    if not ok then return nil, failure end
     ok, failure = Bars.Services.BarLayout.ValidateGlobal(store.globalLayout)
     if not ok then return nil, failure end
     if store.mainBarShown ~= nil and type(store.mainBarShown) ~= "boolean" then return nil, "Invalid main bar visibility." end
     local result = {version = Profiles.VERSION, barLayouts = {}, customBars = Flags(store.customBars), specialBars = Flags(store.specialBars),
-        globalLayout = GlobalCopy(store.globalLayout), mainBarShown = store.mainBarShown ~= false}
+        globalLayout = GlobalCopy(store.globalLayout), mainBarShown = store.mainBarShown ~= false,
+        barBehaviors = Behavior.Copy(store.barBehaviors)}
     for id = 1, 8 do
         local record, reason = Bars.Services.BarLayout.ReadLocal(store.barLayouts, id)
         if not record then return nil, reason end
@@ -87,14 +95,18 @@ function Profiles.Capture(store)
     end
     return result
 end
-function Profiles.Prepare(profile, existingLayouts, existingGlobal)
+function Profiles.Prepare(profile, existingLayouts, existingGlobal, existingBehaviors)
     local ok, failure = Profiles.Validate(profile)
     if not ok then return nil, failure end
     ok, failure = Bars.Services.BarLayout.ValidateLayouts(existingLayouts)
     if not ok then return nil, failure end
     ok, failure = Bars.Services.BarLayout.ValidateGlobal(existingGlobal)
     if not ok then return nil, failure end
-    local result = {barLayouts = {}, customBars = Flags(profile.customBars), specialBars = Flags(profile.specialBars), replaceGlobal = profile.version == 2}
+    ok, failure = Behavior.Validate(existingBehaviors)
+    if not ok then return nil, failure end
+    local result = {barLayouts = {}, customBars = Flags(profile.customBars), specialBars = Flags(profile.specialBars),
+        replaceGlobal = profile.version == 2, replaceBehaviors = profile.version == 2 and profile.barBehaviors ~= nil}
+    if result.replaceBehaviors then result.barBehaviors = Behavior.Copy(profile.barBehaviors) end
     if profile.version == 2 then
         result.globalLayout = GlobalCopy(profile.globalLayout, existingGlobal)
         result.mainBarShown = profile.mainBarShown
