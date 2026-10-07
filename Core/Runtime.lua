@@ -377,6 +377,19 @@ function Runtime.SetUseGlobalLayout(id, value)
     return ok, failure
 end
 
+function Runtime.SetGlobalColor(group, rgba)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local owner, failure = Bars.Database.Ensure()
+    if not owner then return false, failure end
+    local ok, reason = CallLifecycle(Bars.Modules.Editor.SetGlobalColor, group, rgba)
+    if not ok and BootyActionBarsDB ~= owner then
+        local restored, restoreFailure = CallLifecycle(SyncEngine)
+        if not restored then reason = tostring(reason) .. " Resynchronization: " .. tostring(restoreFailure) end
+    end
+    RefreshView()
+    return ok, reason
+end
+
 function Runtime.SetEditorOption(key, value)
     if (key ~= "showGrid" and key ~= "showAnchors") or type(value) ~= "boolean" then
         return false, "Choose a grid or anchor setting."
@@ -442,7 +455,7 @@ end
 
 function Runtime.SetBarDisplay(id, key, enabled)
     if not Bars.Services.BarLayout.ValidDisplayKey(key) or type(enabled) ~= "boolean" then
-        return false, "Choose a title, hotkey, count, macro name or empty button setting."
+        return false, "Choose a known visibility or appearance toggle."
     end
     local valid, reason = LayoutAvailable(id)
     if not valid then return false, reason end
@@ -457,6 +470,20 @@ function Runtime.SetBarAppearance(id, key, value)
     local ok, failure = Bars.Modules.Editor.SetAppearance(id, key, value)
     RefreshView()
     return ok, failure
+end
+
+function Runtime.SetBarColor(id, group, rgba)
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local owner, failure = Bars.Database.Ensure()
+    if not owner then return false, failure end
+    local ok, message = CallLifecycle(Bars.Modules.Editor.SetColor, id, group, rgba)
+    if not ok and BootyActionBarsDB ~= owner then
+        local restored, restoreFailure = CallLifecycle(SyncEngine)
+        if not restored then message = tostring(message) .. " Resynchronization: " .. tostring(restoreFailure) end
+    end
+    RefreshView()
+    return ok, message
 end
 
 function Runtime.SetBarPosition(id, x, y)

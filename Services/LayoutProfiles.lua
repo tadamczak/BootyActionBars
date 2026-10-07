@@ -2,11 +2,9 @@ local Bars = BootyActionBars
 local Profiles = {}
 Bars.Services.LayoutProfiles = Profiles
 Profiles.VERSION, Profiles.LIMIT = 2, 20
-local fields = {"x", "y", "scalePct", "columns", "spacing", "showTitle", "showHotkeys", "showCounts",
-    "showMacroNames", "showEmptyButtons", "buttonSize", "iconInset", "opacityPct", "labelFontSize"}
-local allowed = {}
-for _, key in ipairs(fields) do allowed[key] = true end
-local function LocalField(key) return allowed[key] or key == "useGlobalLayout" or key == "localLayoutSaved" end
+local fields = {"x", "y"}
+for _, key in ipairs(Bars.Services.BarLayout.GlobalKeys) do table.insert(fields, key) end
+local function LocalField(key) return Bars.Services.BarLayout.ProfileField(key, 2) end
 local function GlobalCopy(value, existing)
     local copy = {}
     for key, item in pairs(existing or {}) do if not Bars.Services.BarLayout.ValidGlobalValue(key, item) then copy[key] = item end end
@@ -58,7 +56,7 @@ function Profiles.Validate(profile)
         local record = profile.barLayouts[id]
         if type(record) ~= "table" then return false, "Layout profiles must contain all eight bar layouts." end
         for key in pairs(record) do
-            if not allowed[key] and not (profile.version == 2 and LocalField(key)) then return false, "Unexpected layout appearance data." end
+            if not Bars.Services.BarLayout.ProfileField(key, profile.version) then return false, "Unexpected layout appearance data." end
         end
         if profile.version == 2 and (type(record.useGlobalLayout) ~= "boolean" or type(record.localLayoutSaved) ~= "boolean") then
             return false, "Layout inheritance flags are missing."

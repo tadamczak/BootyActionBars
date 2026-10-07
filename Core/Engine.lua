@@ -13,7 +13,7 @@ local pageEvents = {ACTIONBAR_PAGE_CHANGED = true, UPDATE_BONUS_ACTIONBAR = true
 local stateEvents = {ACTIONBAR_UPDATE_STATE = true, PLAYER_ENTER_COMBAT = true, PLAYER_LEAVE_COMBAT = true,
     START_AUTOREPEAT_SPELL = true, STOP_AUTOREPEAT_SPELL = true, CRAFT_SHOW = true, CRAFT_CLOSE = true,
     TRADE_SKILL_SHOW = true, TRADE_SKILL_CLOSE = true}
-local SyncRange, FlushMacroChanges, SyncMain, SyncContext
+local SyncRange, SyncWorker, FlushMacroChanges, SyncMain, SyncContext
 
 local function Valid(index)
     return type(index) == "number" and index >= 1 and index <= 12 and index == math.floor(index)
@@ -83,16 +83,21 @@ local function RefreshAll(category, force)
     end
     return true
 end
-local function ClearRangeScript()
-    if state.rangeFrame then state.rangeFrame:SetScript("OnUpdate", nil) end
+local function ClearWorkerScript()
+    if state.workerFrame then state.workerFrame:SetScript("OnUpdate", nil) end
 end
-local function StopRange()
-    local ok, failure = ProtectedCall(ClearRangeScript)
-    if ok then state.rangeFrame = nil end
-    state.rangeTracking, state.rangeElapsed = false, 0
+local function StopWorker()
+    local ok, failure = ProtectedCall(ClearWorkerScript)
+    if ok then state.workerFrame = nil end
+    state.workerTracking, state.rangeFrame = false, nil
     return ok, failure
 end
+local function StopRange()
+    state.rangeTracking, state.rangeElapsed = false, 0
+    return SyncWorker()
+end
 local function RangeUpdate(elapsed)
+    if not state.rangeTracking then return end
     state.rangeElapsed = state.rangeElapsed + (elapsed or 0)
     if state.rangeElapsed < 0.2 then return end
     -- A slow frame never triggers a catch-up burst.
@@ -123,12 +128,58 @@ local function RangeUpdate(elapsed)
         if not ok then Engine.Disable(); Report(failure) end
     end
 end
-local function RangeTick()
+local function WorkerTick()
     -- Use the existing observed entry point; scoped profiling includes this
     -- conditional worker without replacing a frame script during capture.
-    Engine.HandleEvent("BOOTY_ACTIONBARS_RANGE_UPDATE", arg1)
+    Engine.HandleEvent("BOOTY_ACTIONBARS_SHARED_UPDATE", arg1)
 end
-local function InstallRangeScript() state.rangeFrame:SetScript("OnUpdate", RangeTick) end
+local function InstallWorkerScript() state.workerFrame:SetScript("OnUpdate", WorkerTick) end
+SyncWorker = function()
+    local cooldown = Bars.Modules.CooldownText
+    state.cooldownTracking = state.active and cooldown ~= nil and cooldown.GetDemand() or false
+    if not state.active or not state.rangeTracking and not state.cooldownTracking then
+        state.cooldownElapsed = 0
+        return StopWorker()
+    end
+    local frame = state.mainActive and state.view.frame or state.driver
+    if not frame then return false, "The action bar update driver is unavailable." end
+    if not state.workerTracking or state.workerFrame ~= frame then
+        local ok, failure = StopWorker()
+        if not ok then return false, failure end
+        state.workerFrame, state.workerTracking = frame, true
+        ok, failure = ProtectedCall(InstallWorkerScript)
+        if not ok then return false, failure end
+    end
+    state.rangeFrame = state.rangeTracking and frame or nil
+    return true
+end
+local function CooldownUpdate(elapsed)
+    local cooldown = Bars.Modules.CooldownText
+    if not cooldown or not cooldown.GetDemand() then state.cooldownElapsed = 0; return true end
+    state.cooldownElapsed = (state.cooldownElapsed or 0) + (elapsed or 0)
+    if state.cooldownElapsed < 0.1 then return true end
+    state.cooldownElapsed = 0
+    local oldThis, oldEvent, oldArg = this, event, arg1
+    local ran, now = pcall(GetTime)
+    this, event, arg1 = oldThis, oldEvent, oldArg
+    if not ran then return false, tostring(now) end
+    return cooldown.Tick(now)
+end
+local function SharedUpdate(elapsed)
+    state.workerUpdating = true
+    RangeUpdate(elapsed)
+    local ok, failure = true, nil
+    if state.active then ok, failure = CooldownUpdate(elapsed) end
+    state.workerUpdating = nil
+    if ok then ok, failure = SyncWorker() end
+    if not ok then Engine.Disable(); Report(failure) end
+end
+function Engine.CooldownChanged()
+    if state.enabling or state.cleaning or state.workerUpdating or (state.readingDepth or 0) > 0 then return true end
+    local ok, failure = SyncWorker()
+    if not ok then Engine.Disable(); Report(failure) end
+    return ok, failure
+end
 SyncRange = function()
     if not state.active or not state.rangeService then return StopRange() end
     local candidates = false
@@ -146,16 +197,9 @@ SyncRange = function()
     this, event, arg1 = previousThis, previousEvent, previousArg
     if not ran then return false, target end
     local wanted = target == true
-    local frame = state.mainActive and state.view.frame or state.driver
-    if wanted and (not state.rangeTracking or state.rangeFrame ~= frame) then
-        local ok, failure = StopRange()
-        if not ok then return false, failure end
-        if not frame then return false, "The action bar range driver is unavailable." end
-        state.rangeElapsed, state.rangeTracking = 0, true
-        state.rangeFrame = frame
-        return ProtectedCall(InstallRangeScript)
-    elseif not wanted then return StopRange() end
-    return true
+    if wanted ~= (state.rangeTracking == true) then state.rangeElapsed = 0 end
+    state.rangeTracking = wanted
+    return SyncWorker()
 end
 local function ApplyPage(offset, page)
     if state.actionOffset == offset then return false end
@@ -334,7 +378,7 @@ SyncContext = function()
     end
     if state.driver then
         local rangeOK, rangeFailure = true, nil
-        if state.rangeFrame == state.driver then rangeOK, rangeFailure = StopRange() end
+        if state.workerFrame == state.driver then rangeOK, rangeFailure = StopWorker() end
         state.hidingDriver = true
         local ok, failure = ProtectedCall(state.driver.Hide, state.driver)
         state.hidingDriver = nil
@@ -452,6 +496,7 @@ function Engine.MacroEvent(slot)
 end
 function Engine.HandleEvent(name, unit)
     if not state.active then return end
+    if name == "BOOTY_ACTIONBARS_SHARED_UPDATE" then SharedUpdate(unit); return end
     if name == "BOOTY_ACTIONBARS_RANGE_UPDATE" then RangeUpdate(unit); return end
     if name == "BOOTY_ACTIONBARS_MACRO_UPDATE" and (state.readingDepth or 0) > 0 then
         if type(unit) == "number" and unit >= 1 and unit <= 120 and unit == math.floor(unit) then
@@ -744,3 +789,4 @@ function Engine.MarkLayoutChanged()
     return state.customRevision
 end
 function Engine.GetState() return state end
+if Bars.Modules.CooldownText then Bars.Modules.CooldownText.SetDemandObserver(Engine.CooldownChanged) end

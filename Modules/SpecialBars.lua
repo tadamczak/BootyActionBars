@@ -2,6 +2,15 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Special = {}
 Bars.Modules.SpecialBars = Special
+local Appearance = Bars.Modules.ButtonAppearance
+local function Countdown(method, first, second, third, fourth)
+    local owner = Bars.Modules.CooldownText
+    if owner then
+        local ok, failure = owner[method](first, second, third, fourth)
+        if ok == false then error(failure or "Cooldown text update failed.") end
+    end
+    return true
+end
 local state = {active = false, editing = false, configured = {}, views = {}, visibleCount = 0}
 local owners = {pet = {id = 7, kind = "pet", subscriptions = {}}, stance = {id = 8, kind = "stance", subscriptions = {}}}
 local kinds = {"pet", "stance"}
@@ -102,7 +111,7 @@ end
 local function Cancel(button)
     if button.mouseHeld then button.skipClick = true end
     button.keyHeld, button.mousePressed, button.mouseHeld = false, false, false
-    button.pressFeedback:Hide(); button.hoverFeedback:Hide(); ClearTooltip(button)
+    button.pressFeedback:Hide(); Appearance.Hover(button, false); ClearTooltip(button)
     return true
 end
 UpdateEmpty = function(button)
@@ -165,13 +174,13 @@ end
 local function Enter()
     local button = this
     if not VisibleSlot(button) then return end
-    button.hoverFeedback:Show()
+    Appearance.Hover(button, true)
     if BindingMode() or LayoutMode() then return end
     local ok, failure = Run(Tooltip, button)
     if not ok then Report(failure) end
 end
 local function Leave()
-    this.hoverFeedback:Hide(); this.mousePressed = false; Press(this); ClearTooltip(this)
+    Appearance.Hover(this, false); this.mousePressed = false; Press(this); ClearTooltip(this)
 end
 local function Drag(button, placing)
     if BindingMode() or LayoutMode() then return true end
@@ -242,12 +251,8 @@ local function Render(button, data, force)
     button.hasAction = data.hasAction
     if force or availabilityChanged then UpdateEmpty(button) end
     if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
-    if force or old.usable ~= data.usable or old.noMana ~= data.noMana then
-        if data.usable then button.icon:SetVertexColor(1, 1, 1)
-        elseif data.noMana then button.icon:SetVertexColor(0.5, 0.5, 1)
-        else button.icon:SetVertexColor(0.3, 0.3, 0.3) end
-        old.usable, old.noMana = data.usable, data.noMana
-    end
+    Appearance.ApplyColor(button, data)
+    old.usable, old.noMana = data.usable, data.noMana
     if force or old.current ~= data.current then button:SetChecked(data.current and 1 or 0); old.current = data.current end
     if force or old.autocastEnabled ~= data.autocastEnabled then
         if data.autocastEnabled then button.autocast:Show() else button.autocast:Hide() end
@@ -255,6 +260,7 @@ local function Render(button, data, force)
     end
     if force or old.start ~= data.cooldownStart or old.duration ~= data.cooldownDuration or old.enabled ~= data.cooldownEnabled then
         CooldownFrame_SetTimer(button.cooldown, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled and 1 or 0)
+        Countdown("Update", button, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled)
         old.start, old.duration, old.enabled = data.cooldownStart, data.cooldownDuration, data.cooldownEnabled
     end
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button)
@@ -276,6 +282,8 @@ local function Hidden()
     local owner = owners[view.kind]
     if owner.visible then owner.visible = false; state.visibleCount = state.visibleCount - 1 end
     local ok, failure = view:Suspend()
+    local countdownHidden, countdownFailure = Run(Countdown, "SetViewVisible", view, false)
+    if not countdownHidden and ok then ok, failure = false, countdownFailure end
     local removed, reason = Remove(owner, transient[owner.kind])
     if not removed and ok then ok, failure = false, reason end
     if Bars.Modules.Editor then
@@ -318,15 +326,11 @@ local function Create(owner)
         button.bindingCommand = Bars.Services.BindingService and Bars.Services.BindingService.Command(view.id, index)
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
-        UI.StyleButton(button, ""); button.label:Hide(); UI.SetProjectButtonOutline(button, true)
         button:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
         button.icon = UI.CreateTexture(button, buttonName .. "Icon", "ARTWORK")
         button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", 4, -4)
         button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
-        button.hoverFeedback = UI.CreateTexture(button, nil, "OVERLAY")
-        button.hoverFeedback:SetAllPoints(button.icon)
-        button.hoverFeedback:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-        button.hoverFeedback:SetBlendMode("ADD"); button.hoverFeedback:SetAlpha(0.6); button.hoverFeedback:Hide()
+        Appearance.InitializeButton(button)
         button.pressFeedback = UI.CreateTexture(button, nil, "OVERLAY")
         button.pressFeedback:SetAllPoints(button.icon)
         button.pressFeedback:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress"); button.pressFeedback:Hide()
@@ -336,6 +340,7 @@ local function Create(owner)
         button.autocast:SetBlendMode("ADD"); button.autocast:Hide()
         button.cooldown = UI.CreateModel(buttonName .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
+        Countdown("Attach", button)
         button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmall")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -4, -4)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
@@ -357,6 +362,8 @@ local function Create(owner)
             ok, failure = Run(button.cooldown.Hide, button.cooldown)
             if not ok and not firstFailure then firstFailure = failure end
         end
+        local ended, failure = Run(Countdown, "SuspendView", self)
+        if not ended and not firstFailure then firstFailure = failure end
         return firstFailure == nil, firstFailure
     end
     function view:CancelInput(onlyHeld)
@@ -372,14 +379,15 @@ local function Create(owner)
     function view:Hide()
         local ok, failure = self:Suspend()
         local hidden, reason = Run(self.frame.Hide, self.frame)
-        return ok and hidden, failure or reason
+        local countdownHidden, countdownFailure = Run(Countdown, "SetViewVisible", self, false)
+        return ok and hidden and countdownHidden, failure or reason or countdownFailure
     end
     function view:Show()
         if Bars.Modules.Editor then
             local ok, failure = Bars.Modules.Editor.ApplyView(self, true)
             if not ok then return false, failure end
         end
-        self.frame:Show(); return true
+        self.frame:Show(); Countdown("SetViewVisible", self, true); return true
     end
     function view:SetGrid(value)
         self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
@@ -400,6 +408,8 @@ local function Create(owner)
         self.title:SetWidth(value.barWidth); return true
     end
     function view:SetDisplay(value, repair)
+        Appearance.ApplyView(self, value, repair)
+        Countdown("ConfigureView", self, value)
         local rebuild = repair == true or not self.displayReady
         local titleChanged, keysChanged = rebuild or self.showTitle ~= value.showTitle, rebuild or self.showHotkeys ~= value.showHotkeys
         self.displayReady = false
