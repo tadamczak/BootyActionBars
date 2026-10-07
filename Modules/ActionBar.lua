@@ -3,6 +3,15 @@ local UI = Bars.UI.Components
 local ActionBar = {}
 Bars.Modules.ActionBar = ActionBar
 local pooled = {}
+local function BindingMode()
+    local editor = Bars.Modules.BindingEditor
+    return editor and editor.IsEditing and editor.IsEditing() or false
+end
+local UpdateEmpty
+local function LabelFont(label, size)
+    local face, oldSize, flags = label:GetFont()
+    if face and oldSize ~= size then label:SetFont(face, size, flags) end
+end
 
 local function UpdateCaption(view)
     if not view.showTitle then return end
@@ -43,6 +52,7 @@ local function CancelPressed(button)
     UpdatePressed(button)
 end
 local function Click()
+    if BindingMode() then return end
     -- Native CheckButton clicks toggle checked before invoking this script.
     this:SetChecked(this.rendered.checked and 1 or 0)
     this.mousePressed, this.mouseHeld = false, false; UpdatePressed(this)
@@ -51,6 +61,7 @@ local function Click()
     this.skipClick = nil
 end
 local function MouseDown()
+    if BindingMode() then return end
     if arg1 == "LeftButton" or arg1 == "RightButton" then
         this.skipClick = nil
         this.mousePressed, this.mouseHeld = true, true; UpdatePressed(this)
@@ -60,6 +71,7 @@ local function MouseUp()
     this.mousePressed, this.mouseHeld = false, false; UpdatePressed(this)
 end
 local function Pickup()
+    if BindingMode() then return end
     if type(IsShiftKeyDown) == "function" then
         local shift = IsShiftKeyDown()
         if shift and shift ~= 0 then
@@ -70,11 +82,13 @@ local function Pickup()
     end
 end
 local function Place()
+    if BindingMode() then return end
     this.skipClick = true; CancelPressed(this)
     if this.bar.id == 1 then this.bar.callbacks.Place(this.index)
     else this.bar.callbacks.Place(this.index, this.bar.id) end
 end
 local function Tooltip(button)
+    if BindingMode() then return true end
     if button.bar.callbacks.Tooltip then
         local ok, failure = button.bar.callbacks.Tooltip(button.index, button.bar.id)
         if ok == false and failure then error(failure) end
@@ -97,6 +111,10 @@ local function Leave()
 end
 local function Enter()
     this.hoverFeedback:Show()
+    if BindingMode() then
+        Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index)
+        return
+    end
     if this.hasAction and GameTooltip and GameTooltip.SetAction then
         Tooltip(this)
     end
@@ -128,6 +146,21 @@ local function SuspendButton(button, preserveHover)
     if not ok and not firstFailure then firstFailure = tostring(failure) end
     return firstFailure == nil, firstFailure
 end
+UpdateEmpty = function(button)
+    local view = button.bar
+    local shown = view.showEmptyButtons or view.editing or BindingMode() or button.hasAction
+    local wasHidden = button.emptyHidden
+    button.emptyHidden = not shown
+    if shown then button:Show()
+    else
+        -- Cancel the old gesture before a later action can occupy this slot.
+        if not wasHidden then
+            local ok, failure = SuspendButton(button, false)
+            if not ok then error(failure, 0) end
+        end
+        button:Hide()
+    end
+end
 
 function ActionBar.Create(callbacks, barId)
     barId = barId or 1
@@ -138,7 +171,8 @@ function ActionBar.Create(callbacks, barId)
     local frameName = barId == 1 and "BootyActionBarsTrialBar" or "BootyActionBarsBar" .. barId
     local frame = UI.CreateContainer(frameName, UIParent)
     local view = {id = barId, frame = frame, buttons = {}, callbacks = callbacks, gridWidth = 524,
-        showTitle = true, showHotkeys = true, showCounts = true, displayReady = true}
+        showTitle = true, showHotkeys = true, showCounts = true, showMacroNames = true,
+        showEmptyButtons = true, editing = false, displayReady = true}
     frame.bar = view
     -- Native position APIs require a movable/resizable frame even while the
     -- editor is locked. Only the editor handle owns drag scripts.
@@ -187,7 +221,8 @@ function ActionBar.Create(callbacks, barId)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         -- SuperMacro uses these conventional globals during wrapped reads.
         button.nameLabel = UI.CreateLabel(button, name .. "Name", "OVERLAY", "GameFontNormalSmall")
-        button.nameLabel:SetPoint("BOTTOM", button, "BOTTOM", 0, 4); button.nameLabel:Hide()
+        button.nameLabel:SetPoint("BOTTOM", button, "BOTTOM", 0, 4)
+        button.nameLabel:SetWidth(32); button.nameLabel:SetHeight(12); button.nameLabel:Hide()
         button.rendered, button.read, button.pressed, button.mousePressed = {}, {}, false, false
         button.mouseHeld = false
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -213,13 +248,22 @@ function ActionBar.Create(callbacks, barId)
     end
     function view:SetGrid(value)
         self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
-        local step, columns = 40 + value.spacing, value.columns
+        local size, inset, fontSize = value.buttonSize or 40, value.iconInset or 4, value.labelFontSize or 10
+        local step, columns = size + value.spacing, value.columns
+        self.frame:SetAlpha((value.opacityPct or 100) / 100)
         for index = 1, 12 do
             local row = math.floor((index - 1) / columns)
             local column = index - 1 - row * columns
             local button = self.buttons[index]
+            button:SetWidth(size); button:SetHeight(size)
             button:ClearAllPoints()
             button:SetPoint("TOPLEFT", self.frame, "TOPLEFT", column * step, -row * step)
+            button.icon:ClearAllPoints()
+            button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", inset, -inset)
+            button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
+            button.hotkey:SetWidth(math.max(1, size - 8))
+            button.nameLabel:SetWidth(math.max(1, size - 8)); button.nameLabel:SetHeight(fontSize + 2)
+            LabelFont(button.hotkey, fontSize); LabelFont(button.count, fontSize); LabelFont(button.nameLabel, fontSize)
         end
         self.gridWidth = value.barWidth
         title:SetWidth(value.barWidth); title:SetHeight(20)
@@ -231,9 +275,13 @@ function ActionBar.Create(callbacks, barId)
         local titleChanged = rebuild or self.showTitle ~= value.showTitle
         local hotkeysChanged = rebuild or self.showHotkeys ~= value.showHotkeys
         local countsChanged = rebuild or self.showCounts ~= value.showCounts
-        if not titleChanged and not hotkeysChanged and not countsChanged then return true end
+        local names = value.showMacroNames ~= false
+        local empties = value.showEmptyButtons ~= false
+        local namesChanged, emptiesChanged = rebuild or self.showMacroNames ~= names, rebuild or self.showEmptyButtons ~= empties
+        if not titleChanged and not hotkeysChanged and not countsChanged and not namesChanged and not emptiesChanged then return true end
         self.displayReady = false
         self.showTitle, self.showHotkeys, self.showCounts = value.showTitle, value.showHotkeys, value.showCounts
+        self.showMacroNames, self.showEmptyButtons = names, empties
         if titleChanged then
             if self.showTitle then UpdateCaption(self); title:Show() else title:Hide() end
         end
@@ -246,8 +294,20 @@ function ActionBar.Create(callbacks, barId)
             if countsChanged then
                 if self.showCounts then UpdateCount(button); button.count:Show() else button.count:Hide() end
             end
+            if namesChanged then
+                if self.showMacroNames then
+                    button.nameLabel:SetText(button.rendered.macroName or "")
+                    button.nameLabel:Show()
+                else button.nameLabel:Hide() end
+            end
+            if emptiesChanged then UpdateEmpty(button) end
         end
         self.displayReady = true
+        return true
+    end
+    function view:SetEditing(value)
+        self.editing = value == true
+        for _, button in ipairs(self.buttons) do UpdateEmpty(button) end
         return true
     end
     function view:Hide()
@@ -307,7 +367,17 @@ function ActionBar.Create(callbacks, barId)
     end
     function view:Render(index, data, force, rangeOnly)
         local button, old = self.buttons[index], self.buttons[index].rendered
+        local availabilityChanged = button.hasAction ~= data.hasAction
+        if button.hasAction and not data.hasAction then CancelPressed(button) end
         button.hasAction = data.hasAction
+        if force or availabilityChanged then UpdateEmpty(button) end
+        if force or old.macroName ~= data.macroName then
+            if self.showMacroNames then
+                button.nameLabel:SetText(data.macroName or "")
+                button.nameLabel:Show()
+            end
+            old.macroName = data.macroName
+        end
         if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
         if force or old.count ~= data.count then
             if self.showCounts then button.count:SetText(data.count > 1 and data.count or "") end

@@ -17,6 +17,15 @@ local transient = {
 local Sync, Refresh, StopKind, Remove
 local visibilityObserver, visibilityDepth = nil, 0
 local observedPet, observedStance = false, false
+local function BindingMode()
+    local editor = Bars.Modules.BindingEditor
+    return editor and editor.IsEditing and editor.IsEditing() or false
+end
+local UpdateEmpty
+local function LabelFont(label, size)
+    local face, previous, flags = label:GetFont()
+    if face and previous ~= size then label:SetFont(face, size, flags) end
+end
 local function Run(callback, first, second, third, fourth)
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ran, result, failure = pcall(callback, first, second, third, fourth)
@@ -92,14 +101,27 @@ local function Cancel(button)
     button.pressFeedback:Hide(); button.hoverFeedback:Hide(); ClearTooltip(button)
     return true
 end
+UpdateEmpty = function(button)
+    local view = button.bar
+    local shown = not view.editPreview and button.index <= view.count
+        and (view.showEmptyButtons or state.editing or view.editing or BindingMode() or button.hasAction)
+    local wasHidden = button.emptyHidden
+    button.emptyHidden = not shown
+    if shown then button:Show()
+    else
+        if not wasHidden then Cancel(button) end
+        button:Hide()
+    end
+end
 local function VisibleSlot(button)
     local owner = owners[button.bar.kind]
     return state.active and state.configured[owner.kind] and owner.visible
         and not button.bar.editPreview and button.bar.count > 0
-        and button.index <= button.bar.count and button.bar.frame:IsVisible()
+        and button.index <= button.bar.count and not button.emptyHidden and button.bar.frame:IsVisible()
 end
 local function InputAvailable(button) return VisibleSlot(button) and button.hasAction end
 local function Use(button, mouseButton)
+    if BindingMode() then return false end
     if not InputAvailable(button) then return false end
     this = button
     local ok, failure = button.bar.service.Use(button.index, mouseButton)
@@ -107,6 +129,7 @@ local function Use(button, mouseButton)
     return Refresh(owners[button.bar.kind], "ReadState")
 end
 local function Click()
+    if BindingMode() then return end
     local button, mouseButton = this, arg1
     button:SetChecked(button.rendered.current and 1 or 0)
     button.mousePressed, button.mouseHeld = false, false; Press(button)
@@ -116,6 +139,7 @@ local function Click()
     if not ok then Report(failure) end
 end
 local function MouseDown()
+    if BindingMode() then return end
     if not VisibleSlot(this) then return end
     if arg1 == "LeftButton" or arg1 == "RightButton" then
         this.skipClick = nil; this.mouseHeld, this.mousePressed = true, true; Press(this)
@@ -123,6 +147,7 @@ local function MouseDown()
 end
 local function MouseUp() this.mouseHeld, this.mousePressed = false, false; Press(this) end
 local function Tooltip(button)
+    if BindingMode() then return true end
     if not InputAvailable(button) then return true end
     this = button
     return button.bar.service.Tooltip(button.index, button)
@@ -131,6 +156,10 @@ local function Enter()
     local button = this
     if not VisibleSlot(button) then return end
     button.hoverFeedback:Show()
+    if BindingMode() then
+        Bars.Modules.BindingEditor.SelectButton(button, button.bar.id, button.index)
+        return
+    end
     local ok, failure = Run(Tooltip, button)
     if not ok then Report(failure) end
 end
@@ -138,6 +167,7 @@ local function Leave()
     this.hoverFeedback:Hide(); this.mousePressed = false; Press(this); ClearTooltip(this)
 end
 local function Drag(button, placing)
+    if BindingMode() then return true end
     if not VisibleSlot(button) or not placing and not button.hasAction or button.bar.kind ~= "pet" then return true end
     if not placing and type(IsShiftKeyDown) == "function" then
         local shift = IsShiftKeyDown()
@@ -173,7 +203,9 @@ end
 local function Render(button, data, force)
     local old = button.rendered
     if button.hasAction and not data.hasAction then Cancel(button) end
+    local availabilityChanged = button.hasAction ~= data.hasAction
     button.hasAction = data.hasAction
+    if force or availabilityChanged then UpdateEmpty(button) end
     if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
     if force or old.usable ~= data.usable or old.noMana ~= data.noMana then
         if data.usable then button.icon:SetVertexColor(1, 1, 1)
@@ -190,7 +222,8 @@ local function Render(button, data, force)
         CooldownFrame_SetTimer(button.cooldown, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled and 1 or 0)
         old.start, old.duration, old.enabled = data.cooldownStart, data.cooldownDuration, data.cooldownEnabled
     end
-    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then
+    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button)
+        and GameTooltip.IsShown and GameTooltip:IsShown() then
         if data.hasAction then return Tooltip(button) else GameTooltip:Hide() end
     end
     return true
@@ -231,7 +264,8 @@ local function Create(owner)
     local name = owner.kind == "pet" and "BootyActionBarsPetBar" or "BootyActionBarsStanceBar"
     local frame = UI.CreateContainer(name, UIParent)
     local view = {id = owner.id, kind = owner.kind, frame = frame, buttons = {}, count = 0,
-        showTitle = true, showHotkeys = true, showCounts = true, displayReady = true, service = owner.service}
+        showTitle = true, showHotkeys = true, showCounts = true, showEmptyButtons = true,
+        displayReady = true, service = owner.service}
     state.views[owner.id] = view; frame.bar = view
     frame:SetMovable(true)
     if frame.SetDontSavePosition then frame:SetDontSavePosition(true) end
@@ -313,12 +347,19 @@ local function Create(owner)
     end
     function view:SetGrid(value)
         self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
-        local step, columns = 40 + value.spacing, value.columns
+        local size, inset, font = value.buttonSize or 40, value.iconInset or 4, value.labelFontSize or 10
+        local step, columns = size + value.spacing, value.columns
+        self.frame:SetAlpha((value.opacityPct or 100) / 100)
         for index = 1, 10 do
             local row = math.floor((index - 1) / columns)
             local column = index - 1 - row * columns
             local button = self.buttons[index]
+            button:SetWidth(size); button:SetHeight(size)
             button:ClearAllPoints(); button:SetPoint("TOPLEFT", self.frame, "TOPLEFT", column * step, -row * step)
+            button.icon:ClearAllPoints()
+            button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", inset, -inset)
+            button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
+            button.hotkey:SetWidth(math.max(1, size - 8)); LabelFont(button.hotkey, font)
         end
         self.title:SetWidth(value.barWidth); return true
     end
@@ -327,6 +368,9 @@ local function Create(owner)
         local titleChanged, keysChanged = rebuild or self.showTitle ~= value.showTitle, rebuild or self.showHotkeys ~= value.showHotkeys
         self.displayReady = false
         self.showTitle, self.showHotkeys, self.showCounts = value.showTitle, value.showHotkeys, value.showCounts
+        local empties = value.showEmptyButtons ~= false
+        local emptyChanged = rebuild or self.showEmptyButtons ~= empties
+        self.showEmptyButtons = empties
         if titleChanged then if self.showTitle then self.title:Show() else self.title:Hide() end end
         if keysChanged then
             for _, button in ipairs(self.buttons) do
@@ -337,7 +381,13 @@ local function Create(owner)
                 else button.hotkey:Hide() end
             end
         end
+        if emptyChanged then for _, button in ipairs(self.buttons) do UpdateEmpty(button) end end
         self.displayReady = true; return true
+    end
+    function view:SetEditing(value)
+        self.editing = value == true
+        for _, button in ipairs(self.buttons) do UpdateEmpty(button) end
+        return true
     end
     return view
 end
@@ -445,7 +495,7 @@ local function SyncBody(owner)
     end
     view.count = count
     for index = 1, 10 do
-        if index <= count then view.buttons[index]:Show() else view.buttons[index]:Hide() end
+        UpdateEmpty(view.buttons[index])
     end
     if not owner.visible then owner.visible = true; state.visibleCount = state.visibleCount + 1 end
     -- Initial reads precede display. The controlled flag lets the same pooled
@@ -564,6 +614,7 @@ function Special.HandleEvent(name, unit, kind)
     return ok, failure
 end
 function Special.UseButton(kind, index, keyState)
+    if BindingMode() then return false end
     local owner = owners[kind]
     if not owner or type(index) ~= "number" or index < 1 or index > 10 or index ~= math.floor(index) then return false end
     local view = state.views[owner.id]
@@ -584,4 +635,14 @@ function Special.UseButton(kind, index, keyState)
     return ok, failure
 end
 function Special.GetView(id) return state.views[id] end
+function Special.RefreshButtonVisibility()
+    local firstFailure
+    for _, view in pairs(state.views) do
+        for _, button in ipairs(view.buttons) do
+            local ok, failure = Run(UpdateEmpty, button)
+            if not ok and not firstFailure then firstFailure = failure end
+        end
+    end
+    return firstFailure == nil, firstFailure
+end
 function Special.GetState() return state end

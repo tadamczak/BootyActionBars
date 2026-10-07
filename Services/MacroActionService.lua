@@ -28,12 +28,18 @@ local function CleveOwns(api, slot)
     local actions = provider.Actions[slot]
     return type(actions) == "table" and (type(actions.active) == "table" or type(actions.tooltip) == "table")
 end
-local function SuperAction(api, slot)
+local function SuperAction(api, slot, resolvedName)
     if CleveOwns(api, slot) then return end
     local options, resolve = api.SM_VARS, Function(api, "SM_GetActionSpell")
     if type(options) ~= "table" or options.checkCooldown ~= 1 or not resolve then return end
-    local getText = Function(api, "GetActionText")
-    local name = getText and Text(getText(slot))
+    local name
+    -- A complete read has already obtained the native macro label. False
+    -- means that read found no name; nil requests a fresh partial read.
+    if resolvedName ~= nil then name = Text(resolvedName)
+    else
+        local getText = Function(api, "GetActionText")
+        name = getText and Text(getText(slot))
+    end
     if not name then return end
     local super = type(api.SM_ACTION) == "table" and api.SM_ACTION[slot] or nil
     local getSuper, getMacro, getIndex = Function(api, "GetSuperMacroInfo"), Function(api, "GetMacroInfo"), Function(api, "GetMacroIndexByName")
@@ -68,7 +74,7 @@ function MacroActionService.Create(api)
     local active, observer = false, nil
     local registrations = {}
 
-    function service.Apply(slot, target, partial)
+    function service.Apply(slot, target, partial, resolvedName)
         if not ValidSlot(slot) then return nil, "invalid-slot" end
         if type(target) ~= "table" then return nil, "invalid-target" end
         target.macroProvider = nil
@@ -82,7 +88,7 @@ function MacroActionService.Create(api)
             end
             return target
         end
-        local kind, action, texture, replace = SuperAction(api, slot)
+        local kind, action, texture, replace = SuperAction(api, slot, resolvedName)
         if not kind then return target end
         SuperVisual(target, texture, replace)
         if kind == "item" then
@@ -98,11 +104,11 @@ function MacroActionService.Create(api)
     -- SuperMacro's GetActionCooldown writes directly into foreign Icon/Count
     -- regions. Resolve its known cached action once so our data/render owner
     -- keeps hidden labels inert and does not scan the same bags twice.
-    function service.ReadCooldown(slot, target)
+    function service.ReadCooldown(slot, target, resolvedName)
         if not ValidSlot(slot) then return nil, "invalid-slot" end
         if type(target) ~= "table" then return nil, "invalid-target" end
         if not Enabled(target.hasAction) then return nil end
-        local kind, action, texture, replace = SuperAction(api, slot)
+        local kind, action, texture, replace = SuperAction(api, slot, resolvedName)
         if not kind then return nil end
         local start, duration, enabled
         if kind == "spell" then
