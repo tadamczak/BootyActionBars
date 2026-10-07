@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-dev.23 — 2026-10-07
+
+- Restore action bar list selection on the native client.
+- Keep the positioning grid above the game background while unlocked.
+
 ## 0.1.0-dev.22
 
 - Hide native multi-action buttons independently while their BootyActionBars equivalents are visible.

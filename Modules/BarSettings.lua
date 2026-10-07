@@ -12,6 +12,12 @@ local function Name(id)
     return id == "layout" and "Layout" or id == "global" and "Global"
         or id == 7 and "Pet" or id == 8 and "Forms / stances" or "Action Bar " .. id
 end
+local function SelectListedBar()
+    local view = this.barSettingsView
+    local ok, failure = view:Select(this.barSelectionId)
+    if not ok then view.Complete(ok, failure, true) end
+    return ok, failure
+end
 function BarSettings.Create(parent, host, owner)
     local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent)
     local left, right = UI.CreateContainer(nil, frame), UI.CreateContainer(nil, frame)
@@ -23,6 +29,7 @@ function BarSettings.Create(parent, host, owner)
     local tools, settings = UI.CreateContainer(nil, canvas), UI.CreateContainer(nil, canvas)
     local visibility, inherited = UI.CreateContainer(nil, canvas), UI.CreateContainer(nil, canvas)
     local function Complete(ok, failure, skipRefresh) return owner.Complete(ok, failure, skipRefresh) end
+    view.Complete = Complete
     local function Checkbox(parentFrame, caption, key, getter, setter)
         return UI.Settings.CreateCheckbox(parentFrame, 0, 0, caption, key, nil,
             {ensure = function() end, get = getter, set = function(_, value) Complete(setter(value)) end})
@@ -107,7 +114,8 @@ function BarSettings.Create(parent, host, owner)
     view.behaviors = behaviors
     for _, id in ipairs(identities) do
         local button = UI.CreateSelectionButton(list, nil, Name(id), 124, 26); UI.SetButtonLabelInsets(button, 8, 4)
-        button:SetScript("OnClick", function() view:Select(id) end); view.buttons[id] = button
+        button.barSettingsView, button.barSelectionId = view, id
+        button:SetScript("OnClick", SelectListedBar); view.buttons[id] = button
     end
     local function MeasureList(width)
         local columns = view.compact and 2 or 1
