@@ -671,8 +671,8 @@ local function GridLine(grid, list, index, vertical)
     if not line then
         line = UI.CreateTexture(grid.frame, nil, "BACKGROUND")
         list[index] = line
-        line:SetTexture("Interface\\Buttons\\WHITE8X8")
-        line:SetVertexColor(0.6, 0.6, 0.6, 0.2)
+        line:SetTexture(0.6, 0.6, 0.6)
+        line:SetAlpha(0.35)
         if vertical then line:SetWidth(1) else line:SetHeight(1) end
     end
     return line
@@ -691,7 +691,7 @@ local function DrawGrid()
     end
     if not grid.ready then
         grid.frame:Hide(); grid.frame:SetAllPoints(UIParent); grid.frame:EnableMouse(false)
-        grid.frame:SetFrameStrata("BACKGROUND"); grid.frame:SetFrameLevel(0)
+        grid.frame:SetFrameStrata("HIGH"); grid.frame:SetFrameLevel(1)
         grid.ready = true
     end
     if grid.width ~= context.width or grid.height ~= context.height or grid.scale ~= context.scale then
