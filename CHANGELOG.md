@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0-dev.24 — 2026-10-07
+
+- Configure and move Experience/Reputation, Keyring, Latency, Bags and Micro Menu using their existing game controls.
+- Make native-bar visibility independent of BootyActionBars, including both hidden.
+- Use compact bar settings and clearer Main Action Bar, Global Settings and Pet Bar names.
+- Keep the layout grid under interface elements; crop and scale native skill artwork without stretching it.
+- Offer Native slot artwork independently from empty buttons; reveal empty drop targets during action dragging.
+- Include utility positions and visibility in layout profiles, preserving older profiles.
+
 ## 0.1.0-dev.23 — 2026-10-07
 
 - Restore action bar list selection on the native client.

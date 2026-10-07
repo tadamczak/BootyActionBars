@@ -49,7 +49,7 @@ local function Invoke(callback)
 end
 
 function BehaviorSettings.Create(parent, context)
-    local frame = UI.CreateContainer(nil, parent)
+    local frame = UI.CreateContainer(nil, parent); frame.mosTextSizeDelta = -2
     local view = {frame = frame, rows = {}, rules = {}, catalog = {}}
     local heading = UI.CreateHeading(frame, "Behaviors", 3, "gold")
     local help = UI.CreateComponentLabel(frame, "First matching rule wins. Rules choose the actions shown on this bar.", "white")
@@ -100,6 +100,7 @@ function BehaviorSettings.Create(parent, context)
     local function CreateModal()
         if view.modal then return end
         local modal = UI.Window.CreateProjectConfirmation("BootyActionBarsBehaviorConfirmation", "Bar behavior", "Save", "link")
+        modal.mosTextSizeDelta = -2
         view.modal = modal
         local placeholders = {}
         for index = 1, MAX_CHOICES do placeholders[index] = {value = index, text = ""} end
@@ -113,7 +114,7 @@ function BehaviorSettings.Create(parent, context)
         end
         view.when = Choice(-86, placeholders, "choice")
         local sources = {}
-        for index = 1, 6 do sources[index] = {value = index, text = "Action Bar " .. index} end
+        for index = 1, 6 do sources[index] = {value = index, text = index == 1 and "Main Action Bar" or "Action Bar " .. index} end
         view.source = Choice(-154, sources, "sourceBar")
         local whenLabel = UI.CreateComponentLabel(modal, "When", "white")
         whenLabel:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -62); whenLabel:SetWidth(288); whenLabel:SetHeight(18)
@@ -173,7 +174,7 @@ function BehaviorSettings.Create(parent, context)
         CreateModal(); self.session = session
         if UI.WindowStack then UI.WindowStack.SetOwner(self.modal, session.owner) end
         Choices(self.when, session.options, session.choice); Choices(self.source, self.source.choices, session.sourceBar)
-        self.modal:Open("Action Bar " .. id, function()
+        self.modal:Open(id == 1 and "Main Action Bar" or "Action Bar " .. id, function()
             if not Current(session) then
                 if self.session == session then self.session = nil end
                 return Complete(false, "The selected bar changed. Open the rule again.", true)
@@ -234,7 +235,8 @@ function BehaviorSettings.Create(parent, context)
         else status:Hide() end
         for index = 1, math.min(MAX_RULES, count) do
             local row = self.rows[index] or Row(index)
-            row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog) .. " -> Action Bar " .. self.rules[index].sourceBar)
+            local source = self.rules[index].sourceBar
+            row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog) .. " -> " .. (source == 1 and "Main Action Bar" or "Action Bar " .. source))
             row:Show()
             UI.SetButtonEnabled(row.edit, Runtime.IsAvailable()); UI.SetButtonEnabled(row.remove, Runtime.IsAvailable())
             UI.SetButtonEnabled(row.up, Runtime.IsAvailable() and index > 1)

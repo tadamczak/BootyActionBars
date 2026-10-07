@@ -2,15 +2,19 @@ local Bars = BootyActionBars
 local UI, Runtime = Bars.UI.Components, Bars.Core.Runtime
 local BarSettings = {}
 Bars.Modules.BarSettings = BarSettings
+local Utility = Bars.Services.UtilityLayout
 local sliders = {{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, 12},
     {"spacing", "Spacing", 0, 20}, {"buttonSize", "Button size", 24, 64},
     {"iconInset", "Icon inset", 0, 8}, {"opacityPct", "Opacity (%)", 20, 100}, {"labelFontSize", "Label size", 8, 16}}
 local checks = {{"showTitle", "Title"}, {"showHotkeys", "Hotkeys"}, {"showCounts", "Counts"},
     {"showMacroNames", "Macro names"}, {"showEmptyButtons", "Empty buttons"}}
 local identities = {"layout", "global", 1, 2, 3, 4, 5, 6, 7, 8}
+if Utility then for _, id in ipairs(Utility.Keys) do table.insert(identities, id) end end
+local function IsUtility(id) return Utility and Utility.ValidID(id) end
 local function Name(id)
-    return id == "layout" and "Layout" or id == "global" and "Global"
-        or id == 7 and "Pet" or id == 8 and "Forms / stances" or "Action Bar " .. id
+    return id == "layout" and "Layout" or id == "global" and "Global Settings"
+        or id == 1 and "Main Action Bar" or id == 7 and "Pet Bar" or id == 8 and "Forms / stances"
+        or IsUtility(id) and Utility.Name(id) or "Action Bar " .. id
 end
 local function SelectListedBar()
     local view = this.barSettingsView
@@ -19,7 +23,7 @@ local function SelectListedBar()
     return ok, failure
 end
 function BarSettings.Create(parent, host, owner)
-    local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent)
+    local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
     local left, right = UI.CreateContainer(nil, frame), UI.CreateContainer(nil, frame)
     local list = UI.CreateResponsiveCanvas(left, "BootyActionBarsBarListScroll")
     local canvas = UI.CreateResponsiveCanvas(right, "BootyActionBarsBarSettingsScroll")
@@ -40,6 +44,7 @@ function BarSettings.Create(parent, host, owner)
     end
     local function SetPreference(key, value)
         if view.selected == "global" then return Runtime.SetGlobalLayout(key, value) end
+        if type(view.selected) ~= "number" then return false, "Choose an action bar or Global Settings." end
         if key == "scalePct" then return Runtime.SetBarScale(view.selected, value) end
         if key == "columns" then return Runtime.SetBarColumns(view.selected, value) end
         if key == "spacing" then return Runtime.SetBarSpacing(view.selected, value) end
@@ -64,27 +69,34 @@ function BarSettings.Create(parent, host, owner)
     end
     local show = Checkbox(visibility, "Show Action Bar", "visible", IsShown, function(value)
         local id = view.selected
+        if type(id) ~= "number" then return false, "Choose an action bar." end
         if id == 1 then return Runtime.SetMainBarShown(value) end
         if id >= 7 then return Runtime.SetSpecialBar(id == 7 and "pet" or "stance", value) end
         return Runtime.SetCustomBar(id, value)
     end)
-    local useGlobal = Checkbox(inherited, "Use Global Layout", "useGlobalLayout", function()
+    local useGlobal = Checkbox(inherited, "Use Global Settings", "useGlobalLayout", function()
         local layout = GetLayout(); return layout and layout.useGlobalLayout == true
-    end, function(value) return Runtime.SetUseGlobalLayout(view.selected, value) end)
+    end, function(value)
+        if type(view.selected) ~= "number" then return false, "Choose an action bar." end
+        return Runtime.SetUseGlobalLayout(view.selected, value)
+    end)
     local reset = UI.CreateButton(canvas, nil, "Reset local layout", 136, 24); UI.StyleActionButton(reset)
-    reset:SetScript("OnClick", function() Complete(Runtime.ResetBarLayout(view.selected)) end)
+    reset:SetScript("OnClick", function()
+        if type(view.selected) ~= "number" then return Complete(false, "Choose an action bar.") end
+        return Complete(Runtime.ResetBarLayout(view.selected))
+    end)
     UI.AttachTooltip(reset, "Reset local layout", "Reset position and individual layout. Global choice, actions and keys are retained.")
     local function Section(caption)
-        local row = UI.CreateContainer(nil, settings); row:SetHeight(28)
+        local row = UI.CreateContainer(nil, settings); row:SetHeight(24)
         row.control = UI.CreateHeading(row, caption, 3, "gold")
-        row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2); row.control:SetHeight(20)
+        row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3); row.control:SetHeight(16)
         row.kind = "heading"; table.insert(view.rows, row)
     end
     for _, definition in ipairs(sliders) do
         local key, caption, minimum, maximum = definition[1], definition[2], definition[3], definition[4]
         if key == "scalePct" then Section("Geometry") elseif key == "buttonSize" then Section("Appearance") end
-        local row = UI.CreateContainer(nil, settings); row:SetHeight(58)
-        local slider = UI.Settings.CreateSlider(row, "BootyActionBarsLayout" .. key, 0, -18, caption, key, minimum, maximum, nil,
+        local row = UI.CreateContainer(nil, settings); row:SetHeight(44)
+        local slider = UI.Settings.CreateSlider(row, "BootyActionBarsLayout" .. key, 0, -15, caption, key, minimum, maximum, nil,
             {ensure = function() end, get = function() local layout = GetLayout(); return layout and layout[key] or minimum end,
                 set = function(_, value) Complete(SetPreference(key, value)) end})
         row.control, row.key, row.kind = slider, key, "slider"; table.insert(view.rows, row); view.sliders[key] = slider
@@ -112,6 +124,8 @@ function BarSettings.Create(parent, host, owner)
         Prepare = function() return appearance:Close() end,
     })
     view.behaviors = behaviors
+    local utility = Utility and Bars.Modules.UtilitySettings.Create(canvas, {GetSelection = function() return view.selected end, Complete = Complete})
+    view.utility, owner.utilitySettings = utility, utility
     for _, id in ipairs(identities) do
         local button = UI.CreateSelectionButton(list, nil, Name(id), 124, 26); UI.SetButtonLabelInsets(button, 8, 4)
         button.barSettingsView, button.barSelectionId = view, id
@@ -122,7 +136,7 @@ function BarSettings.Create(parent, host, owner)
         local columnWidth = math.max(1, (width - (columns - 1) * 4) / columns)
         for index, id in ipairs(identities) do
             local button = view.buttons[id]; button:SetWidth(math.max(1, columnWidth - 4))
-            button.label:SetText(view.compact and (type(id) == "number" and id <= 6 and "Bar " .. id or id == 8 and "Forms" or Name(id)) or Name(id))
+            button.label:SetText(Name(id))
             button:ClearAllPoints(); button:SetPoint("TOPLEFT", list, "TOPLEFT", math.mod(index - 1, columns) * (columnWidth + 4), -math.floor((index - 1) / columns) * 30)
         end
         return math.ceil(table.getn(identities) / columns) * 30
@@ -158,6 +172,10 @@ function BarSettings.Create(parent, host, owner)
             end
             tools:SetHeight(height); return Place(tools, usable, top) + 12
         end
+        if IsUtility(view.selected) then
+            if utility.frame:IsShown() then utility:Layout(usable); top = Place(utility.frame, usable, top) + 8 end
+            return top + 12
+        end
         if view.selected ~= "global" then
             visibility:SetHeight(MeasureCheckbox(show, usable)); inherited:SetHeight(MeasureCheckbox(useGlobal, usable))
             top = Place(visibility, usable, top) + 6; top = Place(inherited, usable, top) + 8
@@ -168,7 +186,7 @@ function BarSettings.Create(parent, host, owner)
             for _, row in ipairs(view.rows) do
                 if row:IsShown() then
                     row:ClearAllPoints(); row:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -content); row:SetWidth(usable)
-                    if row.kind == "slider" then row.control:SetWidth(math.min(260, usable))
+                    if row.kind == "slider" then row.control:SetWidth(math.min(200, usable))
                     elseif row.kind == "heading" or row.kind == "choice" or row.kind == "color" then row.control:SetWidth(usable) end
                     if row.label then row.label:SetWidth(usable) end
                     if row.kind == "check" then row:SetHeight(MeasureCheckbox(row.control, usable)) end
@@ -185,7 +203,7 @@ function BarSettings.Create(parent, host, owner)
     function view:Layout(width, height)
         if not frame:IsVisible() then return end
         view.compact = width < 300
-        local listWidth = view.compact and math.max(1, width - 16) or width < 440 and 108 or 132
+        local listWidth = view.compact and math.max(1, width - 16) or width < 440 and 120 or 152
         local listHeight = view.compact and math.min(92, math.max(32, height / 3)) or math.max(1, height - 16)
         left:ClearAllPoints(); left:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -8); left:SetWidth(listWidth); left:SetHeight(listHeight)
         right:ClearAllPoints()
@@ -211,18 +229,20 @@ function BarSettings.Create(parent, host, owner)
     function view:Refresh()
         if not frame:IsVisible() then return end
         local id, store = self.selected, Bars.Database.Ensure()
-        local isLayout, isGlobal = id == "layout", id == "global"
+        local isLayout, isGlobal, isUtility = id == "layout", id == "global", IsUtility(id)
         for key, button in pairs(self.buttons) do UI.StyleWarmListRow(button, key == id) end
         title:SetText(Name(id))
         description:SetText(isLayout and "Unlock to position bars. Show anchors also reveals hidden bars."
-            or isGlobal and "Shared appearance for bars using Global Layout. Each bar keeps its own position."
+            or isGlobal and "Shared appearance for bars using Global Settings. Each bar keeps its own position."
+            or isUtility and "Position and scale these native controls separately. Their original actions keep working."
             or id == 1 and "Actions follow the page or form. Hiding this bar keeps other bars active."
-            or id >= 7 and "Shown when a pet or form is available. Use Layout and Show anchors to position it while absent."
+            or type(id) == "number" and id >= 7 and "Shown when a pet or form is available. Use Layout and Show anchors to position it while absent."
             or "Actions use fixed slots. Hiding preserves layout, actions and keys.")
         if isLayout then tools:Show() else tools:Hide() end
         behaviors:Refresh()
-        if not isLayout and not isGlobal then visibility:Show(); inherited:Show(); reset:Show()
+        if not isLayout and not isGlobal and not isUtility then visibility:Show(); inherited:Show(); reset:Show()
         else visibility:Hide(); inherited:Hide(); reset:Hide() end
+        if utility then if isUtility then utility:Refresh() else utility:Hide() end end
         local layout = GetLayout()
         if layout and (isGlobal or not layout.useGlobalLayout) then settings:Show() else settings:Hide() end
         if layout then
@@ -244,7 +264,7 @@ function BarSettings.Create(parent, host, owner)
             useGlobal:SetChecked(layout.useGlobalLayout and 1 or nil)
         end
         if type(id) == "number" then
-            show.label:SetText(id < 7 and "Show Action Bar " .. id or id == 7 and "Show Pet Bar" or "Show Form Bar")
+            show.label:SetText("Show " .. Name(id))
             show:SetChecked(IsShown() and 1 or nil)
         end
         unlock:SetChecked(Runtime.IsEditing() and 1 or nil)

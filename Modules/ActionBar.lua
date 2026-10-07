@@ -170,9 +170,18 @@ local function Enter()
     end
 end
 local function Hide()
-    Countdown("SetViewVisible", this.bar, false)
-    if this.bar.id == 1 then this.bar.callbacks.OnHide()
-    else this.bar.callbacks.OnHide(this.bar.id) end
+    local view = this.bar
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ok, failure = pcall(view.SetCursorGrid, view, false)
+    local firstFailure = not ok and tostring(failure) or nil
+    ok, failure = pcall(Countdown, "SetViewVisible", view, false)
+    if not ok and not firstFailure then firstFailure = tostring(failure) end
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if view.id == 1 then ok, failure = pcall(view.callbacks.OnHide)
+    else ok, failure = pcall(view.callbacks.OnHide, view.id) end
+    if not ok and not firstFailure then firstFailure = tostring(failure) end
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if firstFailure then error(firstFailure, 0) end
 end
 local function Show()
     if this.bar.id == 1 then this.bar.callbacks.OnShow()
@@ -200,17 +209,19 @@ local function SuspendButton(button, preserveHover)
 end
 UpdateEmpty = function(button)
     local view = button.bar
-    local shown = view.showEmptyButtons or view.editing or BindingMode() or button.hasAction
+    local shown = view.showEmptyButtons or view.cursorGrid or view.editing or BindingMode() or button.hasAction
     local wasHidden = button.emptyHidden
     button.emptyHidden = not shown
     if shown then button:Show()
     else
         -- Cancel the old gesture before a later action can occupy this slot.
+        local firstFailure
         if not wasHidden then
             local ok, failure = SuspendButton(button, false)
-            if not ok then error(failure, 0) end
+            if not ok then firstFailure = failure end
         end
         button:Hide()
+        if firstFailure then error(firstFailure, 0) end
     end
 end
 
@@ -358,6 +369,22 @@ function ActionBar.Create(callbacks, barId)
         for _, button in ipairs(self.buttons) do UpdateEmpty(button) end
         return true
     end
+    function view:SetCursorGrid(value)
+        value = value == true
+        if (self.cursorGrid == true) == value then return true end
+        self.cursorGrid = value
+        local previousThis, previousEvent, previousArg = this, event, arg1
+        local firstFailure
+        if not self.showEmptyButtons then
+            for _, button in ipairs(self.buttons) do
+                local ok, failure = pcall(UpdateEmpty, button)
+                if not ok and not firstFailure then firstFailure = tostring(failure) end
+            end
+        end
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        if firstFailure then error(firstFailure, 0) end
+        return true
+    end
     function view:Hide()
         local previousThis, previousEvent, previousArg = this, event, arg1
         local ran, ok, failure = pcall(self.Suspend, self)
@@ -374,6 +401,10 @@ function ActionBar.Create(callbacks, barId)
     function view:Suspend(preserveHover)
         local previousThis, previousEvent, previousArg = this, event, arg1
         local firstFailure
+        if not preserveHover then
+            local ok, failure = pcall(self.SetCursorGrid, self, false)
+            if not ok then firstFailure = tostring(failure) end
+        end
         for _, button in ipairs(self.buttons) do
             -- A page change keeps the button under the pointer visible;
             -- one failing widget must not keep later animations running.

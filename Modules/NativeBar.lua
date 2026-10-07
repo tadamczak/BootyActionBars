@@ -66,6 +66,11 @@ local function NotifyFailure(failure)
     end
     return failure
 end
+local function NativeGrid(record, name)
+    -- Stock ActionButton_ShowGrid/HideGrid retain balanced cursor demand even
+    -- while visual replacement suppresses their expensive updater callbacks.
+    record.frame.showgrid = record.frame.showgrid + (name == "ACTIONBAR_SHOWGRID" and 1 or -1)
+end
 local function Record(index)
     local record = records[index]
     if record then return record end
@@ -117,7 +122,22 @@ local function Record(index)
         if not ok then error(failure, 0) end
     end
     record.eventGuard = function()
-        if not record.enabled and record.originalEvent then return record.originalEvent() end
+        if not record.enabled or this ~= record.frame then
+            if record.originalEvent then return record.originalEvent() end
+            return
+        end
+        if event ~= "ACTIONBAR_SHOWGRID" and event ~= "ACTIONBAR_HIDEGRID" then return end
+        local previousThis, previousEvent, previousArg = this, event, arg1
+        local ok, failure = pcall(NativeGrid, record, event)
+        if not ok and state.active then
+            local initial = tostring(failure)
+            local restored, reason = Cleanup()
+            state.failure = restored and initial or initial .. " Restoration: " .. tostring(reason)
+            failure = NotifyFailure(state.failure)
+            state.failure = failure
+        end
+        this, event, arg1 = previousThis, previousEvent, previousArg
+        if not ok then error(failure, 0) end
     end
     record.updateGuard = function()
         if not record.enabled and record.originalUpdate then return record.originalUpdate() end

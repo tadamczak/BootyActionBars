@@ -5,7 +5,7 @@ Bars.Modules.KeybindingSettings = Keybindings
 
 function Keybindings.Create(parent, host, ownerView)
     local frame = UI.CreateContainer(nil, parent)
-    frame:SetAllPoints(parent)
+    frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
     local page = UI.CreateResponsiveCanvas(frame, "BootyActionBarsKeybindingsScroll")
     local view = {frame = frame, canvas = page}
     ownerView.bindingSelectedBar = ownerView.bindingSelectedBar or ownerView.selectedBar or 2
@@ -24,10 +24,10 @@ function Keybindings.Create(parent, host, ownerView)
     choiceOwner:SetWidth(300); choiceOwner:SetHeight(26)
     local choices = {}
     for id = 1, 6 do
-        choices[id] = {value = id, text = id == 1 and "Main bar (pages/forms)"
-            or "Bar " .. id .. " (slots " .. ((id - 1) * 12 + 1) .. "-" .. (id * 12) .. ")"}
+        choices[id] = {value = id, text = id == 1 and "Main Action Bar"
+            or "Action Bar " .. id}
     end
-    choices[7], choices[8] = {value = 7, text = "Pet bar"}, {value = 8, text = "Forms / stances"}
+    choices[7], choices[8] = {value = 7, text = "Pet Bar"}, {value = 8, text = "Forms / stances"}
     local function Select()
         local editor = Bars.Modules.BindingEditor
         if editor and editor.IsEditing() and not editor.GetState().confirming then
@@ -38,7 +38,7 @@ function Keybindings.Create(parent, host, ownerView)
     end
     local _, choice = UI.CreateChoiceField({parent = choiceOwner, x = 0, y = 0,
         label = "Bar", initialText = choices[ownerView.bindingSelectedBar].text,
-        width = 220, height = 186, firstY = -7, step = 20, buttonOffset = 40,
+        width = 200, height = 186, firstY = -7, step = 20, buttonOffset = 40,
         labelValue = true, choices = choices,
         getValue = function() return ownerView.bindingSelectedBar end,
         onSelect = function(value)
@@ -49,8 +49,8 @@ function Keybindings.Create(parent, host, ownerView)
         onChanged = function() view:Refresh() end,
     })
     local indexOwner = UI.CreateContainer(nil, page)
-    indexOwner:SetWidth(180); indexOwner:SetHeight(52)
-    local index = UI.Settings.CreateSlider(indexOwner, "BootyActionBarsBindingIndex", 0, -18,
+    indexOwner:SetWidth(180); indexOwner:SetHeight(44)
+    local index = UI.Settings.CreateSlider(indexOwner, "BootyActionBarsBindingIndex", 0, -15,
         "Button", "index", 1, 12, nil, {
             ensure = function() end,
             get = function() return ownerView.bindingIndex end,
@@ -95,8 +95,8 @@ function Keybindings.Create(parent, host, ownerView)
         local top = Position(title, 16, width, 24) + 12
         top = Position(help, top, width, UI.MeasureTextHeight(help, width)) + 20
         top = Position(choiceOwner, top, width, 26) + 14
-        choice:SetWidth(math.max(1, math.min(220, width - 40)))
-        top = Position(indexOwner, top, math.min(180, width), 52) + 12
+        choice:SetWidth(math.max(1, math.min(200, width - 40)))
+        top = Position(indexOwner, top, math.min(180, width), 44) + 8
         index:SetWidth(math.min(180, width))
         top = UI.LayoutFlow(page, actions, 16, top, width, 8) + 24
         top = Position(statusHeading, top, width, 20) + 8
@@ -135,7 +135,7 @@ function Keybindings.Create(parent, host, ownerView)
         UI.SetButtonEnabled(clear, active and state and state.armed == true and not confirming)
         local text = "Choose Assign keys to start. Client bindings remain unchanged until Save."
         if active and state then
-            local selected = state.barId and ((state.barId == 7 and "Pet" or state.barId == 8 and "Form" or "Bar " .. state.barId)
+            local selected = state.barId and ((state.barId == 1 and "Main Action Bar" or state.barId == 7 and "Pet Bar" or state.barId == 8 and "Forms / stances" or "Action Bar " .. state.barId)
                 .. ", button " .. tostring(state.index or "?") .. ": " .. (state.firstKey or "unassigned")
                 .. (state.secondKey and " / " .. state.secondKey or "") .. ". ") or ""
             text = selected .. tostring(state.pendingCount or 0) .. " pending changes. "

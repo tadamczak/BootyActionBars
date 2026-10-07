@@ -2,12 +2,24 @@ local Bars = BootyActionBars
 local UI = Bars.UI.Components
 local Appearance = {}
 Bars.Modules.ButtonAppearance = Appearance
-local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "gryphons"}
+local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeTextureBackground", "nativeTextureScalePct", "gryphons"}
 for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
-local slices = {{0, 1, 0.83203125, 1}, {0, 1, 0.58203125, 0.75},
-    {0, 1, 0.33203125, 0.5}, {0, 1, 0.08203125, 0.25}}
+-- Stock 1.12 uses a 256x256 atlas for a 1024x43 menu. Keep the
+-- 512x43 action section and close its right edge with the stock end cap.
+-- Entries are x,y,width,height,left,right,top,bottom in native pixels/UV.
+local slices = {{0, 0, 256, 43, 0, 1, 213 / 256, 1},
+    {256, 0, 247, 43, 0, 247 / 256, 149 / 256, 192 / 256},
+    {503, 0, 9, 43, 246 / 256, 255 / 256, 21 / 256, 64 / 256}}
+local edges = {}
+for _, slice in ipairs(slices) do
+    table.insert(edges, {slice[1], 40, slice[3], 3, slice[5], slice[6], slice[7], slice[7] + 3 / 256})
+    table.insert(edges, {slice[1], 0, slice[3], 4, slice[5], slice[6], slice[8] - 4 / 256, slice[8]})
+end
+-- Buttons occupy x8..506,y4..40. Exclude their complete recessed squares.
+table.insert(edges, {0, 4, 8, 36, 0, 8 / 256, 216 / 256, 252 / 256})
+table.insert(edges, {506, 4, 6, 36, 249 / 256, 255 / 256, 24 / 256, 60 / 256})
 local defaultHover = "Interface\\Buttons\\ButtonHilight-Square"
 local shadowHover = "Interface\\Buttons\\UI-ActionButton-Border"
 local borderFields = {hoverMode = true, hoverSize = true, showButtonBorder = true, borderSize = true,
@@ -120,10 +132,28 @@ function Appearance.InitializeButton(button)
     button.appearanceBackground = true
     return true
 end
-local function ShowArt(texture, shown)
-    if texture.appearanceShown ~= shown then
+local function ShowArt(texture, shown, repair)
+    if repair or texture.appearanceShown ~= shown then
         if shown then texture:Show() else texture:Hide() end
         texture.appearanceShown = shown
+    end
+end
+local function DrawArtwork(view, textures, pieces, shown, ratio, startX, repair)
+    for index, piece in ipairs(pieces) do
+        local texture = textures[index]
+        if shown and not texture then
+            texture = UI.CreateTexture(view.frame, nil, "BACKGROUND"); textures[index] = texture
+        end
+        if texture then
+            if shown then
+                texture:SetTexture("Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf")
+                texture:SetTexCoord(piece[5], piece[6], piece[7], piece[8])
+                texture:ClearAllPoints()
+                texture:SetPoint("BOTTOMLEFT", view.frame, "BOTTOMLEFT", startX + piece[1] * ratio, piece[2] * ratio)
+                texture:SetWidth(piece[3] * ratio); texture:SetHeight(piece[4] * ratio)
+            end
+            ShowArt(texture, shown, repair)
+        end
     end
 end
 local function Decorations(view, style, repair)
@@ -136,23 +166,16 @@ local function Decorations(view, style, repair)
     if not style.height then style.height = view.frame:GetHeight() end
     local changed = repair or not art.ready or art.width ~= style.width or art.height ~= style.height
         or art.size ~= style.buttonSize or art.nativeTexture ~= style.nativeTexture or art.gryphons ~= style.gryphons
+        or art.background ~= style.nativeTextureBackground or art.scalePct ~= style.nativeTextureScalePct
     if not changed then return end
     art.ready = false
-    for index = 1, 4 do
-        local texture = art.panels[index]
-        if style.nativeTexture and not texture then
-            texture = UI.CreateTexture(view.frame, nil, "BACKGROUND"); art.panels[index] = texture
-        end
-        if texture then
-            if style.nativeTexture then
-                texture:SetTexture("Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf")
-                texture:SetTexCoord(unpack(slices[index]))
-                texture:ClearAllPoints(); texture:SetPoint("BOTTOMLEFT", view.frame, "BOTTOMLEFT", (index - 1) * style.width / 4, 0)
-                texture:SetWidth(style.width / 4); texture:SetHeight(style.height)
-            end
-            ShowArt(texture, style.nativeTexture)
-        end
-    end
+    -- The decoration keeps its original aspect even for a multi-row grid.
+    local ratio = style.width / 512 * style.nativeTextureScalePct / 100
+    local startX = (style.width - 512 * ratio) / 2
+    DrawArtwork(view, art.panels, slices, style.nativeTexture and style.nativeTextureBackground, ratio, startX, repair)
+    local showEdges = style.nativeTexture and not style.nativeTextureBackground
+    if showEdges and not art.edges then art.edges = {} end
+    if art.edges then DrawArtwork(view, art.edges, edges, showEdges, ratio, startX, repair) end
     for _, side in ipairs(sides) do
         local shown = style.gryphons == "both" or style.gryphons == side
         local texture = art[side]
@@ -167,10 +190,11 @@ local function Decorations(view, style, repair)
                 texture:SetPoint(side == "left" and "BOTTOMRIGHT" or "BOTTOMLEFT", view.frame,
                     side == "left" and "BOTTOMLEFT" or "BOTTOMRIGHT", side == "left" and 32 * ratio or -32 * ratio, 0)
             end
-            ShowArt(texture, shown)
+            ShowArt(texture, shown, repair)
         end
     end
     art.width, art.height, art.size, art.nativeTexture, art.gryphons = style.width, style.height, style.buttonSize, style.nativeTexture, style.gryphons
+    art.background, art.scalePct = style.nativeTextureBackground, style.nativeTextureScalePct
     art.ready = true
 end
 function Appearance.ApplyView(view, drawing, repair)

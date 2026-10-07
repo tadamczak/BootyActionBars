@@ -5,7 +5,7 @@ Bars.Modules.GeneralSettings = General
 
 function General.Create(parent, host, ownerView)
     local frame = UI.CreateContainer(nil, parent)
-    frame:SetAllPoints(parent)
+    frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
     local page = UI.CreateResponsiveCanvas(frame, "BootyActionBarsGeneralScroll")
     local view = {frame = frame, canvas = page, confirmationRevision = 0}
     local function Complete(ok, failure)
@@ -17,7 +17,7 @@ function General.Create(parent, host, ownerView)
     local title = UI.CreateHeading(page, "General", 2, "gold")
     local visibilityHeading = UI.CreateHeading(page, "Show bars", 3, "gold")
     local visibilityHelp = UI.CreateComponentLabel(page,
-        "Choose which action buttons are shown. Hiding native buttons preserves their assigned keys.", "white")
+        "Choose BootyActionBars and the native bar independently. Both can be hidden. Assigned keys keep working.", "white")
     visibilityHelp:SetJustifyH("LEFT"); visibilityHelp:SetJustifyV("TOP")
     local trialOwner = UI.CreateContainer(nil, page)
     local trial = UI.Settings.CreateCheckbox(trialOwner, 0, -2, "Show BootyActionBars", "trialBarEnabled", nil, {
@@ -29,7 +29,7 @@ function General.Create(parent, host, ownerView)
         set = function(_, value) Complete(Bars.Core.Runtime.SetTrialEnabled(value)) end,
     })
     local nativeOwner = UI.CreateContainer(nil, page)
-    local native = UI.Settings.CreateCheckbox(nativeOwner, 0, -2, "Show Native buttons", "nativeMainBarEnabled", nil, {
+    local native = UI.Settings.CreateCheckbox(nativeOwner, 0, -2, "Show Native Bar", "nativeMainBarEnabled", nil, {
         ensure = function() end,
         get = function()
             local store = Bars.Database.Ensure()
@@ -37,7 +37,7 @@ function General.Create(parent, host, ownerView)
         end,
         set = function(_, value) Complete(Bars.Core.Runtime.SetNativeEnabled(not value)) end,
     })
-    UI.AttachTooltip(native, "Native buttons", "Hide native buttons while their BootyActionBars counterparts are visible. The main bar also hides its panels and gryphons. Show restores native controls and keeps their assigned keys.")
+    UI.AttachTooltip(native, "Show Native Bar", "Show or hide the native action bar, panels and gryphons independently of BootyActionBars. Both master switches may be off. Assigned keys keep working.")
     local profileHeading = UI.CreateHeading(page, "Layout profiles", 3, "gold")
     local profileHelp = UI.CreateComponentLabel(page,
         "Save bar layouts, global appearance, shown bars and behavior rules. Profiles leave client actions, keys and master/native switches unchanged.", "white")
@@ -180,8 +180,7 @@ function General.Create(parent, host, ownerView)
         trial:SetChecked(store and store.trialBarEnabled and 1 or nil)
         native:SetChecked(not (store and store.nativeMainBarEnabled) and 1 or nil)
         UI.Settings.SetCheckboxEnabled(trial, available)
-        UI.Settings.SetCheckboxEnabled(native, available and (store.nativeMainBarEnabled == true
-            or store.trialBarEnabled == true and Bars.Core.Engine.GetState().active == true))
+        UI.Settings.SetCheckboxEnabled(native, available)
         local names = ownerView.profileNames
         local profileFailure
         local revision = runtime.GetState().profileRevision or 0
