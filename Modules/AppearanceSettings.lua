@@ -3,18 +3,125 @@ local UI = Bars.UI.Components
 local Appearance = {}
 Bars.Modules.AppearanceSettings = Appearance
 
+local function NaturalWidth(label)
+    local text = label:GetText()
+    local font, size, flags = label:GetFont()
+    if label.babMeasureText == text and label.babMeasureFont == font and label.babMeasureSize == size
+        and label.babMeasureFlags == flags and label.babMeasureWidth then return label.babMeasureWidth end
+    local previousWidth = label:GetWidth()
+    label:SetWidth(0)
+    local width = math.max(1, math.ceil(label:GetStringWidth()) + 2)
+    label:SetWidth(previousWidth)
+    label.babMeasureText, label.babMeasureFont, label.babMeasureSize, label.babMeasureFlags = text, font, size, flags
+    label.babMeasureWidth = width
+    return width
+end
+local function SliderWidth(row)
+    local control, name = row.control, row.control:GetName()
+    local label, low, high = getglobal(name .. "Text"), getglobal(name .. "Low"), getglobal(name .. "High")
+    local font, size, flags = label:GetFont()
+    local minimum, maximum = low:GetText(), high:GetText()
+    if row.babSliderFont == font and row.babSliderSize == size and row.babSliderFlags == flags
+        and row.babSliderMinimum == minimum and row.babSliderMaximum == maximum and row.babSliderWidth then return row.babSliderWidth end
+    local current = label:GetText()
+    label:SetText(control.settingLabel .. ": " .. minimum); local width = NaturalWidth(label)
+    label:SetText(control.settingLabel .. ": " .. maximum); width = math.max(width, NaturalWidth(label))
+    label:SetText(current)
+    width = math.max(170, width + 8, NaturalWidth(low) + NaturalWidth(high) + 32)
+    row.babSliderFont, row.babSliderSize, row.babSliderFlags = font, size, flags
+    row.babSliderMinimum, row.babSliderMaximum, row.babSliderWidth = minimum, maximum, width
+    return width
+end
+function Appearance.MeasureRow(row)
+    local control = row.control
+    if row.kind == "slider" then return SliderWidth(row) end
+    if row.kind == "choice" then
+        local width = NaturalWidth(control.label) + 30
+        for _, option in ipairs(control.panel.options) do width = math.max(width, NaturalWidth(option.label) + 30) end
+        row.babChoiceWidth = width
+        return math.max(width, NaturalWidth(row.label))
+    end
+    return (row.kind == "color" and 26 or control:GetWidth() + 7) + NaturalWidth(control.label)
+end
+local function LabelHeight(label, width, minimum)
+    width = math.max(1, width)
+    minimum = minimum or 0
+    local text = label:GetText()
+    local font, size, flags = label:GetFont()
+    if label.babHeightText == text and label.babHeightFont == font and label.babHeightSize == size
+        and label.babHeightFlags == flags and label.babHeightWidth == width and label.babHeightMinimum == minimum
+        and label.babHeight then return label.babHeight end
+    label:SetWidth(width); label:SetJustifyH("LEFT")
+    local height = math.max(minimum, UI.MeasureTextHeight(label, width))
+    label:SetHeight(height)
+    label.babHeightText, label.babHeightFont, label.babHeightSize, label.babHeightFlags = text, font, size, flags
+    label.babHeightWidth, label.babHeightMinimum, label.babHeight = width, minimum, height
+    return height
+end
+function Appearance.LayoutRow(row, parent, x, y, width)
+    local control, height = row.control, row.babBaseHeight
+    row:ClearAllPoints(); row:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y); row:SetWidth(width)
+    if row.kind == "slider" then
+        local name = control:GetName()
+        local label, low, high = getglobal(name .. "Text"), getglobal(name .. "Low"), getglobal(name .. "High")
+        local titleHeight = LabelHeight(label, width, 14)
+        control:ClearAllPoints(); control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -(titleHeight + 1)); control:SetWidth(width)
+        label:ClearAllPoints(); label:SetPoint("BOTTOMLEFT", control, "TOPLEFT", 0, 1)
+        local lowHeight = LabelHeight(low, NaturalWidth(low))
+        local highHeight = LabelHeight(high, NaturalWidth(high))
+        height = math.max(height, titleHeight + 1 + control:GetHeight() + math.max(lowHeight, highHeight) + 1)
+    elseif row.kind == "choice" then
+        local labelHeight = LabelHeight(row.label, width, 14)
+        local choiceWidth = math.min(width, row.babChoiceWidth)
+        control:ClearAllPoints(); control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -(labelHeight + 4)); control:SetWidth(choiceWidth)
+        UI.ReflowControlText(control)
+        control.panel:SetWidth(choiceWidth)
+        for _, option in ipairs(control.panel.options) do
+            option:SetWidth(math.max(1, choiceWidth - 14)); option.label:SetWidth(math.max(1, choiceWidth - 30))
+        end
+        height = math.max(height, labelHeight + 4 + control:GetHeight() + 4)
+    else
+        local color = row.kind == "color"
+        local inset = color and 26 or control:GetWidth() + 7
+        local labelHeight = LabelHeight(control.label, width - inset)
+        control.label:ClearAllPoints()
+        if color then
+            control:SetWidth(width)
+            if labelHeight > control:GetHeight() then control.label:SetPoint("TOPLEFT", control, "TOPLEFT", 26, 0)
+            else control.label:SetPoint("LEFT", control.swatchBorder, "RIGHT", 6, 0) end
+        elseif labelHeight > control:GetHeight() then control.label:SetPoint("TOPLEFT", control, "TOPRIGHT", 6, 0)
+        else control.label:SetPoint("LEFT", control, "RIGHT", 6, 0) end
+        if control.labelHit then
+            control.labelHit:SetWidth(math.max(1, width - control:GetWidth() - 2)); control.labelHit:SetHeight(math.max(control:GetHeight(), labelHeight))
+            control.labelHit:ClearAllPoints()
+            if labelHeight > control:GetHeight() then control.labelHit:SetPoint("TOPLEFT", control, "TOPRIGHT", 1, 0)
+            else control.labelHit:SetPoint("LEFT", control, "RIGHT", 1, 0) end
+        end
+        height = math.max(height, labelHeight + 4)
+    end
+    row:SetHeight(height)
+    return height
+end
+
 function Appearance.Create(parent, context)
-    local view = {rows = {}, sliders = {}, checks = {}, choices = {}, colors = {}}
+    local view = {rows = {}, sections = {}, sliders = {}, checks = {}, choices = {}, colors = {}}
+    local section
     local function Complete(ok, failure) return context.Complete(ok, failure) end
     local function Row(height)
         local row = UI.CreateContainer(nil, parent); row:SetHeight(height)
+        row.babBaseHeight = height
         row.mosTextSizeDelta = math.min(-2, UI.GetTextSizeDelta(parent))
-        table.insert(view.rows, row); return row
+        table.insert(view.rows, row)
+        if section then table.insert(section.rows, row) end
+        return row
     end
     local function Section(text)
+        section = nil
         local row = Row(24)
         row.kind, row.control = "heading", UI.CreateHeading(row, text, 3, "gold")
         row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3); row.control:SetHeight(16)
+        section = {caption = text, heading = row, rows = {}}
+        table.insert(view.sections, section)
     end
     local function Slider(key, caption, low, high, getter, setter)
         local row = Row(44)
@@ -134,6 +241,14 @@ function Appearance.Create(parent, context)
             return context.SetColor(context.GetSelection(), group, {layout[group .. "R"], layout[group .. "G"], layout[group .. "B"], percent / 100})
         end)
     end
+    Section("Decoration")
+    Checkbox("nativeTexture", "Native menu texture")
+    Slider("nativeTextureScalePct", "Texture scale (%)", 50, 200)
+    local nativeBackground = Checkbox("nativeTextureBackground", "Native slot artwork")
+    UI.AttachTooltip(nativeBackground, "Native slot artwork", "Show the recessed squares in the native menu texture, behind both occupied and empty buttons. Turn off to keep only its outer edge.")
+    Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
+        {value = "right", text = "Right"}, {value = "both", text = "Both"}})
+    Slider("gryphonScalePct", "Gryphon scale (%)", 50, 200)
     Section("Range colors"); Color("rangeIn", "In range"); Color("rangeOut", "Out of range")
     Section("Hover")
     Choice("hoverMode", "Effect", {{value = "default", text = "Default"}, {value = "border", text = "Border"}, {value = "shadow", text = "Shadow"}})
@@ -144,13 +259,6 @@ function Appearance.Create(parent, context)
     Section("Cooldown")
     Checkbox("showCooldownText", "Cooldown numbers"); Color("cooldown", "Text color")
     Slider("cooldownFontSize", "Font size", 8, 32)
-    Section("Decoration")
-    Checkbox("nativeTexture", "Native menu texture")
-    Slider("nativeTextureScalePct", "Texture scale (%)", 50, 200)
-    local nativeBackground = Checkbox("nativeTextureBackground", "Native slot artwork")
-    UI.AttachTooltip(nativeBackground, "Native slot artwork", "Show the recessed squares in the native menu texture, behind both occupied and empty buttons. Turn off to keep only its outer edge.")
-    Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
-        {value = "right", text = "Right"}, {value = "both", text = "Both"}})
     function view:Refresh(layout)
         if not layout then return end
         for key, slider in pairs(self.sliders) do

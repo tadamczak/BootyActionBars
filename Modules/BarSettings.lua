@@ -27,7 +27,7 @@ function BarSettings.Create(parent, host, owner)
     local left, right = UI.CreateContainer(nil, frame), UI.CreateContainer(nil, frame)
     local list = UI.CreateResponsiveCanvas(left, "BootyActionBarsBarListScroll")
     local canvas = UI.CreateResponsiveCanvas(right, "BootyActionBarsBarSettingsScroll")
-    local view = {frame = frame, canvas = canvas, selected = "layout", buttons = {}, sliders = {}, checks = {}, rows = {}}
+    local view = {frame = frame, canvas = canvas, selected = "layout", buttons = {}, sliders = {}, checks = {}, rows = {}, sections = {}}
     local title = UI.CreateHeading(canvas, "Layout", 2, "gold")
     local description = UI.CreateComponentLabel(canvas, "", "white"); description:SetJustifyH("LEFT"); description:SetJustifyV("TOP")
     local tools, settings = UI.CreateContainer(nil, canvas), UI.CreateContainer(nil, canvas)
@@ -58,6 +58,7 @@ function BarSettings.Create(parent, host, owner)
     local anchors = Checkbox(tools, "Show anchors", "showAnchors", function()
         local store = Bars.Database.Ensure(); return store and store.editorOptions.showAnchors == true
     end, function(value) return Runtime.SetEditorOption("showAnchors", value) end)
+    local toolChecks = {unlock, grid, anchors}
     UI.AttachTooltip(unlock, "Unlock", "Drag anywhere on the normal bar. Mouse actions and icon dragging are blocked until you lock it.")
     UI.AttachTooltip(grid, "Show grid", "Show a static positioning grid while unlocked.")
     UI.AttachTooltip(anchors, "Show anchors", "Move placeholders for hidden or unavailable bars without enabling their buttons.")
@@ -86,11 +87,19 @@ function BarSettings.Create(parent, host, owner)
         return Complete(Runtime.ResetBarLayout(view.selected))
     end)
     UI.AttachTooltip(reset, "Reset local layout", "Reset position and individual layout. Global choice, actions and keys are retained.")
+    local section
+    local function AddSection(value)
+        value.items = {mosMaxColumns = 3, mosMeasureItem = Bars.Modules.AppearanceSettings.MeasureRow,
+            mosLayoutItem = Bars.Modules.AppearanceSettings.LayoutRow}
+        table.insert(view.sections, value); table.insert(view.rows, value.heading)
+        for _, row in ipairs(value.rows) do table.insert(view.rows, row) end
+    end
     local function Section(caption)
         local row = UI.CreateContainer(nil, settings); row:SetHeight(24)
         row.control = UI.CreateHeading(row, caption, 3, "gold")
         row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3); row.control:SetHeight(16)
-        row.kind = "heading"; table.insert(view.rows, row)
+        row.kind = "heading"; section = {caption = caption, heading = row, rows = {}}
+        AddSection(section)
     end
     for _, definition in ipairs(sliders) do
         local key, caption, minimum, maximum = definition[1], definition[2], definition[3], definition[4]
@@ -99,15 +108,8 @@ function BarSettings.Create(parent, host, owner)
         local slider = UI.Settings.CreateSlider(row, "BootyActionBarsLayout" .. key, 0, -15, caption, key, minimum, maximum, nil,
             {ensure = function() end, get = function() local layout = GetLayout(); return layout and layout[key] or minimum end,
                 set = function(_, value) Complete(SetPreference(key, value)) end})
-        row.control, row.key, row.kind = slider, key, "slider"; table.insert(view.rows, row); view.sliders[key] = slider
-    end
-    Section("Labels and slots")
-    for _, definition in ipairs(checks) do
-        local key, caption = definition[1], definition[2]
-        local row = UI.CreateContainer(nil, settings); row:SetHeight(30)
-        local check = Checkbox(row, caption, key, function() local layout = GetLayout(); return layout and layout[key] == true end,
-            function(value) return SetPreference(key, value) end)
-        row.control, row.key, row.kind = check, key, "check"; table.insert(view.rows, row); view.checks[key] = check
+        row.control, row.key, row.kind, row.babBaseHeight = slider, key, "slider", 44
+        table.insert(section.rows, row); table.insert(view.rows, row); view.sliders[key] = slider
     end
     local appearance = Bars.Modules.AppearanceSettings.Create(settings, {
         GetLayout = GetLayout, GetSelection = function() return view.selected end,
@@ -117,7 +119,17 @@ function BarSettings.Create(parent, host, owner)
             return Runtime.SetBarColor(id, group, rgba)
         end,
     })
-    for _, row in ipairs(appearance.rows) do table.insert(view.rows, row) end
+    AddSection(appearance.sections[1])
+    Section("Labels and slots")
+    for _, definition in ipairs(checks) do
+        local key, caption = definition[1], definition[2]
+        local row = UI.CreateContainer(nil, settings); row:SetHeight(32)
+        local check = Checkbox(row, caption, key, function() local layout = GetLayout(); return layout and layout[key] == true end,
+            function(value) return SetPreference(key, value) end)
+        row.control, row.key, row.kind, row.babBaseHeight = check, key, "check", 32
+        table.insert(section.rows, row); table.insert(view.rows, row); view.checks[key] = check
+    end
+    for index = 2, table.getn(appearance.sections) do AddSection(appearance.sections[index]) end
     view.appearance = appearance
     local behaviors = Bars.Modules.BehaviorSettings.Create(canvas, {
         GetSelection = function() return view.selected end, Complete = Complete,
@@ -166,7 +178,7 @@ function BarSettings.Create(parent, host, owner)
         description:SetHeight(UI.MeasureTextHeight(description, usable)); local top = Place(description, usable, 40) + 16
         if view.selected == "layout" then
             local height = 0
-            for _, check in ipairs({unlock, grid, anchors}) do
+            for _, check in ipairs(toolChecks) do
                 check:ClearAllPoints(); check:SetPoint("TOPLEFT", tools, "TOPLEFT", 0, -height)
                 height = height + MeasureCheckbox(check, usable)
             end
@@ -183,14 +195,16 @@ function BarSettings.Create(parent, host, owner)
         if behaviors.frame:IsShown() then behaviors:Measure(usable); top = Place(behaviors.frame, usable, top) + 8 end
         if settings:IsShown() then
             local content = 0
-            for _, row in ipairs(view.rows) do
-                if row:IsShown() then
-                    row:ClearAllPoints(); row:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -content); row:SetWidth(usable)
-                    if row.kind == "slider" then row.control:SetWidth(math.min(200, usable))
-                    elseif row.kind == "heading" or row.kind == "choice" or row.kind == "color" then row.control:SetWidth(usable) end
-                    if row.label then row.label:SetWidth(usable) end
-                    if row.kind == "check" then row:SetHeight(MeasureCheckbox(row.control, usable)) end
-                    content = content + row:GetHeight()
+            for _, group in ipairs(view.sections) do
+                local items = group.items
+                while table.getn(items) > 0 do table.remove(items) end
+                for _, row in ipairs(group.rows) do if row:IsShown() then table.insert(items, row) end end
+                if table.getn(items) > 0 then
+                    local heading = group.heading
+                    heading:ClearAllPoints(); heading:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -content); heading:SetWidth(usable)
+                    heading.control:SetWidth(usable)
+                    content = content + heading:GetHeight()
+                    content = content + UI.Settings.LayoutGrid(settings, items, 0, -content, usable, 0)
                 end
             end
             settings:SetHeight(content); top = Place(settings, usable, top) + 8

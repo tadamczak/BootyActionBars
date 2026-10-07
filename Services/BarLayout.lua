@@ -42,6 +42,7 @@ Define("nativeTexture", "boolean", false, nil, nil, 2)
 Define("nativeTextureBackground", "boolean", true, nil, nil, 2)
 Define("nativeTextureScalePct", "integer", 100, 50, 200, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
+Define("gryphonScalePct", "integer", 100, 50, 200, 2)
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,0.2,0.2,1}, hover = {1,1,1,0.6},
     border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}}
 local channels = {"R", "G", "B", "A"}
