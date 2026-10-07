@@ -35,6 +35,10 @@ Use **Title**, **Hotkeys**, **Counts**, **Macro names** and **Empty buttons** to
 
 Use **Button size** (24–64), **Icon inset** (0–8), **Opacity (%)** (20–100) and **Label size** (8–16) to customize Global or an individual bar. The settings pane scrolls when needed; narrow windows place the bar list above it. **Reset local layout** restores position and individual settings while retaining the Global choice, actions and keys.
 
+The same settings also offer separate in-range and out-of-range icon colors, including opacity. Choose **Default**, **Border** or **Shadow** hover feedback and its color/size. Button borders have an independent toggle, color and size; **Button background** hides or shows the fill behind each icon. Pressed and assigned-key feedback remain visible.
+
+**Cooldown numbers** shows remaining time for cooldowns of at least two seconds, with a configurable color, opacity and font size. Short global cooldowns keep their ordinary animation. Set a bar's **Native menu texture** and choose **Left**, **Right** or **Both** gryphons to decorate it. Global settings can apply these choices to all inherited bars, including Pet and Forms.
+
 Use `/bab unlock` to open Action Bars and edit an enabled layout; `/bab lock` finishes editing. `/bab scale 1 100` sets Bar 1 to 100%; `/bab columns 1 6` sets six columns, `/bab gap 1 4` sets its gap, and `/bab reset 1` resets that bar. Use `/bab title 1 off`, `/bab hotkeys 1 off`, `/bab counts 1 off`, `/bab macronames 1 off` or `/bab empty 1 off` to hide them; replace `off` with `on` to show them again. Layout and appearance survive hide/show and reload; edit mode starts locked. General preference profiles leave layouts unchanged.
 
 **General → Layout profiles** saves all eight bars' positions, individual and Global appearance, inheritance and Show choices. Enter a name and **Save layout**, then select it to **Load** or **Delete**. Replacing, loading and deleting ask for confirmation. **Undo load** restores the preceding layout during the current session. Up to 20 profiles are supported. Older layout profiles remain loadable. Profiles retain client actions, keybindings and the current master/native switches.
@@ -47,7 +51,7 @@ Use **Keybindings → Assign keys**, or `/bab bind`. Click a button, or select i
 
 Keys follow the twelve visible button positions on every page and form: the same key uses the action currently shown at that position. Hover highlights a button, and holding its key or mouse button shows pressed feedback even when the action cannot be used.
 
-Usable actions are white; actions outside the reported target range are red, insufficient mana is blue, and other unavailable actions are gray. Range updates follow movement with the same target. An unknown range keeps the normal usability color. Macro range depends on the installed provider/client range API. Removing the target stops distance checks.
+Usable actions use the configured in-range color; actions outside the reported target range use the out-of-range color. Defaults are white and red. Insufficient mana is blue, and other unavailable actions are gray. Range updates follow movement with the same target. An unknown range keeps the normal usability color. Macro range depends on the installed provider/client range API. Removing the target stops distance checks.
 
 With current BootyProfiler installed, **Advanced Profiler → Profile Action Bars** records this test bar's action updates, including range checks and macro notifications, and cooldown animation. The bar works normally without BootyProfiler.
 

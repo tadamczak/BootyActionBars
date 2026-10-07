@@ -37,7 +37,7 @@ function BarSettings.Create(parent, host, owner)
         if key == "scalePct" then return Runtime.SetBarScale(view.selected, value) end
         if key == "columns" then return Runtime.SetBarColumns(view.selected, value) end
         if key == "spacing" then return Runtime.SetBarSpacing(view.selected, value) end
-        if type(value) == "boolean" then return Runtime.SetBarDisplay(view.selected, key, value) end
+        if Bars.Services.BarLayout.ValidDisplayKey(key) then return Runtime.SetBarDisplay(view.selected, key, value) end
         return Runtime.SetBarAppearance(view.selected, key, value)
     end
     local unlock = Checkbox(tools, "Unlock", "editing", Runtime.IsEditing, Runtime.SetEditEnabled)
@@ -92,6 +92,16 @@ function BarSettings.Create(parent, host, owner)
             function(value) return SetPreference(key, value) end)
         row.control, row.key, row.kind = check, key, "check"; table.insert(view.rows, row); view.checks[key] = check
     end
+    local appearance = Bars.Modules.AppearanceSettings.Create(settings, {
+        GetLayout = GetLayout, GetSelection = function() return view.selected end,
+        SetPreference = SetPreference, Complete = Complete, IsAvailable = Runtime.IsAvailable,
+        SetColor = function(id, group, rgba)
+            if id == "global" then return Runtime.SetGlobalColor(group, rgba) end
+            return Runtime.SetBarColor(id, group, rgba)
+        end,
+    })
+    for _, row in ipairs(appearance.rows) do table.insert(view.rows, row) end
+    view.appearance = appearance
     for _, id in ipairs(identities) do
         local button = UI.CreateSelectionButton(list, nil, Name(id), 124, 26); UI.SetButtonLabelInsets(button, 8, 4)
         button:SetScript("OnClick", function() view:Select(id) end); view.buttons[id] = button
@@ -122,7 +132,22 @@ function BarSettings.Create(parent, host, owner)
                 if row:IsShown() then
                     row:ClearAllPoints(); row:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -content); row:SetWidth(usable)
                     if row.kind == "slider" then row.control:SetWidth(math.min(260, usable))
-                    elseif row.kind == "heading" then row.control:SetWidth(usable) end
+                    elseif row.kind == "heading" or row.kind == "choice" or row.kind == "color" then row.control:SetWidth(usable) end
+                    if row.label then row.label:SetWidth(usable) end
+                    if row.kind == "check" then
+                        local labelWidth = math.max(1, usable - row.control:GetWidth() - 7)
+                        row.control.label:SetWidth(labelWidth)
+                        local labelHeight = UI.MeasureTextHeight(row.control.label, labelWidth)
+                        row.control.label:SetHeight(labelHeight); row.control.label:ClearAllPoints()
+                        if labelHeight > row.control:GetHeight() then
+                            row.control.label:SetPoint("TOPLEFT", row.control, "TOPRIGHT", 6, 0)
+                        else row.control.label:SetPoint("LEFT", row.control, "RIGHT", 6, 0) end
+                        if row.control.labelHit then
+                            row.control.labelHit:SetWidth(labelWidth + 5)
+                            row.control.labelHit:SetHeight(math.max(row.control:GetHeight(), labelHeight))
+                        end
+                        row:SetHeight(math.max(32, labelHeight + 4))
+                    end
                     content = content + row:GetHeight()
                 end
             end
@@ -154,6 +179,7 @@ function BarSettings.Create(parent, host, owner)
     end
     function view:Select(id)
         if not self.buttons[id] then return false, "Choose a listed bar or Layout/Global." end
+        local closed, failure = appearance:Close(); if not closed then return false, failure end
         self.selected = id; if type(id) == "number" then owner.selectedBar = id end
         self:Refresh(); return true
     end
@@ -174,6 +200,7 @@ function BarSettings.Create(parent, host, owner)
         local layout = GetLayout()
         if layout and (isGlobal or not layout.useGlobalLayout) then settings:Show() else settings:Hide() end
         if layout then
+            appearance:Refresh(layout)
             for key, slider in pairs(self.sliders) do
                 if key == "columns" then
                     local maximum = type(id) == "number" and id >= 7 and 10 or 12
@@ -202,13 +229,18 @@ function BarSettings.Create(parent, host, owner)
         owner:OnResize()
     end
     function view:Show() frame:Show(); self:Refresh(); return true end
-    function view:Hide() frame:Hide() end
+    function view:Hide()
+        local ok, failure = appearance:Close(); frame:Hide(); return ok, failure
+    end
+    frame:SetScript("OnHide", function() appearance:Close() end)
     owner.barButtons, owner.showBarCheckbox, owner.useGlobalCheckbox = view.buttons, show, useGlobal
     owner.editCheckbox, owner.showGridCheckbox, owner.showAnchorsCheckbox = unlock, grid, anchors
     owner.scaleSlider, owner.columnsSlider, owner.spacingSlider = view.sliders.scalePct, view.sliders.columns, view.sliders.spacing
     owner.titleCheckbox, owner.hotkeysCheckbox, owner.countsCheckbox = view.checks.showTitle, view.checks.showHotkeys, view.checks.showCounts
     owner.macroNamesCheckbox, owner.emptyButtonsCheckbox = view.checks.showMacroNames, view.checks.showEmptyButtons
     owner.appearanceSliders, owner.resetLayoutButton = view.sliders, reset
+    owner.visualSliders, owner.visualCheckboxes = appearance.sliders, appearance.checks
+    owner.colorControls, owner.visualChoices = appearance.colors, appearance.choices
     view.visibility, view.inherited, view.settings, view.description = visibility, inherited, settings, description
     frame:Hide(); return view
 end

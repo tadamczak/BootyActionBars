@@ -3,6 +3,15 @@ local UI = Bars.UI.Components
 local ActionBar = {}
 Bars.Modules.ActionBar = ActionBar
 local pooled = {}
+local Appearance = Bars.Modules.ButtonAppearance
+local function Countdown(method, first, second, third, fourth)
+    local owner = Bars.Modules.CooldownText
+    if owner then
+        local ok, failure = owner[method](first, second, third, fourth)
+        if ok == false then error(failure or "Cooldown text update failed.") end
+    end
+    return true
+end
 local function BindingMode()
     local editor = Bars.Modules.BindingEditor
     return editor and editor.IsEditing and editor.IsEditing() or false
@@ -143,24 +152,26 @@ local function LeaveTooltip(button)
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
 end
 local function Leave()
-    this.hoverFeedback:Hide()
+    Appearance.Hover(this, false)
     this.mousePressed = false; UpdatePressed(this)
     LeaveTooltip(this)
 end
 local function Enter()
-    this.hoverFeedback:Show()
+    Appearance.Hover(this, true)
     if BindingMode() or LayoutMode() then return end
     if this.hasAction and GameTooltip and GameTooltip.SetAction then
         Tooltip(this)
     end
 end
 local function Hide()
+    Countdown("SetViewVisible", this.bar, false)
     if this.bar.id == 1 then this.bar.callbacks.OnHide()
     else this.bar.callbacks.OnHide(this.bar.id) end
 end
 local function Show()
     if this.bar.id == 1 then this.bar.callbacks.OnShow()
     else this.bar.callbacks.OnShow(this.bar.id) end
+    Countdown("SetViewVisible", this.bar, true)
 end
 local function ClearTooltip(button)
     LeaveTooltip(button)
@@ -174,7 +185,7 @@ local function SuspendButton(button, preserveHover)
     ok, failure = pcall(button.cooldown.Hide, button.cooldown)
     if not ok and not firstFailure then firstFailure = tostring(failure) end
     if not preserveHover then
-        ok, failure = pcall(button.hoverFeedback.Hide, button.hoverFeedback)
+        ok, failure = pcall(Appearance.Hover, button, false)
         if not ok and not firstFailure then firstFailure = tostring(failure) end
     end
     ok, failure = pcall(ClearTooltip, button)
@@ -231,25 +242,18 @@ function ActionBar.Create(callbacks, barId)
         button.bindingCommand = Bars.Services and Bars.Services.BindingService and Bars.Services.BindingService.Command(barId, index)
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
-        UI.StyleButton(button, ""); button.label:Hide()
-        UI.SetProjectButtonOutline(button, true)
         button:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
         button.icon = UI.CreateTexture(button, name .. "Icon", "ARTWORK")
         button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", 4, -4)
         button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
-        -- Stock action-button feedback is independent of cast success and the
-        -- generic skin's native textures. Keep the project outline unchanged.
-        button.hoverFeedback = UI.CreateTexture(button, nil, "OVERLAY")
-        button.hoverFeedback:SetAllPoints(button.icon)
-        button.hoverFeedback:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-        button.hoverFeedback:SetBlendMode("ADD"); button.hoverFeedback:SetAlpha(0.6)
-        button.hoverFeedback:Hide()
+        Appearance.InitializeButton(button)
         button.pressFeedback = UI.CreateTexture(button, nil, "OVERLAY")
         button.pressFeedback:SetAllPoints(button.icon)
         button.pressFeedback:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
         button.pressFeedback:Hide()
         button.cooldown = UI.CreateModel(name .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
+        Countdown("Attach", button)
         button.count = UI.CreateLabel(button, name .. "Count", "OVERLAY", "NumberFontNormalSmall")
         button.count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -5, 5)
         button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmall")
@@ -276,6 +280,7 @@ function ActionBar.Create(callbacks, barId)
             if not ok then return false, failure end
         end
         self.frame:Show()
+        Countdown("SetViewVisible", self, true)
         return true
     end
     function view:SetPage(page, offset)
@@ -307,6 +312,8 @@ function ActionBar.Create(callbacks, barId)
         return true
     end
     function view:SetDisplay(value, repair)
+        Appearance.ApplyView(self, value, repair)
+        Countdown("ConfigureView", self, value)
         local rebuild = repair == true or not self.displayReady
         local titleChanged = rebuild or self.showTitle ~= value.showTitle
         local hotkeysChanged = rebuild or self.showHotkeys ~= value.showHotkeys
@@ -353,6 +360,8 @@ function ActionBar.Create(callbacks, barId)
         elseif ok == false then firstFailure = failure or "The action bar could not be suspended." end
         local hidden, reason = pcall(self.frame.Hide, self.frame)
         if not hidden and not firstFailure then firstFailure = tostring(reason) end
+        local countdownHidden, countdownFailure = pcall(Countdown, "SetViewVisible", self, false)
+        if not countdownHidden and not firstFailure then firstFailure = tostring(countdownFailure) end
         this, event, arg1 = previousThis, previousEvent, previousArg
         return firstFailure == nil, firstFailure
     end
@@ -366,6 +375,8 @@ function ActionBar.Create(callbacks, barId)
             if not ran and not firstFailure then firstFailure = tostring(ok)
             elseif ok == false and not firstFailure then firstFailure = failure end
         end
+        local ended, failure = pcall(Countdown, "SuspendView", self)
+        if not ended and not firstFailure then firstFailure = tostring(failure) end
         this, event, arg1 = previousThis, previousEvent, previousArg
         return firstFailure == nil, firstFailure
     end
@@ -377,7 +388,7 @@ function ActionBar.Create(callbacks, barId)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
             ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
-            ok, failure = pcall(button.hoverFeedback.Hide, button.hoverFeedback)
+            ok, failure = pcall(Appearance.Hover, button, false)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
             ok, failure = pcall(ClearTooltip, button)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
@@ -436,19 +447,13 @@ function ActionBar.Create(callbacks, barId)
             if self.showCounts then button.count:SetText(data.count > 1 and data.count or "") end
             old.count = data.count
         end
-        local color = data.usable and (data.inRange == 0 and 2 or 1) or data.noMana and 3 or 4
-        if force or old.color ~= color then
-            if color == 1 then button.icon:SetVertexColor(1, 1, 1)
-            elseif color == 2 then button.icon:SetVertexColor(1, 0.2, 0.2)
-            elseif color == 3 then button.icon:SetVertexColor(0.5, 0.5, 1)
-            else button.icon:SetVertexColor(0.3, 0.3, 0.3) end
-            old.color = color
-        end
+        Appearance.ApplyColor(button, data)
         old.usable, old.noMana, old.inRange = data.usable, data.noMana, data.inRange
         local checked = data.current or data.autoRepeat
         if force or old.checked ~= checked then button:SetChecked(checked and 1 or 0); old.checked = checked end
         if force or old.start ~= data.cooldownStart or old.duration ~= data.cooldownDuration or old.enabled ~= data.cooldownEnabled then
             CooldownFrame_SetTimer(button.cooldown, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled and 1 or 0)
+            Countdown("Update", button, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled)
             old.start, old.duration, old.enabled = data.cooldownStart, data.cooldownDuration, data.cooldownEnabled
         end
         if not rangeOnly and GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button)

@@ -52,17 +52,21 @@ local function SameContext(first, second)
     return first and second and first.width == second.width and first.height == second.height
         and first.scale == second.scale and first.x == second.x and first.y == second.y
 end
-local function Drawing(view, value, repair)
+local function Drawing(view, value, repair, geometry)
     local frame = view.frame
-    frame:SetScale(value.scale)
-    local actual = frame:GetScale()
-    if not Layout.Finite(actual) or math.abs(actual - value.scale) > 0.0001 then error("The client declined the action bar scale.") end
-    local arranged, failure = view:SetGrid(value)
-    if arranged == false then error(failure or "The client declined the action bar grid.") end
+    if geometry ~= false then
+        frame:SetScale(value.scale)
+        local actual = frame:GetScale()
+        if not Layout.Finite(actual) or math.abs(actual - value.scale) > 0.0001 then error("The client declined the action bar scale.") end
+        local arranged, failure = view:SetGrid(value)
+        if arranged == false then error(failure or "The client declined the action bar grid.") end
+    end
     local displayed, displayFailure = view:SetDisplay(value, repair)
     if displayed == false then error(displayFailure or "The client declined the action bar display settings.") end
-    frame:ClearAllPoints(); frame:SetPoint("CENTER", UIParent, "CENTER", value.anchorX, value.anchorY)
-    if frame.SetUserPlaced then frame:SetUserPlaced(false) end
+    if geometry ~= false then
+        frame:ClearAllPoints(); frame:SetPoint("CENTER", UIParent, "CENTER", value.anchorX, value.anchorY)
+        if frame.SetUserPlaced then frame:SetUserPlaced(false) end
+    end
     return true
 end
 local function ApplyRecord(view, record, force)
@@ -71,19 +75,12 @@ local function ApplyRecord(view, record, force)
     if not value then return false, failure end
     value.parentScale = context.scale
     local previous = view.layoutDrawing
-    if not force and view.displayReady ~= false and previous and previous.scale == value.scale and previous.anchorX == value.anchorX
-        and previous.anchorY == value.anchorY and previous.width == value.width and previous.height == value.height
-        and previous.parentScale == value.parentScale and previous.columns == value.columns and previous.spacing == value.spacing
-        and previous.barWidth == value.barWidth and previous.barHeight == value.barHeight
-        and previous.showTitle == value.showTitle and previous.showHotkeys == value.showHotkeys
-        and previous.showCounts == value.showCounts and previous.showMacroNames == value.showMacroNames
-        and previous.showEmptyButtons == value.showEmptyButtons and previous.buttonSize == value.buttonSize
-        and previous.iconInset == value.iconInset and previous.opacityPct == value.opacityPct
-        and previous.labelFontSize == value.labelFontSize then return true end
-    local ok, reason = Try(Drawing, view, value, false)
+    if not force and view.displayReady ~= false and Layout.EqualDrawing(previous, value) then return true end
+    local geometry = force == true or not Layout.EqualGeometry(previous, value)
+    local ok, reason = Try(Drawing, view, value, false, geometry)
     if not ok then
         if previous then
-            local restored, restoreFailure = Try(Drawing, view, previous, true)
+            local restored, restoreFailure = Try(Drawing, view, previous, true, geometry)
             if not restored then
                 view.layoutDrawing = nil
                 reason = reason .. " Restoration: " .. tostring(restoreFailure)
@@ -126,12 +123,7 @@ local function Owner()
     return store
 end
 local function Equal(first, second)
-    return first and second and first.scalePct == second.scalePct and first.x == second.x and first.y == second.y
-        and first.columns == second.columns and first.spacing == second.spacing
-        and first.showTitle == second.showTitle and first.showHotkeys == second.showHotkeys and first.showCounts == second.showCounts
-        and first.showMacroNames == second.showMacroNames and first.showEmptyButtons == second.showEmptyButtons
-        and first.buttonSize == second.buttonSize and first.iconInset == second.iconInset
-        and first.opacityPct == second.opacityPct and first.labelFontSize == second.labelFontSize
+    return Layout.EqualShared(first, second) and first.x == second.x and first.y == second.y
         and first.useGlobalLayout == second.useGlobalLayout and first.localLayoutSaved == second.localLayoutSaved
 end
 local function Copy(value)
@@ -186,7 +178,7 @@ local function Commit(id, candidate, reset, expected, positionOnly, rawCandidate
     -- back after a native setter failure.
     Bars.Core.Engine.MarkLayoutChanged()
     if view and view.frame:IsVisible() then
-        local ok, message = ApplyRecord(view, candidate, true)
+        local ok, message = ApplyRecord(view, candidate, false)
         if not ok then return false, message end
     end
     local current, message = Owner()
@@ -197,7 +189,7 @@ local function Commit(id, candidate, reset, expected, positionOnly, rawCandidate
         -- The later saved value wins. Refresh it without writing our candidate.
         local rejected = message or "Action bar saved layout ownership changed during editing."
         if view and current == store then
-            local restored, repairFailure = Editor.ApplyView(view, true)
+            local restored, repairFailure = Editor.ApplyView(view, false)
             if not restored then rejected = rejected .. " Restoration: " .. tostring(repairFailure) end
         end
         return false, rejected
@@ -309,6 +301,22 @@ function Editor.SetAppearance(id, key, value)
     if not ran then return false, ok end
     return ok, failure
 end
+local function SetColor(id, group, rgba)
+    if not Layout.ValidID(id) then return false, "Choose bar 1-8." end
+    local patch, reason = Layout.ColorPatch(group, rgba)
+    if not patch then return false, reason end
+    local cancelled, failure = CancelDrag(id)
+    if not cancelled then return false, failure end
+    local record, message = LocalSettings(id)
+    if not record then return false, message end
+    for key, value in pairs(patch) do record[key] = value end
+    return Commit(id, record, false)
+end
+function Editor.SetColor(id, group, rgba)
+    local ran, ok, failure = Run(SetColor, id, group, rgba)
+    if not ran then return false, ok end
+    return ok, failure
+end
 local function SetPosition(id, x, y)
     if not Layout.ValidID(id) or not Layout.Finite(x) or not Layout.Finite(y) then return false, "Invalid action bar position." end
     local cancelled, failure = CancelDrag(id)
@@ -385,12 +393,16 @@ function Editor.SetUseGlobalLayout(id, enabled)
     if not ran then return false, ok end
     return ok, failure
 end
-local function SetGlobalLayout(key, value)
-    if not Layout.ValidGlobalValue(key, value) then return false, "Invalid global action bar setting." end
+local function SetGlobalPatch(patch)
+    for key, value in pairs(patch) do
+        if not Layout.ValidGlobalValue(key, value) then return false, "Invalid global action bar setting." end
+    end
     local store, reason = Owner()
     if not store then return false, reason end
     local current = Layout.ReadGlobal(store.globalLayout)
-    if current[key] == value then return true end
+    local changed = false
+    for key, value in pairs(patch) do if current[key] ~= value then changed = true end end
+    if not changed then return true end
     local cancelled, failure = CancelAll()
     if not cancelled then return false, failure end
     store, reason = Owner()
@@ -399,7 +411,9 @@ local function SetGlobalLayout(key, value)
     local beforeGlobal, beforeLayouts, records = Copy(global), Copy(layouts), {}
     for id = 1, 8 do records[id] = Copy(layouts and layouts[id]) end
     local proposed = Copy(global)
-    if value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
+    for key, value in pairs(patch) do
+        if value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
+    end
     local function Owned()
         local owner = Owner()
         if owner ~= store or store.barLayouts ~= layouts or store.globalLayout ~= global
@@ -415,7 +429,7 @@ local function SetGlobalLayout(key, value)
             for id = 1, 8 do
                 local view = View(id)
                 if view and view.frame:IsVisible() then
-                    local ok, failure = Try(Editor.ApplyView, view, true)
+                    local ok, failure = Try(Editor.ApplyView, view, false)
                     if not ok then message = tostring(message) .. " Restoration: " .. tostring(failure) end
                 end
             end
@@ -449,7 +463,17 @@ local function SetGlobalLayout(key, value)
     return true
 end
 function Editor.SetGlobalLayout(key, value)
-    local ran, ok, failure = Run(SetGlobalLayout, key, value)
+    if not Layout.ValidGlobalValue(key, value) then return false, "Invalid global action bar setting." end
+    local ran, ok, failure = Run(SetGlobalPatch, {[key] = value})
+    if not ran then return false, ok end
+    return ok, failure
+end
+function Editor.SetGlobalColor(group, rgba)
+    local ran, patch, reason = Run(Layout.ColorPatch, group, rgba)
+    if not ran then return false, patch end
+    if not patch then return false, reason end
+    local ok, failure
+    ran, ok, failure = Run(SetGlobalPatch, patch)
     if not ran then return false, ok end
     return ok, failure
 end

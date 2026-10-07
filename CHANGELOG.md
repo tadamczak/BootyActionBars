@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.20
+
+- Customize range colors, hover effects, button borders/backgrounds and cooldown numbers per bar or through Global.
+- Add optional native menu textures and left/right gryphons to each bar.
+- Share countdown and range updates while needed; disable duplicate cooldown text on private BAB models.
+
 ## 0.1.0-dev.19
 
 - Organize configuration into General, Action Bars and Keybindings with a left bar list and contextual controls.
