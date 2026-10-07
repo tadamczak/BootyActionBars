@@ -141,7 +141,7 @@ local function LocalRecord(id, value, original)
     record.scalePct, record.x, record.y = value.scalePct, value.x, value.y
     for _, key in ipairs(Layout.GlobalKeys) do
         if key ~= "scalePct" then
-            if value[key] == Layout.DefaultValue(key, id) then record[key] = nil else record[key] = value[key] end
+            if key ~= "nativeSlotArtwork" and value[key] == Layout.DefaultValue(key, id) then record[key] = nil else record[key] = value[key] end
         end
     end
     record.useGlobalLayout, record.localLayoutSaved = value.useGlobalLayout, value.localLayoutSaved
@@ -411,8 +411,9 @@ local function SetGlobalPatch(patch)
     local beforeGlobal, beforeLayouts, records = Copy(global), Copy(layouts), {}
     for id = 1, 8 do records[id] = Copy(layouts and layouts[id]) end
     local proposed = Copy(global)
+    proposed.nativeSlotArtwork = Layout.ReadGlobal(global).nativeSlotArtwork
     for key, value in pairs(patch) do
-        if value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
+        if key ~= "nativeSlotArtwork" and value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
     end
     local function Owned()
         local owner = Owner()

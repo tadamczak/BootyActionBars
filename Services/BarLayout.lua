@@ -40,6 +40,7 @@ Define("cooldownFontSize", "integer", 14, 8, 32, 2)
 Define("showCooldownText", "boolean", true, nil, nil, 2)
 Define("nativeTexture", "boolean", false, nil, nil, 2)
 Define("nativeTextureBackground", "boolean", true, nil, nil, 2)
+Define("nativeSlotArtwork", "boolean", false, nil, nil, 2)
 Define("nativeTextureScalePct", "integer", 100, 50, 200, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
 Define("gryphonScalePct", "integer", 100, 50, 200, 2)
@@ -121,6 +122,12 @@ function Layout.ValidateGlobal(record)
     end
     return true
 end
+-- Older v2 records gated recessed slots by both legacy flags. New records keep
+-- body and slots independent; an explicit false must survive sparse saves.
+local function NativeSlots(record)
+    if record and record.nativeSlotArtwork ~= nil then return record.nativeSlotArtwork end
+    return record ~= nil and record.nativeTexture == true and record.nativeTextureBackground ~= false
+end
 function Layout.ReadGlobal(record)
     local ok, failure = Layout.ValidateGlobal(record)
     if not ok then return nil, failure end
@@ -130,6 +137,7 @@ function Layout.ReadGlobal(record)
         if value == nil then value = fields[key].default end
         result[key] = value
     end
+    result.nativeSlotArtwork = NativeSlots(record)
     return result
 end
 function Layout.UsesGlobal(layouts, id)
@@ -178,6 +186,7 @@ function Layout.ReadLocal(layouts, id)
         if value == nil then value = Layout.DefaultValue(key, id) end
         result[key] = value
     end
+    result.nativeSlotArtwork = NativeSlots(record)
     return result
 end
 function Layout.Read(layouts, id, global)
@@ -192,6 +201,7 @@ function Layout.Read(layouts, id, global)
             result[key] = value
         end
         result.columns = math.min(result.columns, Layout.SlotCount(id))
+        result.nativeSlotArtwork = NativeSlots(global)
     end
     return result
 end
@@ -232,6 +242,7 @@ function Layout.Resolve(id, record, width, height)
         result[key] = value
     end
     result.columns = columns
+    result.nativeSlotArtwork = NativeSlots(record)
     return result
 end
 function Layout.Capture(centerX, centerY, barScale, parentScale, parentX, parentY)

@@ -3,7 +3,7 @@ local UI = Bars.UI.Components
 local Appearance = {}
 Bars.Modules.ButtonAppearance = Appearance
 local NativeLayout = Bars.Services.NativeDecorationLayout
-local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeTextureBackground", "nativeTextureScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
+local fields = {"hoverMode", "hoverSize", "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeSlotArtwork", "nativeTextureScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
 for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
@@ -22,7 +22,10 @@ local function Style(view, drawing)
     local borderChanged, hoverChanged = false, false
     for _, key in ipairs(fields) do
         local value = drawing and drawing[key]
-        if value == nil then value = Bars.Services.BarLayout.DefaultValue(key) end
+        if value == nil then
+            if key == "nativeSlotArtwork" then value = drawing and drawing.nativeTexture == true and drawing.nativeTextureBackground ~= false or false
+            else value = Bars.Services.BarLayout.DefaultValue(key) end
+        end
         if style[key] ~= value then
             if borderFields[key] then borderChanged = true end
             if hoverFields[key] then hoverChanged = true end
@@ -123,6 +126,8 @@ local function ShowArt(texture, shown, repair)
     if repair or not texture.appearanceReady or texture.appearanceShown ~= shown then
         texture.appearanceReady = false
         if shown then texture:Show() else texture:Hide() end
+        local actual = texture:IsShown()
+        if (actual == true or actual == 1) ~= shown then error("Native action-bar decoration visibility was rejected.") end
         texture.appearanceShown, texture.appearanceReady = shown, true
     end
 end
@@ -147,36 +152,38 @@ local function Foreground(view, scene, repair)
         if host.appearanceCommittedLevel then host:SetAllPoints(view.frame) else host:ClearAllPoints() end
     end
 end
-local paintKeys = {"path", "x", "y", "width", "height", "left", "right", "top", "bottom", "anchor"}
+local paintKeys = {"path", "x", "y", "width", "height", "left", "right", "top", "bottom", "anchor", "rotated"}
 local function CopyPaint(source, target)
     for _, key in ipairs(paintKeys) do target[key] = source[key] end
 end
 local function Geometry(texture, frame, paint)
     texture.appearanceReady = false
-    texture:SetTexture(paint.path); texture:SetTexCoord(paint.left, paint.right, paint.top, paint.bottom)
+    if texture:SetTexture(paint.path) == false then error("Native action-bar decoration texture was rejected.") end
+    if paint.rotated then
+        -- Stock 1.12 TaxiFrame.DrawRouteLine uses the eight-coordinate form
+        -- in TL,BL,TR,BR order. Rotate stone uniformly; never stretch its grain.
+        texture:SetTexCoord(paint.left, paint.bottom, paint.right, paint.bottom,
+            paint.left, paint.top, paint.right, paint.top)
+    else texture:SetTexCoord(paint.left, paint.right, paint.top, paint.bottom) end
     texture:ClearAllPoints(); texture:SetPoint(paint.anchor, frame, "TOPLEFT", paint.x, paint.y)
     texture:SetWidth(paint.width); texture:SetHeight(paint.height)
 end
 local function Piece(view, scene, kind, index, repair, cleanup)
     local art, shown, texture = view.buttonDecorations
-    local x, y, width, height, left, right, top, bottom
+    local x, y, width, height, left, right, top, bottom, rotated
     local path = NativeLayout.Texture
     local parent, side = view.frame
     if kind == "tile" then
-        shown = scene.nativeTexture and scene.background and index <= scene.count
+        shown = scene.slotArtwork and index <= scene.count
         texture = art.panels[index]
-        x, y, width, height = NativeLayout.Tile(scene, index)
-        local uv = NativeLayout.SlotUV
-        left, right, top, bottom = uv[1], uv[2], uv[3], uv[4]
+        parent = view.buttons[index]
+        x, y, width, height, left, right, top, bottom = NativeLayout.Tile(scene, index)
     elseif kind == "edge" then
         shown, texture = scene.nativeTexture, art.edges[index]
         x, y, width, height, left, right, top, bottom = NativeLayout.Edge(scene, index)
     elseif kind == "backing" then
-        shown, texture = scene.nativeTexture and scene.background, art.backing
-        x, y = scene.innerLeft, scene.innerTop
-        width, height = scene.innerRight - x, scene.innerBottom - y
-        local uv = NativeLayout.BackingUV
-        left, right, top, bottom = uv[1], uv[2], uv[3], uv[4]
+        shown, texture = scene.nativeTexture and index <= scene.backingCount, art.backings[index]
+        x, y, width, height, left, right, top, bottom, rotated = NativeLayout.Backing(scene, index)
     else
         side = sides[index]
         shown = scene.gryphons == "both" or scene.gryphons == side
@@ -185,11 +192,12 @@ local function Piece(view, scene, kind, index, repair, cleanup)
         left, right, top, bottom = side == "right" and 1 or 0, side == "right" and 0 or 1, 0, 1
     end
     if shown and not texture then
-        texture = UI.CreateTexture(parent, nil, side and "OVERLAY" or "BACKGROUND")
+        texture = UI.CreateTexture(parent, nil, side and "OVERLAY" or kind == "tile" and "BORDER" or "BACKGROUND")
         texture.appearancePaint, texture.appearanceCommittedPaint = {}, {}
         if kind == "tile" then art.panels[index] = texture
         elseif kind == "edge" then art.edges[index] = texture
-        elseif kind == "backing" then art.backing = texture else art[side] = texture end
+        elseif kind == "backing" then art.backings[index] = texture; if index == 1 then art.backing = texture end
+        else art[side] = texture end
     end
     if not texture then return end
     local paint
@@ -197,6 +205,7 @@ local function Piece(view, scene, kind, index, repair, cleanup)
         paint = texture.appearancePaint
         paint.path, paint.width, paint.height = path, width, height
         paint.left, paint.right, paint.top, paint.bottom = left, right, top, bottom
+        paint.rotated = rotated == true
         if side then
             paint.anchor, paint.x, paint.y = side == "left" and "BOTTOMRIGHT" or "BOTTOMLEFT",
                 side == "left" and scene.left + scene.gryphonOverlap or scene.right - scene.gryphonOverlap, -scene.gryphonBottom
@@ -224,7 +233,7 @@ local function CommitPiece(texture)
 end
 local function CommitPaint(view, scene)
     local art = view.buttonDecorations
-    CommitPiece(art.backing)
+    for _, texture in ipairs(art.backings) do CommitPiece(texture) end
     for _, texture in ipairs(art.panels) do CommitPiece(texture) end
     for _, texture in ipairs(art.edges) do CommitPiece(texture) end
     CommitPiece(art.left); CommitPiece(art.right)
@@ -242,9 +251,11 @@ local function DrawScene(view, scene, repair, cleanup)
         ok, reason = pcall(ShowArt, view.buttonDecorations.foreground, scene.gryphons ~= "none", repair)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
-    ok, reason = pcall(Piece, view, scene, "backing", 1, repair, cleanup)
-    if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     local art = view.buttonDecorations
+    for index = 1, math.max(scene.backingCount, table.getn(art.backings)) do
+        ok, reason = pcall(Piece, view, scene, "backing", index, repair, cleanup)
+        if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    end
     for index = 1, math.max(scene.count, table.getn(art.panels)) do
         ok, reason = pcall(Piece, view, scene, "tile", index, repair, cleanup)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
@@ -261,9 +272,9 @@ local function DrawScene(view, scene, repair, cleanup)
 end
 local function Decorations(view, style, repair)
     local art = view.buttonDecorations
-    if not art and not style.nativeTexture and style.gryphons == "none" then return end
+    if not art and not style.nativeTexture and not style.nativeSlotArtwork and style.gryphons == "none" then return end
     if not art then
-        art = {panels = {}, edges = {}, current = {}, committed = {}, off = {}}
+        art = {panels = {}, edges = {}, backings = {}, current = {}, committed = {}, off = {}}
         view.buttonDecorations = art
         NativeLayout.Resolve({nativeTexture = false, gryphons = "none"}, table.getn(view.buttons), art.off)
     end
