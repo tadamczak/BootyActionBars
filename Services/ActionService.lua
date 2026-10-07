@@ -79,19 +79,24 @@ function ActionService.Create(api)
         local hasAction = Function(api, "HasAction")
         local present = hasAction and Enabled(hasAction(slot)) or false
         target.hasAction = present
-        target.texture = nil
+        target.texture, target.macroName = nil, nil
         if present then
             local getTexture = Function(api, "GetActionTexture")
             if getTexture then target.texture = getTexture(slot) end
+            local getText = Function(api, "GetActionText")
+            if getText then
+                local name = getText(slot)
+                if type(name) == "string" and name ~= "" then target.macroName = name end
+            end
         end
         ReadUsability(api, slot, target)
         ReadState(api, slot, target)
         if macro then
-            local resolved = macro.ReadCooldown(slot, target)
+            local resolved = macro.ReadCooldown(slot, target, target.macroName or false)
             if resolved then return resolved end
         end
         ReadCooldown(api, slot, target)
-        if macro then return macro.Apply(slot, target) end
+        if macro then return macro.Apply(slot, target, nil, target.macroName or false) end
         return target
     end
 

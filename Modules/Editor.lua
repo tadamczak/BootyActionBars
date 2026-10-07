@@ -68,7 +68,10 @@ local function ApplyRecord(view, record, force)
         and previous.parentScale == value.parentScale and previous.columns == value.columns and previous.spacing == value.spacing
         and previous.barWidth == value.barWidth and previous.barHeight == value.barHeight
         and previous.showTitle == value.showTitle and previous.showHotkeys == value.showHotkeys
-        and previous.showCounts == value.showCounts then return true end
+        and previous.showCounts == value.showCounts and previous.showMacroNames == value.showMacroNames
+        and previous.showEmptyButtons == value.showEmptyButtons and previous.buttonSize == value.buttonSize
+        and previous.iconInset == value.iconInset and previous.opacityPct == value.opacityPct
+        and previous.labelFontSize == value.labelFontSize then return true end
     local ok, reason = Try(Drawing, view, value, false)
     if not ok then
         if previous then
@@ -113,6 +116,9 @@ local function Equal(first, second)
     return first and second and first.scalePct == second.scalePct and first.x == second.x and first.y == second.y
         and first.columns == second.columns and first.spacing == second.spacing
         and first.showTitle == second.showTitle and first.showHotkeys == second.showHotkeys and first.showCounts == second.showCounts
+        and first.showMacroNames == second.showMacroNames and first.showEmptyButtons == second.showEmptyButtons
+        and first.buttonSize == second.buttonSize and first.iconInset == second.iconInset
+        and first.opacityPct == second.opacityPct and first.labelFontSize == second.labelFontSize
 end
 local function Commit(id, candidate, reset, expected)
     local store, failure = Owner()
@@ -155,6 +161,12 @@ local function Commit(id, candidate, reset, expected)
         if candidate.showTitle == false then record.showTitle = false else record.showTitle = nil end
         if candidate.showHotkeys == false then record.showHotkeys = false else record.showHotkeys = nil end
         if candidate.showCounts == false then record.showCounts = false else record.showCounts = nil end
+        if candidate.showMacroNames == false then record.showMacroNames = false else record.showMacroNames = nil end
+        if candidate.showEmptyButtons == false then record.showEmptyButtons = false else record.showEmptyButtons = nil end
+        record.buttonSize = candidate.buttonSize ~= 40 and candidate.buttonSize or nil
+        record.iconInset = candidate.iconInset ~= 4 and candidate.iconInset or nil
+        record.opacityPct = candidate.opacityPct ~= 100 and candidate.opacityPct or nil
+        record.labelFontSize = candidate.labelFontSize ~= 10 and candidate.labelFontSize or nil
         layouts[id] = record
     end
     state.failure = nil
@@ -216,7 +228,7 @@ function Editor.SetGrid(id, columns, spacing)
 end
 local function SetDisplay(id, key, value)
     if not Layout.ValidID(id) or not Layout.ValidDisplayKey(key) or type(value) ~= "boolean" then
-        return false, "Choose bar 1-8 and a true or false title, hotkey or count display setting."
+        return false, "Choose bar 1-8 and a true or false display setting."
     end
     local record, failure = Editor.GetLayout(id)
     if not record then return false, failure end
@@ -230,6 +242,42 @@ local function SetDisplay(id, key, value)
 end
 function Editor.SetDisplay(id, key, value)
     local ran, ok, failure = Run(SetDisplay, id, key, value)
+    if not ran then return false, ok end
+    return ok, failure
+end
+local function SetAppearance(id, key, value)
+    if not Layout.ValidID(id) or not Layout.ValidAppearance(key, value) then return false, "Invalid action bar appearance value." end
+    local cancelled, failure = CancelDrag(id)
+    if not cancelled then return false, failure end
+    local record, reason = Editor.GetLayout(id)
+    if not record then return false, reason end
+    if record[key] == value then return true end
+    local view = View(id)
+    if key == "buttonSize" and view and view.frame:IsVisible() then
+        local context = Screen(true)
+        local x, y = Capture(view, context)
+        if x == nil then return false, y end
+        record.x, record.y = x, y
+    end
+    record[key] = value
+    return Commit(id, record, false)
+end
+function Editor.SetAppearance(id, key, value)
+    local ran, ok, failure = Run(SetAppearance, id, key, value)
+    if not ran then return false, ok end
+    return ok, failure
+end
+local function SetPosition(id, x, y)
+    if not Layout.ValidID(id) or not Layout.Finite(x) or not Layout.Finite(y) then return false, "Invalid action bar position." end
+    local cancelled, failure = CancelDrag(id)
+    if not cancelled then return false, failure end
+    local record, reason = Editor.GetLayout(id)
+    if not record then return false, reason end
+    record.x, record.y = x, y
+    return Commit(id, record, false)
+end
+function Editor.SetPosition(id, x, y)
+    local ran, ok, failure = Run(SetPosition, id, x, y)
     if not ran then return false, ok end
     return ok, failure
 end
@@ -294,9 +342,10 @@ local function DragStop(id)
     if not SameContext(context, drag.context) then return CancelDrag(id) end
     local x, y = Capture(drag.view, context)
     if x == nil then CancelDrag(id); return false, y end
-    local candidate = {scalePct = drag.original.scalePct, x = x, y = y,
-        columns = drag.original.columns, spacing = drag.original.spacing,
-        showTitle = drag.original.showTitle, showHotkeys = drag.original.showHotkeys, showCounts = drag.original.showCounts}
+    local candidate = {}
+    -- Moving changes only the position of the normalized durable layout.
+    for key, value in pairs(drag.original) do candidate[key] = value end
+    candidate.x, candidate.y = x, y
     local committed, reason = Commit(id, candidate, false, drag)
     if not committed then CancelDrag(id); return false, reason end
     state.drags[id] = nil
@@ -366,6 +415,10 @@ local function Detach(id)
         if not ok and not firstFailure then firstFailure = reason end
     end
     if view then
+        if view.SetEditing then
+            local ok, reason = Try(view.SetEditing, view, false)
+            if not ok and not firstFailure then firstFailure = reason end
+        end
         local ok, reason = Try(view.CancelInput, view)
         if not ok and not firstFailure then firstFailure = reason end
     end
@@ -396,7 +449,9 @@ function Editor.Sync()
     for id = 1, 8 do
         local view = View(id)
         if view and view.frame:IsVisible() then
-            local ok, failure = Editor.ApplyView(view)
+            local ok, failure = true, nil
+            if view.SetEditing then ok, failure = Try(view.SetEditing, view, state.editing) end
+            if ok then ok, failure = Editor.ApplyView(view) end
             if ok and state.editing then ok, failure = Try(EnsureHandle, view) end
             if not ok and not firstFailure then firstFailure = failure end
         end

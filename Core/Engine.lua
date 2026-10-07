@@ -423,9 +423,14 @@ end
 function Engine.OnHide(barId)
     barId = barId or 1
     local firstFailure
+    local binding = Bars.Modules.BindingEditor
+    if binding and binding.IsEditing() then
+        local ok, failure = ProtectedCall(binding.Cancel)
+        if not ok then firstFailure = failure end
+    end
     if Bars.Modules.Editor then
         local ok, failure = ProtectedCall(Bars.Modules.Editor.OnBarHidden, barId)
-        if not ok then firstFailure = failure end
+        if not ok and not firstFailure then firstFailure = failure end
     end
     if barId ~= 1 then
         if ValidBar(barId) and state.views[barId] then
@@ -522,6 +527,11 @@ function Engine.Disable()
     state.macroPending = nil
     Unsubscribe()
     local ok, firstFailure = ProtectedCall(ActivityChanged)
+    local binding = Bars.Modules.BindingEditor
+    if binding and binding.IsEditing() then
+        local ended, failure = ProtectedCall(binding.Cancel)
+        if not ended and not firstFailure then firstFailure = failure end
+    end
     state.cleaning = true
     if state.view then
         local hidden, failure = HideView(state.view)
@@ -534,8 +544,12 @@ function Engine.Disable()
     return firstFailure == nil, firstFailure
 end
 local function InputView(barId, index)
+    local binding = Bars.Modules.BindingEditor
+    if binding and binding.IsEditing() then return nil end
     if not ValidBar(barId) or not Valid(index) or not IsActive(barId) then return nil end
-    return state.views[barId]
+    local view = state.views[barId]
+    if view and view.buttons[index].emptyHidden == true then return nil end
+    return view
 end
 function Engine.Tooltip(index, barId)
     local view = InputView(barId or 1, index)

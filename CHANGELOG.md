@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.17 — 2026-10-07
+
+- Show macro names by default with a separate per-bar toggle; keep labels cached during partial updates.
+- Customize button size, icon inset, opacity and label size; hide empty slots while retaining edit previews.
+- Stage action/pet/form key assignments with Save, Cancel and explicit conflict confirmation.
+- Save, load, replace and delete complete layout profiles, with Undo load and transactional restoration.
+
 ## 0.1.0-dev.16 — 2026-10-07
 
 - Refresh SuperMacro/CleveRoids macro icons, item counts, cooldowns and tooltips, including delayed conditional changes.

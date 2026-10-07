@@ -305,6 +305,10 @@ function Runtime.SetEditEnabled(enabled)
     if type(enabled) ~= "boolean" then return false, "Choose whether to edit the bar layout." end
     local ok, failure
     if enabled then
+        if Bars.Modules.BindingEditor then
+            ok, failure = Bars.Modules.BindingEditor.Cancel()
+            if not ok then RefreshView(); return false, failure end
+        end
         if not Runtime.IsAvailable() or not state.view or not state.view.frame:IsVisible() then
             return false, "Open Action Bars and enable the test bars before editing their layout."
         end
@@ -362,11 +366,120 @@ end
 
 function Runtime.SetBarDisplay(id, key, enabled)
     if not Bars.Services.BarLayout.ValidDisplayKey(key) or type(enabled) ~= "boolean" then
-        return false, "Choose a bar title, hotkey or count setting and enable or disable it."
+        return false, "Choose a title, hotkey, count, macro name or empty button setting."
     end
     local valid, reason = LayoutAvailable(id)
     if not valid then return false, reason end
     local ok, failure = Bars.Modules.Editor.SetDisplay(id, key, enabled)
+    RefreshView()
+    return ok, failure
+end
+
+function Runtime.SetBarAppearance(id, key, value)
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local ok, failure = Bars.Modules.Editor.SetAppearance(id, key, value)
+    RefreshView()
+    return ok, failure
+end
+
+function Runtime.SetBarPosition(id, x, y)
+    local valid, reason = LayoutAvailable(id)
+    if not valid then return false, reason end
+    local ok, failure = Bars.Modules.Editor.SetPosition(id, x, y)
+    RefreshView()
+    return ok, failure
+end
+
+function Runtime.SetBindingEditing(enabled)
+    local module = Bars.Modules.BindingEditor
+    if not module then return false, "The binding editor is unavailable." end
+    if not enabled then return module.Cancel() end
+    if not Runtime.IsAvailable() or not state.view or not state.view.frame:IsVisible() then return false, "Open Action Bars before assigning keys." end
+    local ok, failure = Bars.Modules.Editor.End()
+    if not ok then return false, failure end
+    ok, failure = module.Begin(state.host.window)
+    if not ok then return false, failure end
+    ok, failure = module.SetSelection(state.view.selectedBar, state.view.bindingIndex)
+    if not ok then module.Cancel() end
+    return ok, failure
+end
+
+function Runtime.SaveLayoutProfile(name, replace)
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local ok, result = Bars.Services.LayoutProfiles.Save(store, name, replace)
+    if ok then state.profileRevision = (state.profileRevision or 0) + 1 end
+    RefreshView()
+    return ok, result
+end
+
+function Runtime.DeleteLayoutProfile(name)
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local ok, result = Bars.Services.LayoutProfiles.Delete(store, name)
+    if ok then state.profileRevision = (state.profileRevision or 0) + 1 end
+    RefreshView()
+    return ok, result
+end
+
+local function ApplyLayoutSnapshot(snapshot)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local prepared, reason = Bars.Services.LayoutProfiles.Prepare(snapshot, store.barLayouts)
+    if not prepared then return false, reason end
+    local ended, endFailure = Bars.Modules.Editor.End()
+    if not ended then return false, endFailure end
+    if Bars.Modules.BindingEditor then
+        ended, endFailure = Bars.Modules.BindingEditor.Cancel()
+        if not ended then return false, endFailure end
+    end
+    local oldLayouts, oldCustom, oldSpecial = store.barLayouts, store.customBars, store.specialBars
+    local enabled = store.trialBarEnabled
+    local stopped, stopFailure = CallLifecycle(Bars.Core.Engine.Disable)
+    if not stopped then return false, stopFailure end
+    if BootyActionBarsDB ~= store then return false, "Layout settings ownership changed before loading." end
+    store.barLayouts, store.customBars, store.specialBars = prepared.barLayouts, prepared.customBars, prepared.specialBars
+    Bars.Core.Engine.MarkLayoutChanged()
+    local ok, message = CallLifecycle(SyncEngine)
+    local owned = BootyActionBarsDB == store and store.barLayouts == prepared.barLayouts
+        and store.customBars == prepared.customBars and store.specialBars == prepared.specialBars
+    if ok and owned then return true end
+    local firstFailure = message or "Layout settings ownership changed while loading."
+    local cleaned, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
+    if not cleaned then firstFailure = tostring(firstFailure) .. " Cleanup: " .. tostring(cleanupFailure) end
+    if BootyActionBarsDB == store then
+        if store.barLayouts == prepared.barLayouts then store.barLayouts = oldLayouts end
+        if store.customBars == prepared.customBars then store.customBars = oldCustom end
+        if store.specialBars == prepared.specialBars then store.specialBars = oldSpecial end
+        -- Keep native ownership refusals; a profile must not undo conflict policy.
+        store.trialBarEnabled = enabled
+        local restored, restoreFailure = CallLifecycle(SyncEngine)
+        if not restored then firstFailure = tostring(firstFailure) .. " Restoration: " .. tostring(restoreFailure) end
+    end
+    return false, firstFailure
+end
+
+function Runtime.LoadLayoutProfile(name)
+    local normalized, reason = Bars.Services.LayoutProfiles.Name(name)
+    if not normalized then return false, reason end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local snapshot = store.layoutProfiles and store.layoutProfiles[normalized]
+    if not snapshot then return false, "Choose an existing layout profile." end
+    local previous, why = Bars.Services.LayoutProfiles.Capture(store)
+    if not previous then return false, why end
+    local ok, message = ApplyLayoutSnapshot(snapshot)
+    if ok then state.layoutUndo, state.loadedLayoutProfile = previous, normalized end
+    RefreshView()
+    return ok, message
+end
+
+function Runtime.UndoLayoutProfile()
+    if not state.layoutUndo then return false, "No loaded layout can be undone in this session." end
+    local ok, failure = ApplyLayoutSnapshot(state.layoutUndo)
+    if ok then state.layoutUndo, state.loadedLayoutProfile = nil, nil end
     RefreshView()
     return ok, failure
 end
@@ -385,6 +498,13 @@ function Runtime.Open(command)
         return false
     end
     if command == "settings" then return state.host.OpenSettings() end
+    if command == "bind" then
+        local opened = state.host.OpenView("actionbars")
+        if opened == false then return false, "Action Bars could not be opened." end
+        local ok, failure = Runtime.SetBindingEditing(true)
+        if not ok then state.host.Print(failure) end
+        return ok, failure
+    end
     local _, _, special, specialChoice = string.find(command, "^(%a+) (%a+)$")
     if (special == "pet" or special == "stance") and (specialChoice == "on" or specialChoice == "off") then
         local ok, failure = Runtime.SetSpecialBar(special, specialChoice == "on")
@@ -401,6 +521,7 @@ function Runtime.Open(command)
     if command == "lock" then return Runtime.SetEditEnabled(false) end
     local _, _, display, displayBar, choice = string.find(command, "^(%a+) (%d+) (%a+)$")
     local displayKey = display == "title" and "showTitle" or display == "hotkeys" and "showHotkeys" or display == "counts" and "showCounts"
+        or display == "macronames" and "showMacroNames" or display == "empty" and "showEmptyButtons"
     if displayKey and (choice == "on" or choice == "off") then
         local ok, failure = Runtime.SetBarDisplay(tonumber(displayBar), displayKey, choice == "on")
         if not ok then state.host.Print(failure) end
