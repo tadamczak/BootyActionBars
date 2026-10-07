@@ -84,11 +84,15 @@ SyncNative = function()
     end
     local safe, reason = CallLifecycle(Bars.Services.NativeBarPolicy.CheckCompeting)
     if not safe then return AbortNative(reason) end
-    local ok, failure = CallLifecycle(controller.Check)
-    if not ok then return AbortNative(failure) end
     -- Main and bonus buttons share one lease. Native parent animation and
     -- keyboard dispatch retain their owners while all BAB pages stay usable.
-    local acquired, acquireFailure = CallLifecycle(controller.Acquire)
+    local mainVisible = Bars.Core.Engine.GetState().mainActive
+    if mainVisible == nil then mainVisible = true end
+    local acquired, acquireFailure
+    if mainVisible then
+        acquired, acquireFailure = CallLifecycle(controller.Check)
+        if acquired then acquired, acquireFailure = CallLifecycle(controller.Acquire) end
+    else acquired, acquireFailure = CallLifecycle(controller.Release) end
     if not acquired then return AbortNative(acquireFailure) end
     local special = Bars.Modules.SpecialBars
     local pet, stance = false, false
@@ -139,7 +143,12 @@ local function SyncEngine()
         layoutOK, layoutFailure = Bars.Modules.Editor.SetShowAnchors(options.showAnchors == true)
         if not layoutOK then return false, layoutFailure end
     end
-    local configured, reason = Bars.Core.Engine.ConfigureCustomBars(store.customBars)
+    local configured, reason
+    if Bars.Core.Engine.ConfigureMainVisibility then
+        configured, reason = Bars.Core.Engine.ConfigureMainVisibility(store.mainBarShown ~= false)
+        if not configured then return false, reason end
+    end
+    configured, reason = Bars.Core.Engine.ConfigureCustomBars(store.customBars)
     if not configured then return false, reason end
     if Bars.Modules.SpecialBars then
         configured, reason = Bars.Modules.SpecialBars.Configure(store.specialBars)
@@ -293,6 +302,19 @@ function Runtime.SetCustomBar(id, enabled)
     return ok, reason
 end
 
+function Runtime.SetMainBarShown(value)
+    if not Runtime.IsAvailable() or type(value) ~= "boolean" then
+        return false, "Choose whether to show Action Bar 1."
+    end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    if store.mainBarShown == value then return true end
+    store.mainBarShown = value
+    local ok, reason = SyncEngine()
+    RefreshView()
+    return ok, reason
+end
+
 function Runtime.SetSpecialBar(kind, enabled)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     if (kind ~= "pet" and kind ~= "stance") or type(enabled) ~= "boolean" then return false, "Choose pet or stance and on or off." end
@@ -329,6 +351,32 @@ function Runtime.GetBarLayout(id)
     return Bars.Modules.Editor.GetLayout(id)
 end
 
+function Runtime.GetGlobalLayout() return Bars.Modules.Editor.GetGlobalLayout() end
+function Runtime.SetGlobalLayout(key, value)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local owner, failure = Bars.Database.Ensure()
+    if not owner then return false, failure end
+    local ok, reason = Bars.Modules.Editor.SetGlobalLayout(key, value)
+    if not ok and BootyActionBarsDB ~= owner then
+        local restored, restoreFailure = CallLifecycle(SyncEngine)
+        if not restored then reason = tostring(reason) .. " Resynchronization: " .. tostring(restoreFailure) end
+    end
+    RefreshView()
+    return ok, reason
+end
+function Runtime.SetUseGlobalLayout(id, value)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local owner, failure = Bars.Database.Ensure()
+    if not owner then return false, failure end
+    local ok, failure = Bars.Modules.Editor.SetUseGlobalLayout(id, value)
+    if not ok and BootyActionBarsDB ~= owner then
+        local restored, restoreFailure = CallLifecycle(SyncEngine)
+        if not restored then failure = tostring(failure) .. " Resynchronization: " .. tostring(restoreFailure) end
+    end
+    RefreshView()
+    return ok, failure
+end
+
 function Runtime.SetEditorOption(key, value)
     if (key ~= "showGrid" and key ~= "showAnchors") or type(value) ~= "boolean" then
         return false, "Choose a grid or anchor setting."
@@ -360,9 +408,6 @@ local function LayoutAvailable(id)
     end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
-    if id == 7 or id == 8 then
-        if not store.specialBars[id == 7 and "pet" or "stance"] then return false, "Show this bar before changing its layout." end
-    elseif id ~= 1 and not store.customBars[id] then return false, "Show this bar before changing its layout." end
     return true
 end
 
@@ -457,7 +502,7 @@ local function ApplyLayoutSnapshot(snapshot)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
-    local prepared, reason = Bars.Services.LayoutProfiles.Prepare(snapshot, store.barLayouts)
+    local prepared, reason = Bars.Services.LayoutProfiles.Prepare(snapshot, store.barLayouts, store.globalLayout)
     if not prepared then return false, reason end
     local ended, endFailure = Bars.Modules.Editor.End()
     if not ended then return false, endFailure end
@@ -466,15 +511,20 @@ local function ApplyLayoutSnapshot(snapshot)
         if not ended then return false, endFailure end
     end
     local oldLayouts, oldCustom, oldSpecial = store.barLayouts, store.customBars, store.specialBars
+    local oldGlobal, oldMain = store.globalLayout, store.mainBarShown
     local enabled = store.trialBarEnabled
     local stopped, stopFailure = CallLifecycle(Bars.Core.Engine.Disable)
     if not stopped then return false, stopFailure end
     if BootyActionBarsDB ~= store then return false, "Layout settings ownership changed before loading." end
     store.barLayouts, store.customBars, store.specialBars = prepared.barLayouts, prepared.customBars, prepared.specialBars
+    if prepared.replaceGlobal then store.globalLayout = prepared.globalLayout end
+    if prepared.mainBarShown ~= nil then store.mainBarShown = prepared.mainBarShown end
     Bars.Core.Engine.MarkLayoutChanged()
     local ok, message = CallLifecycle(SyncEngine)
     local owned = BootyActionBarsDB == store and store.barLayouts == prepared.barLayouts
         and store.customBars == prepared.customBars and store.specialBars == prepared.specialBars
+        and (not prepared.replaceGlobal or store.globalLayout == prepared.globalLayout)
+        and (prepared.mainBarShown == nil or store.mainBarShown == prepared.mainBarShown)
     if ok and owned then return true end
     local firstFailure = message or "Layout settings ownership changed while loading."
     local cleaned, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
@@ -483,6 +533,8 @@ local function ApplyLayoutSnapshot(snapshot)
         if store.barLayouts == prepared.barLayouts then store.barLayouts = oldLayouts end
         if store.customBars == prepared.customBars then store.customBars = oldCustom end
         if store.specialBars == prepared.specialBars then store.specialBars = oldSpecial end
+        if prepared.replaceGlobal and store.globalLayout == prepared.globalLayout then store.globalLayout = oldGlobal end
+        if prepared.mainBarShown ~= nil and store.mainBarShown == prepared.mainBarShown then store.mainBarShown = oldMain end
         -- Keep native ownership refusals; a profile must not undo conflict policy.
         store.trialBarEnabled = enabled
         local restored, restoreFailure = CallLifecycle(SyncEngine)
@@ -531,6 +583,10 @@ function Runtime.Open(command)
     if command == "bind" then
         local opened = state.host.OpenView("actionbars")
         if opened == false then return false, "Action Bars could not be opened." end
+        if state.view.SelectTab then
+            local selected, reason = state.view:SelectTab("keybindings")
+            if not selected then return false, reason end
+        end
         local ok, failure = Runtime.SetBindingEditing(true)
         if not ok then state.host.Print(failure) end
         return ok, failure
@@ -544,6 +600,12 @@ function Runtime.Open(command)
     if command == "unlock" then
         local opened = state.host.OpenView("actionbars")
         if opened == false then return false, "Action Bars could not be opened." end
+        if state.view.SelectTab then
+            local selected, reason = state.view:SelectTab("bars")
+            if not selected then return false, reason end
+            selected, reason = state.view.panels.bars:Select("layout")
+            if not selected then return false, reason end
+        end
         local ok, failure = Runtime.SetEditEnabled(true)
         if not ok then state.host.Print(failure) end
         return ok, failure

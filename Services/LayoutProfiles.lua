@@ -1,11 +1,18 @@
 local Bars = BootyActionBars
 local Profiles = {}
 Bars.Services.LayoutProfiles = Profiles
-Profiles.VERSION, Profiles.LIMIT = 1, 20
+Profiles.VERSION, Profiles.LIMIT = 2, 20
 local fields = {"x", "y", "scalePct", "columns", "spacing", "showTitle", "showHotkeys", "showCounts",
     "showMacroNames", "showEmptyButtons", "buttonSize", "iconInset", "opacityPct", "labelFontSize"}
 local allowed = {}
 for _, key in ipairs(fields) do allowed[key] = true end
+local function LocalField(key) return allowed[key] or key == "useGlobalLayout" or key == "localLayoutSaved" end
+local function GlobalCopy(value, existing)
+    local copy = {}
+    for key, item in pairs(existing or {}) do if not Bars.Services.BarLayout.ValidGlobalValue(key, item) then copy[key] = item end end
+    for _, key in ipairs(Bars.Services.BarLayout.GlobalKeys) do copy[key] = value and value[key] end
+    return copy
+end
 
 function Profiles.Name(value)
     if type(value) ~= "string" then return nil, "Enter a layout name." end
@@ -26,9 +33,10 @@ function Profiles.ValidateStore(profiles)
     return true
 end
 function Profiles.Validate(profile)
-    if type(profile) ~= "table" or profile.version ~= Profiles.VERSION then return false, "Unsupported action bar layout profile." end
+    if type(profile) ~= "table" or (profile.version ~= 1 and profile.version ~= Profiles.VERSION) then return false, "Unsupported action bar layout profile." end
     for key in pairs(profile) do
-        if key ~= "version" and key ~= "barLayouts" and key ~= "customBars" and key ~= "specialBars" then return false, "Unexpected layout profile data." end
+        if key ~= "version" and key ~= "barLayouts" and key ~= "customBars" and key ~= "specialBars"
+            and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown")) then return false, "Unexpected layout profile data." end
     end
     local ok, failure = Bars.Services.BarConfig.Validate(profile.customBars)
     if not ok then return false, failure end
@@ -38,10 +46,23 @@ function Profiles.Validate(profile)
     ok, failure = Bars.Services.BarLayout.ValidateLayouts(profile.barLayouts)
     if not ok then return false, failure end
     if type(profile.barLayouts) ~= "table" then return false, "Layout profile geometry is missing." end
+    if profile.version == 2 then
+        if type(profile.globalLayout) ~= "table" or type(profile.mainBarShown) ~= "boolean" then return false, "Global layout or main bar visibility is missing." end
+        ok, failure = Bars.Services.BarLayout.ValidateGlobal(profile.globalLayout)
+        if not ok then return false, failure end
+        for key, value in pairs(profile.globalLayout) do
+            if not Bars.Services.BarLayout.ValidGlobalValue(key, value) then return false, "Unexpected global layout data." end
+        end
+    end
     for id = 1, 8 do
         local record = profile.barLayouts[id]
         if type(record) ~= "table" then return false, "Layout profiles must contain all eight bar layouts." end
-        for key in pairs(record) do if not allowed[key] then return false, "Unexpected layout appearance data." end end
+        for key in pairs(record) do
+            if not allowed[key] and not (profile.version == 2 and LocalField(key)) then return false, "Unexpected layout appearance data." end
+        end
+        if profile.version == 2 and (type(record.useGlobalLayout) ~= "boolean" or type(record.localLayoutSaved) ~= "boolean") then
+            return false, "Layout inheritance flags are missing."
+        end
     end
     return true
 end
@@ -56,26 +77,38 @@ function Profiles.Capture(store)
     if not ok then return nil, failure end
     ok, failure = Bars.Services.BarConfig.ValidateSpecial(store.specialBars)
     if not ok then return nil, failure end
-    local result = {version = Profiles.VERSION, barLayouts = {}, customBars = Flags(store.customBars), specialBars = Flags(store.specialBars)}
+    ok, failure = Bars.Services.BarLayout.ValidateGlobal(store.globalLayout)
+    if not ok then return nil, failure end
+    if store.mainBarShown ~= nil and type(store.mainBarShown) ~= "boolean" then return nil, "Invalid main bar visibility." end
+    local result = {version = Profiles.VERSION, barLayouts = {}, customBars = Flags(store.customBars), specialBars = Flags(store.specialBars),
+        globalLayout = GlobalCopy(store.globalLayout), mainBarShown = store.mainBarShown ~= false}
     for id = 1, 8 do
-        local record, reason = Bars.Services.BarLayout.Read(store.barLayouts, id)
+        local record, reason = Bars.Services.BarLayout.ReadLocal(store.barLayouts, id)
         if not record then return nil, reason end
         result.barLayouts[id] = record
     end
     return result
 end
-function Profiles.Prepare(profile, existingLayouts)
+function Profiles.Prepare(profile, existingLayouts, existingGlobal)
     local ok, failure = Profiles.Validate(profile)
     if not ok then return nil, failure end
     ok, failure = Bars.Services.BarLayout.ValidateLayouts(existingLayouts)
     if not ok then return nil, failure end
-    local result = {barLayouts = {}, customBars = Flags(profile.customBars), specialBars = Flags(profile.specialBars)}
+    ok, failure = Bars.Services.BarLayout.ValidateGlobal(existingGlobal)
+    if not ok then return nil, failure end
+    local result = {barLayouts = {}, customBars = Flags(profile.customBars), specialBars = Flags(profile.specialBars), replaceGlobal = profile.version == 2}
+    if profile.version == 2 then
+        result.globalLayout = GlobalCopy(profile.globalLayout, existingGlobal)
+        result.mainBarShown = profile.mainBarShown
+    end
     for id = 1, 8 do
         local record = {}
         -- Preserve extension fields already owned by the current saved record;
         -- a named layout replaces only this product's declared preferences.
-        for key, value in pairs(existingLayouts and existingLayouts[id] or {}) do if not allowed[key] then record[key] = value end end
+        for key, value in pairs(existingLayouts and existingLayouts[id] or {}) do if not LocalField(key) then record[key] = value end end
         for _, key in ipairs(fields) do record[key] = profile.barLayouts[id][key] end
+        record.useGlobalLayout = profile.version == 2 and profile.barLayouts[id].useGlobalLayout or false
+        record.localLayoutSaved = profile.version ~= 2 or profile.barLayouts[id].localLayoutSaved
         result.barLayouts[id] = record
     end
     return result

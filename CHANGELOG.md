@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.19
+
+- Organize configuration into General, Action Bars and Keybindings with a left bar list and contextual controls.
+- Add Global Layout inheritance, preserved individual overrides and complete layout profiles compatible with older profiles.
+- Show or hide Action Bar 1 independently while other bars remain active; configure hidden bars without enabling them.
+
 ## 0.1.0-dev.18 — 2026-10-07
 
 - Place the button rectangle flush against screen edges without a reserved title gap.

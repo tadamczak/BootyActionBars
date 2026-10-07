@@ -2,7 +2,8 @@ local Bars = BootyActionBars
 local Engine = {}
 Bars.Core.Engine = Engine
 local state = {active = false, requested = false, subscribed = false, views = {}, customBars = {},
-    customActive = {}, customRevision = 0, customConfiguredCount = 0, customActiveCount = 0, macroDirty = {}}
+    customActive = {}, customRevision = 0, customConfiguredCount = 0, customActiveCount = 0, macroDirty = {},
+    mainShown = true, mainActive = false}
 local events = {"PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_UPDATE_COOLDOWN",
     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_STATE", "PLAYER_TARGET_CHANGED", "PLAYER_AURAS_CHANGED",
     "UNIT_INVENTORY_CHANGED", "UPDATE_INVENTORY_ALERTS", "BAG_UPDATE", "UPDATE_BINDINGS", "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT",
@@ -12,7 +13,7 @@ local pageEvents = {ACTIONBAR_PAGE_CHANGED = true, UPDATE_BONUS_ACTIONBAR = true
 local stateEvents = {ACTIONBAR_UPDATE_STATE = true, PLAYER_ENTER_COMBAT = true, PLAYER_LEAVE_COMBAT = true,
     START_AUTOREPEAT_SPELL = true, STOP_AUTOREPEAT_SPELL = true, CRAFT_SHOW = true, CRAFT_CLOSE = true,
     TRADE_SKILL_SHOW = true, TRADE_SKILL_CLOSE = true}
-local SyncRange, FlushMacroChanges
+local SyncRange, FlushMacroChanges, SyncMain, SyncContext
 
 local function Valid(index)
     return type(index) == "number" and index >= 1 and index <= 12 and index == math.floor(index)
@@ -24,6 +25,14 @@ local function Report(message)
     message = tostring(message)
     if state.failure ~= message then BootyLib.Print("BootyActionBars: " .. message) end
     state.failure = message
+end
+local function ProtectedCall(callback, owner)
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ran, ok, failure = pcall(callback, owner)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not ran then return false, tostring(ok) end
+    if ok == false then return false, failure or "An action bar could not be suspended." end
+    return true
 end
 local function Context(view, index, callback, first, second, third, fourth)
     local previousThis, previousEvent, previousArg = this, event, arg1
@@ -63,7 +72,7 @@ local function RefreshView(view, category, force)
     return true
 end
 local function IsActive(barId)
-    return state.active and (barId == 1 or state.customActive[barId] == true)
+    return state.active and (barId == 1 and state.mainActive == true or barId ~= 1 and state.customActive[barId] == true)
 end
 local function RefreshAll(category, force)
     for barId = 1, 6 do
@@ -74,9 +83,14 @@ local function RefreshAll(category, force)
     end
     return true
 end
+local function ClearRangeScript()
+    if state.rangeFrame then state.rangeFrame:SetScript("OnUpdate", nil) end
+end
 local function StopRange()
-    if state.rangeTracking and state.view then state.view.frame:SetScript("OnUpdate", nil) end
+    local ok, failure = ProtectedCall(ClearRangeScript)
+    if ok then state.rangeFrame = nil end
     state.rangeTracking, state.rangeElapsed = false, 0
+    return ok, failure
 end
 local function RangeUpdate(elapsed)
     state.rangeElapsed = state.rangeElapsed + (elapsed or 0)
@@ -87,7 +101,11 @@ local function RangeUpdate(elapsed)
     local ran, hasTarget = pcall(state.rangeService.HasTarget)
     this, event, arg1 = previousThis, previousEvent, previousArg
     if not ran then Engine.Disable(); Report(hasTarget); return end
-    if not state.active or not hasTarget then StopRange(); return end
+    if not state.active or not hasTarget then
+        local ok, failure = StopRange()
+        if not ok then Engine.Disable(); Report(failure) end
+        return
+    end
     for barId = 1, 6 do
         if IsActive(barId) then
             local view = state.views[barId]
@@ -110,27 +128,33 @@ local function RangeTick()
     -- conditional worker without replacing a frame script during capture.
     Engine.HandleEvent("BOOTY_ACTIONBARS_RANGE_UPDATE", arg1)
 end
+local function InstallRangeScript() state.rangeFrame:SetScript("OnUpdate", RangeTick) end
 SyncRange = function()
-    if not state.active or not state.rangeService then StopRange(); return true end
+    if not state.active or not state.rangeService then return StopRange() end
+    local candidates = false
+    for barId = 1, 6 do
+        if IsActive(barId) then
+            for index = 1, 12 do
+                if state.views[barId].buttons[index].read.hasRange then candidates = true; break end
+            end
+        end
+        if candidates then break end
+    end
+    if not candidates then return StopRange() end
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ran, target = pcall(state.rangeService.HasTarget)
     this, event, arg1 = previousThis, previousEvent, previousArg
     if not ran then return false, target end
-    local wanted = false
-    if target then
-        for barId = 1, 6 do
-            if IsActive(barId) then
-                for index = 1, 12 do
-                    if state.views[barId].buttons[index].read.hasRange then wanted = true; break end
-                end
-            end
-            if wanted then break end
-        end
-    end
-    if wanted and not state.rangeTracking then
+    local wanted = target == true
+    local frame = state.mainActive and state.view.frame or state.driver
+    if wanted and (not state.rangeTracking or state.rangeFrame ~= frame) then
+        local ok, failure = StopRange()
+        if not ok then return false, failure end
+        if not frame then return false, "The action bar range driver is unavailable." end
         state.rangeElapsed, state.rangeTracking = 0, true
-        state.view.frame:SetScript("OnUpdate", RangeTick)
-    elseif not wanted then StopRange() end
+        state.rangeFrame = frame
+        return ProtectedCall(InstallRangeScript)
+    elseif not wanted then return StopRange() end
     return true
 end
 local function ApplyPage(offset, page)
@@ -192,14 +216,6 @@ local function ActivityChanged()
     if state.activityObserver then return state.activityObserver(state.active) end
     return true
 end
-local function ProtectedCall(callback, owner)
-    local previousThis, previousEvent, previousArg = this, event, arg1
-    local ran, ok, failure = pcall(callback, owner)
-    this, event, arg1 = previousThis, previousEvent, previousArg
-    if not ran then return false, tostring(ok) end
-    if ok == false then return false, failure or "An action bar could not be suspended." end
-    return true
-end
 local function PrepareDisplay(view)
     -- Apply saved visibility before page text, forced action reads and binding
     -- formatting, including reactivation of an already pooled hidden view.
@@ -211,7 +227,7 @@ local function PrepareDisplay(view)
 end
 local function HideView(view)
     local firstFailure
-    if Bars.Modules.Editor then
+    if Bars.Modules.Editor and not (view == state.view and state.hidingMain) then
         local id = view.id or (view == state.view and 1)
         local ok, failure = ProtectedCall(Bars.Modules.Editor.OnBarHidden, id)
         if not ok then firstFailure = failure end
@@ -267,6 +283,14 @@ end
 function Engine.ConfigureCustomBars(customBars)
     return Configure(customBars)
 end
+function Engine.ConfigureMainVisibility(shown)
+    if type(shown) ~= "boolean" then return false, "Choose whether to show the main action bar." end
+    if state.mainShown ~= shown then
+        state.mainShown = shown
+        state.customRevision = state.customRevision + 1
+    end
+    return true
+end
 local function CreateView(barId)
     if state.views[barId] then return state.views[barId] end
     local ok, view = pcall(Bars.Modules.ActionBar.Create, {Click = Engine.MouseClick, Pickup = Engine.Pickup,
@@ -279,6 +303,72 @@ local function CreateView(barId)
     state.views[barId] = view
     if barId == 1 then state.view = view end
     return view
+end
+local function ParentVisible()
+    if not UIParent or type(UIParent.IsVisible) ~= "function" then return true end
+    local value = UIParent:IsVisible()
+    return value ~= nil and value ~= false and value ~= 0
+end
+local function ContextHidden() return Engine.OnContextHide() end
+local function ContextShown() return Engine.OnContextShow() end
+local function CreateDriver()
+    if state.driverFailure then return false, state.driverFailure end
+    if not state.driver then
+        state.driver = Bars.UI.Components.CreateContainer("BootyActionBarsContextDriver", UIParent)
+    end
+    local frame = state.driver
+    if not state.driverReady then
+        frame:Hide(); frame:SetWidth(1); frame:SetHeight(1); frame:SetAlpha(0)
+        frame:EnableMouse(false); frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        frame:SetScript("OnHide", ContextHidden); frame:SetScript("OnShow", ContextShown)
+        state.driverReady = true
+    end
+    return true
+end
+SyncContext = function()
+    local wanted = state.requested and not state.mainShown
+    if wanted then
+        local ok, failure = ProtectedCall(CreateDriver)
+        if not ok then state.driverFailure = failure; return false, failure end
+        return ProtectedCall(state.driver.Show, state.driver)
+    end
+    if state.driver then
+        local rangeOK, rangeFailure = true, nil
+        if state.rangeFrame == state.driver then rangeOK, rangeFailure = StopRange() end
+        state.hidingDriver = true
+        local ok, failure = ProtectedCall(state.driver.Hide, state.driver)
+        state.hidingDriver = nil
+        return rangeOK and ok, rangeFailure or failure
+    end
+    return true
+end
+SyncMain = function()
+    if not state.mainShown then
+        state.mainActive = false
+        if state.view then
+            state.hidingMain = true
+            local ok, failure = HideView(state.view)
+            state.hidingMain = nil
+            if not ok then return false, failure end
+        end
+        return true
+    end
+    local view, failure = CreateView(1)
+    if not view then return false, failure end
+    if state.mainActive and view.frame:IsVisible() then return true end
+    local ok, reason = ProtectedCall(view.Suspend, view)
+    if ok then ok, reason = ProtectedCall(PrepareDisplay, view) end
+    if not ok then return false, reason end
+    state.showingMain = true
+    ok, reason = ProtectedCall(view.Show, view)
+    state.showingMain = nil
+    if not ok then return false, reason end
+    if not view.frame:IsVisible() then state.mainActive = false; return true end
+    state.mainActive = true
+    ok, reason = UpdatePage()
+    if ok then ok, reason = RefreshView(view, "Read", true) end
+    if ok then ok, reason = ViewBindings(view, 1) end
+    return ok, reason
 end
 local function ActivateCustom(barId, revise)
     local view, failure = CreateView(barId)
@@ -375,13 +465,13 @@ function Engine.HandleEvent(name, unit)
     elseif name == "ADDON_LOADED" then
         if state.service.RefreshMacroProvider then ok, failure = state.service.RefreshMacroProvider() end
         if ok then ok, failure = RefreshAll("Read") end
-    elseif pageEvents[name] then
+    elseif pageEvents[name] and state.mainActive then
         local changed
         ok, changed = UpdatePage()
         if not ok then failure = changed
         elseif changed then ok, failure = RefreshView(state.view, "Read", true) end
     elseif name == "PLAYER_ENTERING_WORLD" then
-        ok, failure = UpdatePage()
+        if state.mainActive then ok, failure = UpdatePage() end
         if ok then ok, failure = RefreshAll("Read", true) end
     elseif name == "UPDATE_BINDINGS" then ok, failure = RefreshBindings()
     elseif name == "ACTIONBAR_SLOT_CHANGED" then
@@ -420,29 +510,67 @@ local function Subscribe()
     for _, name in ipairs(events) do BootyLib.Subscribe(name, Engine, Event) end
     state.subscribed = true
 end
+local function SyncSubscriptions()
+    local wanted = state.active and (state.mainActive or state.customActiveCount > 0)
+    if wanted then
+        Subscribe()
+        if not state.macroEnabled and state.service.EnableMacroEvents then
+            local ok, failure = ProtectedCall(state.service.EnableMacroEvents, Engine.MacroEvent)
+            if not ok then return false, failure end
+            state.macroEnabled = true
+        end
+    else
+        Unsubscribe()
+        if state.macroEnabled and state.service and state.service.DisableMacroEvents then
+            local ok, failure = ProtectedCall(state.service.DisableMacroEvents)
+            if not ok then return false, failure end
+        end
+        state.macroEnabled = false
+    end
+    return true
+end
 function Engine.OnHide(barId)
     barId = barId or 1
     local firstFailure
+    local intentional = barId == 1 and state.hidingMain
     local binding = Bars.Modules.BindingEditor
     if binding and binding.IsEditing() then
         local ok, failure = ProtectedCall(binding.Cancel)
         if not ok then firstFailure = failure end
     end
-    if Bars.Modules.Editor then
+    if Bars.Modules.Editor and not intentional then
         local ok, failure = ProtectedCall(Bars.Modules.Editor.OnBarHidden, barId)
         if not ok and not firstFailure then firstFailure = failure end
     end
     if barId ~= 1 then
         if ValidBar(barId) and state.views[barId] then
+            if state.requested and state.active and not ParentVisible() then
+                local ok, failure = Engine.OnContextHide()
+                return firstFailure == nil and ok, firstFailure or failure
+            end
             SetCustomActive(barId, false, not state.hidingCustoms)
             local ok, failure = ProtectedCall(state.views[barId].Suspend, state.views[barId])
+            if ok then ok, failure = SyncSubscriptions() end
             if ok then ok, failure = SyncRange() end
             return firstFailure == nil and ok, firstFailure or failure
         end
         return firstFailure == nil, firstFailure
     end
-    state.active = false; StopRange(); Unsubscribe()
+    state.mainActive = false
+    if intentional then
+        local ok, failure = true, nil
+        if state.view then ok, failure = ProtectedCall(state.view.Suspend, state.view) end
+        if ok then ok, failure = SyncSubscriptions() end
+        if ok then ok, failure = SyncRange() end
+        if ok and Bars.Modules.Editor then ok, failure = ProtectedCall(Bars.Modules.Editor.Sync) end
+        return firstFailure == nil and ok, firstFailure or failure
+    end
+    state.active = false
+    local stopped, stopFailure = StopRange()
+    if not stopped and not firstFailure then firstFailure = stopFailure end
+    Unsubscribe()
     if state.service and state.service.DisableMacroEvents then state.service.DisableMacroEvents() end
+    state.macroEnabled = false
     if state.cleaning then return firstFailure == nil, firstFailure end
     local ok, failure = ProtectedCall(ActivityChanged)
     if not ok and not firstFailure then firstFailure = failure end
@@ -455,78 +583,84 @@ function Engine.OnHide(barId)
     if firstFailure then Report(firstFailure) end
     return firstFailure == nil, firstFailure
 end
+function Engine.OnContextHide()
+    if state.hidingDriver or state.cleaning or not state.requested or not state.active then return true end
+    -- Keep a shown lifecycle frame available for the parent's eventual OnShow.
+    -- Native cooldown animations and all action subscriptions stop meanwhile.
+    return Engine.OnHide(1)
+end
+function Engine.OnContextShow()
+    if state.hidingDriver or state.enabling or not state.requested or state.active then return true end
+    local ok, failure = Engine.Enable()
+    if not ok then Report(failure) end
+    return ok, failure
+end
 function Engine.OnShow(barId)
     barId = barId or 1
+    if state.enabling or state.showingMain then return end
     if barId ~= 1 then
+        if not state.active and state.requested and ParentVisible() then return Engine.OnContextShow() end
         if not ValidBar(barId) or not state.active or not state.customBars[barId] or state.customActive[barId] then return end
         local ok, failure = ActivateCustom(barId, true)
         if ok and Bars.Modules.Editor then ok, failure = ProtectedCall(Bars.Modules.Editor.Sync) end
+        if ok then ok, failure = SyncSubscriptions() end
         if ok then ok, failure = SyncRange() end
         if not ok then Engine.Disable(); Report(failure) end
         return
     end
-    if not state.requested or state.active then return end
+    if not state.mainShown or not state.requested or state.active then return end
     local ok, failure = Engine.Enable()
     if not ok then Report(failure) end
+end
+local function Activate(wasActive)
+    state.active = ParentVisible()
+    local ok, failure = SyncContext()
+    if ok then ok, failure = SyncMain() end
+    if ok and state.mainShown and not state.mainActive then state.active = false end
+    if ok then ok, failure = SyncCustoms(wasActive) end
+    if ok then ok, failure = SyncSubscriptions() end
+    if ok then ok, failure = FlushMacroChanges() end
+    return ok, failure
 end
 function Engine.Enable(customBars)
     if state.creationFailure then return false, state.creationFailure end
     local ok, failure = Configure(customBars)
     if not ok then return false, failure end
-    if state.active then
-        ok, failure = SyncCustoms(true)
-        if ok then ok, failure = SyncRange() end
-        if not ok then Engine.Disable(); return false, failure end
-        return true
-    end
     local UI = Bars.UI.Components
     if type(UI.CreateModel) ~= "function" or type(HasAction) ~= "function" or type(UseAction) ~= "function"
         or type(GetActionTexture) ~= "function" or type(GetActionCooldown) ~= "function" or type(CooldownFrame_SetTimer) ~= "function" then
         return false, "The test bar needs the current BootyLib and native action/cooldown APIs."
     end
-    local offset, page = Bars.Services.ActionPageService.Read()
-    if offset == nil then return false, page end
     state.requested = true
     if not state.service then state.service = Bars.Services.ActionService.Create() end
     if not state.rangeService and Bars.Services.RangeService then state.rangeService = Bars.Services.RangeService.Create() end
-    local view
-    view, failure = CreateView(1)
-    if not view then state.requested = false; Engine.Disable(); return false, failure end
-    ok, failure = ProtectedCall(PrepareDisplay, view)
-    if not ok then Engine.Disable(); return false, failure end
-    local previousThis, previousEvent, previousArg = this, event, arg1
-    ok, failure = pcall(ApplyPage, offset, page)
-    this, event, arg1 = previousThis, previousEvent, previousArg
-    if not ok then Engine.Disable(); return false, failure end
-    ok, failure = RefreshView(state.view, "Read", true)
-    if not ok then Engine.Disable(); return false, failure end
-    ok, failure = ViewBindings(state.view, 1)
-    if not ok then Engine.Disable(); return false, failure end
-    state.active, state.failure = true, nil
-    Subscribe()
-    ok, failure = ProtectedCall(state.view.Show, state.view)
-    if not ok then Engine.Disable(); return false, failure end
-    if not state.view.frame:IsVisible() then Engine.OnHide() end
-    ok, failure = SyncCustoms(false)
+    local wasActive = state.active
+    state.enabling = true
+    ok, failure = ProtectedCall(Activate, wasActive)
+    state.enabling = nil
     if not ok then Engine.Disable(); return false, failure end
     ok, failure = SyncRange()
     if not ok then Engine.Disable(); return false, failure end
-    if state.active and state.service.EnableMacroEvents then
-        ok, failure = ProtectedCall(state.service.EnableMacroEvents, Engine.MacroEvent)
-        if not ok then Engine.Disable(); return false, failure end
-    end
-    ok, failure = ProtectedCall(ActivityChanged)
+    state.failure = nil
+    if wasActive ~= state.active then ok, failure = ProtectedCall(ActivityChanged) end
     if not ok then Engine.Disable(); return false, failure end
     return true
 end
+function Engine.SetMainVisible(shown)
+    local ok, failure = Engine.ConfigureMainVisibility(shown)
+    if not ok or not state.requested then return ok, failure end
+    return Engine.Enable()
+end
 function Engine.Disable()
-    state.requested, state.active = false, false
-    StopRange()
+    state.requested, state.active, state.mainActive = false, false, false
+    local stopped, firstFailure = StopRange()
     if state.service and state.service.DisableMacroEvents then state.service.DisableMacroEvents() end
+    state.macroEnabled = false
     for slot = 1, 120 do state.macroDirty[slot] = nil end
     state.macroPending = nil
     Unsubscribe()
-    local ok, firstFailure = ProtectedCall(ActivityChanged)
+    local ok, activityFailure = ProtectedCall(ActivityChanged)
+    if not ok and not firstFailure then firstFailure = activityFailure end
     local binding = Bars.Modules.BindingEditor
     if binding and binding.IsEditing() then
         local ended, failure = ProtectedCall(binding.Cancel)
@@ -540,6 +674,8 @@ function Engine.Disable()
     local hidden, failure = HideCustoms()
     if not hidden and not firstFailure then firstFailure = failure end
     state.cleaning = nil
+    local driverHidden, driverFailure = SyncContext()
+    if not driverHidden and not firstFailure then firstFailure = driverFailure end
     if firstFailure then Report(firstFailure) end
     return firstFailure == nil, firstFailure
 end

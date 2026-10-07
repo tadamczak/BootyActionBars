@@ -23,9 +23,53 @@ function Layout.ValidDisplayKey(key)
         or key == "showMacroNames" or key == "showEmptyButtons"
 end
 local appearance = {buttonSize = {24, 64, 40}, iconInset = {0, 8, 4}, opacityPct = {20, 100, 100}, labelFontSize = {8, 16, 10}}
+Layout.GlobalKeys = {"scalePct", "columns", "spacing", "showTitle", "showHotkeys", "showCounts",
+    "showMacroNames", "showEmptyButtons", "buttonSize", "iconInset", "opacityPct", "labelFontSize"}
+local defaults = {scalePct = 100, columns = 12, spacing = 4, showTitle = true, showHotkeys = true,
+    showCounts = true, showMacroNames = true, showEmptyButtons = true, buttonSize = 40, iconInset = 4,
+    opacityPct = 100, labelFontSize = 10}
 function Layout.ValidAppearance(key, value)
     local limit = appearance[key]
     return limit ~= nil and Layout.Finite(value) and value == math.floor(value) and value >= limit[1] and value <= limit[2]
+end
+function Layout.ValidGlobalValue(key, value)
+    if key == "scalePct" then return Layout.ValidScale(value) end
+    if key == "columns" then return Layout.ValidColumns(value) end
+    if key == "spacing" then return Layout.ValidSpacing(value) end
+    if Layout.ValidDisplayKey(key) then return type(value) == "boolean" end
+    return Layout.ValidAppearance(key, value)
+end
+function Layout.ValidateGlobal(record)
+    if record == nil then return true end
+    if type(record) ~= "table" then return false, "Invalid global action bar settings." end
+    for _, key in ipairs(Layout.GlobalKeys) do
+        if record[key] ~= nil and not Layout.ValidGlobalValue(key, record[key]) then
+            return false, "Invalid global action bar setting: " .. key .. "."
+        end
+    end
+    if record.x ~= nil or record.y ~= nil or record.useGlobalLayout ~= nil or record.localLayoutSaved ~= nil then
+        return false, "Global settings do not contain bar positions or inheritance flags."
+    end
+    return true
+end
+function Layout.ReadGlobal(record)
+    local ok, failure = Layout.ValidateGlobal(record)
+    if not ok then return nil, failure end
+    local result = {}
+    for _, key in ipairs(Layout.GlobalKeys) do
+        local value = record and record[key]
+        if value == nil then value = defaults[key] end
+        result[key] = value
+    end
+    return result
+end
+function Layout.UsesGlobal(layouts, id)
+    local record = layouts and layouts[id]
+    return record == nil or record.useGlobalLayout == true
+end
+function Layout.DefaultValue(key, id)
+    if key == "columns" and id then return Layout.SlotCount(id) end
+    return defaults[key]
 end
 function Layout.Validate(record)
     if type(record) ~= "table" or not Layout.ValidScale(record.scalePct)
@@ -36,7 +80,9 @@ function Layout.Validate(record)
         or record.showHotkeys ~= nil and type(record.showHotkeys) ~= "boolean"
         or record.showCounts ~= nil and type(record.showCounts) ~= "boolean"
         or record.showMacroNames ~= nil and type(record.showMacroNames) ~= "boolean"
-        or record.showEmptyButtons ~= nil and type(record.showEmptyButtons) ~= "boolean" then
+        or record.showEmptyButtons ~= nil and type(record.showEmptyButtons) ~= "boolean"
+        or record.useGlobalLayout ~= nil and type(record.useGlobalLayout) ~= "boolean"
+        or record.localLayoutSaved ~= nil and type(record.localLayoutSaved) ~= "boolean" then
         return false, "Invalid action bar layout. Preserve the saved file before repairing it."
     end
     for key in pairs(appearance) do
@@ -56,20 +102,36 @@ function Layout.ValidateLayouts(layouts)
     end
     return true
 end
-function Layout.Read(layouts, id)
+function Layout.ReadLocal(layouts, id)
     if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
     local ok, failure = Layout.ValidateLayouts(layouts)
     if not ok then return nil, failure end
     local record = layouts and layouts[id]
-    if not record then return {scalePct = 100, x = 0, y = id == 7 and -250 or id == 8 and -320 or -180 + (id - 1) * 68, columns = Layout.SlotCount(id), spacing = 4,
-        showTitle = true, showHotkeys = true, showCounts = true, showMacroNames = true, showEmptyButtons = true,
-        buttonSize = 40, iconInset = 4, opacityPct = 100, labelFontSize = 10} end
-    return {scalePct = record.scalePct, x = record.x, y = record.y,
-        columns = record.columns or Layout.SlotCount(id), spacing = record.spacing or 4,
-        showTitle = record.showTitle ~= false, showHotkeys = record.showHotkeys ~= false, showCounts = record.showCounts ~= false,
-        showMacroNames = record.showMacroNames ~= false, showEmptyButtons = record.showEmptyButtons ~= false,
-        buttonSize = record.buttonSize or 40, iconInset = record.iconInset or 4,
-        opacityPct = record.opacityPct or 100, labelFontSize = record.labelFontSize or 10}
+    local result = {x = record and record.x or 0,
+        y = record and record.y or (id == 7 and -250 or id == 8 and -320 or -180 + (id - 1) * 68),
+        useGlobalLayout = Layout.UsesGlobal(layouts, id),
+        localLayoutSaved = record ~= nil and (record.localLayoutSaved == true or record.useGlobalLayout ~= true)}
+    for _, key in ipairs(Layout.GlobalKeys) do
+        local value = record and record[key]
+        if value == nil then value = Layout.DefaultValue(key, id) end
+        result[key] = value
+    end
+    return result
+end
+function Layout.Read(layouts, id, global)
+    local result, failure = Layout.ReadLocal(layouts, id)
+    if not result then return nil, failure end
+    local ok, reason = Layout.ValidateGlobal(global)
+    if not ok then return nil, reason end
+    if result.useGlobalLayout then
+        for _, key in ipairs(Layout.GlobalKeys) do
+            local value = global and global[key]
+            if value == nil then value = Layout.DefaultValue(key, id) end
+            result[key] = value
+        end
+        result.columns = math.min(result.columns, Layout.SlotCount(id))
+    end
+    return result
 end
 local function Clamp(value, minimum, maximum)
     -- An oversized bar cannot fit this axis; keep its center accessible.
