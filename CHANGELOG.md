@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-dev.28 — 2026-10-08
+
+- Remove an unused cooldown state copy while preserving the existing cooldown-number ownership flag.
+
 ## 0.1.0-dev.26 — 2026-10-07
 
 - Fit complete native sockets into their own cells and draw them above button fills, preserving icon visibility.

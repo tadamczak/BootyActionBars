@@ -86,7 +86,6 @@ local function Attach(button)
     state.attachedCount = state.attachedCount + 1
     -- These Models belong to BAB for their pooled lifetime. Installed number
     -- addons honor this flag before allocating their per-button text workers.
-    record.previousNoCooldownCount = button.cooldown.noCooldownCount
     button.cooldown.noCooldownCount = true
     record.creationFailure = "Cooldown text construction did not finish."
     record.label = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormal")
