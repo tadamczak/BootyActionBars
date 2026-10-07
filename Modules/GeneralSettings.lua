@@ -37,10 +37,10 @@ function General.Create(parent, host, ownerView)
         end,
         set = function(_, value) Complete(Bars.Core.Runtime.SetNativeEnabled(not value)) end,
     })
-    UI.AttachTooltip(native, "Native buttons", "Enable BootyActionBars before hiding native buttons. Show restores native controls and keeps their assigned keys.")
+    UI.AttachTooltip(native, "Native buttons", "Hide native buttons while their BootyActionBars counterparts are visible. The main bar also hides its panels and gryphons. Show restores native controls and keeps their assigned keys.")
     local profileHeading = UI.CreateHeading(page, "Layout profiles", 3, "gold")
     local profileHelp = UI.CreateComponentLabel(page,
-        "Save all bar layouts, global appearance and shown bars. Profiles leave client actions, keys and master/native switches unchanged.", "white")
+        "Save bar layouts, global appearance, shown bars and behavior rules. Profiles leave client actions, keys and master/native switches unchanged.", "white")
     profileHelp:SetJustifyH("LEFT"); profileHelp:SetJustifyV("TOP")
     local profileOwner = UI.CreateContainer(nil, page)
     profileOwner:SetWidth(300); profileOwner:SetHeight(26)

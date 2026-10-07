@@ -26,8 +26,16 @@ local function CallLifecycle(callback, first, second, third, fourth)
     return true
 end
 local function ReleaseNative()
-    -- Both owners must be released even when one restoration fails.
+    -- Every owner must release even if another restoration fails.
     local ok, failure = CallLifecycle(Bars.Modules.NativeBar.Release)
+    local artwork = Bars.Modules.NativeArtwork
+    if artwork then
+        local restored, reason = CallLifecycle(artwork.Release)
+        if not restored then
+            if ok then failure = reason else failure = tostring(failure) .. " Artwork: " .. tostring(reason) end
+            ok = false
+        end
+    end
     local special = Bars.Modules.NativeSpecialBars
     if special then
         local restored, reason = CallLifecycle(special.Release)
@@ -42,8 +50,17 @@ local function AbortNative(failure)
     if state.store then state.store.nativeMainBarEnabled = false end
     UnsubscribeNative()
     local restored, reason = ReleaseNative()
-    if not restored then failure = tostring(failure) .. " Restoration: " .. tostring(reason) end
+    if not restored and tostring(reason) ~= tostring(failure) then
+        failure = tostring(failure) .. " Restoration: " .. tostring(reason)
+    end
     return NativeFailure(failure)
+end
+local function NativeLeaseFailure(failure)
+    -- Retained native Show can fail outside this product's event dispatcher.
+    -- End every lease immediately rather than waiting for another client event.
+    local _, diagnostic = AbortNative(failure)
+    RefreshView()
+    return true, diagnostic
 end
 local function NativeRequested()
     local store = state.store
@@ -80,16 +97,19 @@ SyncNative = function()
     end
     local safe, reason = CallLifecycle(Bars.Services.NativeBarPolicy.CheckCompeting)
     if not safe then return AbortNative(reason) end
-    -- Main and bonus buttons share one lease. Native parent animation and
-    -- keyboard dispatch retain their owners while all BAB pages stay usable.
-    local mainVisible = Bars.Core.Engine.GetState().mainActive
-    if mainVisible == nil then mainVisible = true end
-    local acquired, acquireFailure
-    if mainVisible then
-        acquired, acquireFailure = CallLifecycle(controller.Check)
-        if acquired then acquired, acquireFailure = CallLifecycle(controller.Acquire) end
-    else acquired, acquireFailure = CallLifecycle(controller.Release) end
+    -- Capture the settled live identities, not their redirected source slots.
+    -- Native parents, animation, options and keyboard dispatch keep ownership.
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local read, mainVisible, customVisible = pcall(Bars.Core.Engine.GetLiveVisibility)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    if not read then return AbortNative(mainVisible) end
+    local acquired, acquireFailure = CallLifecycle(controller.Sync, mainVisible, customVisible)
     if not acquired then return AbortNative(acquireFailure) end
+    local artwork = Bars.Modules.NativeArtwork
+    if artwork then
+        acquired, acquireFailure = CallLifecycle(artwork.Sync, controller.GetState().mainActive == true)
+        if not acquired then return AbortNative(acquireFailure) end
+    end
     local special = Bars.Modules.SpecialBars
     local pet, stance = false, false
     if special and special.GetLiveVisibility then
@@ -101,11 +121,20 @@ SyncNative = function()
     end
     local specialOK, specialFailure = SyncNativeSpecial(pet, stance)
     if not specialOK then return false, specialFailure end
+    if not NativeRequested() then
+        return AbortNative("Native replacement was cancelled while changing visibility.")
+    end
     if not state.nativeSubscribed then
         for _, name in ipairs(nativeEvents) do BootyLib.Subscribe(name, Runtime, NativeEvent) end
         state.nativeSubscribed = true
     end
     state.nativeFailure = nil
+    return true
+end
+local function OrdinaryVisibilityChanged()
+    local ok = SyncNative()
+    if not ok then RefreshView() end
+    -- Native replacement is optional: refusal preserves healthy BAB gameplay.
     return true
 end
 local function SyncSpecial(active)
@@ -193,8 +222,17 @@ function Runtime.Initialize()
     state.initialized, state.failure = true, nil
     state.store = store
     if not store.trialBarEnabled then store.nativeMainBarEnabled = false end
+    if Bars.Modules.NativeBar.SetFailureObserver then
+        Bars.Modules.NativeBar.SetFailureObserver(NativeLeaseFailure)
+    end
+    if Bars.Modules.NativeSpecialBars and Bars.Modules.NativeSpecialBars.SetFailureObserver then
+        Bars.Modules.NativeSpecialBars.SetFailureObserver(NativeLeaseFailure)
+    end
     if Bars.Modules.SpecialBars and Bars.Modules.SpecialBars.SetVisibilityObserver then
         Bars.Modules.SpecialBars.SetVisibilityObserver(SpecialVisibilityChanged)
+    end
+    if Bars.Core.Engine.SetVisibilityObserver then
+        Bars.Core.Engine.SetVisibilityObserver(OrdinaryVisibilityChanged)
     end
     Bars.Core.Engine.SetActivityObserver(EngineActivity)
     SyncEngine()
@@ -279,7 +317,7 @@ function Runtime.SetNativeEnabled(value)
     if value == true and (not store.trialBarEnabled or not Bars.Core.Engine.GetState().active) then
         store.nativeMainBarEnabled = false
         RefreshView()
-        return NativeFailure("Enable and show the BootyActionBars test bar before hiding native buttons.")
+        return NativeFailure("Enable BootyActionBars before hiding native buttons.")
     end
     store.nativeMainBarEnabled = value == true
     local ok, failure = SyncNative()

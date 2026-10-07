@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.22
+
+- Hide native multi-action buttons independently while their BootyActionBars equivalents are visible.
+- Hide native menu panels and gryphons while replacing the main bar, preserving bags, menu controls and XP.
+- Restore native callbacks and artwork on Hide, OFF and Stop without overwriting later owners.
+- Release every native replacement immediately after a visibility failure while keeping BootyActionBars usable.
+
 ## 0.1.0-dev.21
 
 - Add per-bar stealth/form behaviors with ordered Add, Edit, Remove and priority controls.

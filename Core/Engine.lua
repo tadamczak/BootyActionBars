@@ -17,7 +17,10 @@ local behaviorEvents = {PLAYER_ENTERING_WORLD = true, PLAYER_AURAS_CHANGED = tru
 local stateEvents = {ACTIONBAR_UPDATE_STATE = true, PLAYER_ENTER_COMBAT = true, PLAYER_LEAVE_COMBAT = true,
     START_AUTOREPEAT_SPELL = true, STOP_AUTOREPEAT_SPELL = true, CRAFT_SHOW = true, CRAFT_CLOSE = true,
     TRADE_SKILL_SHOW = true, TRADE_SKILL_CLOSE = true}
-local SyncRange, SyncWorker, FlushMacroChanges, SyncMain, SyncContext, UpdateMappings
+local SyncRange, SyncWorker, FlushMacroChanges, SyncMain, SyncContext, UpdateMappings, PublishVisibility
+local visibilityObserver, visibilityDepth, notifyingVisibility = nil, 0, false
+local liveMain, observedMain, observedCustom = false, false, 0
+local liveCustom = {[2] = false, [3] = false, [4] = false, [5] = false, [6] = false}
 
 local function Valid(index)
     return type(index) == "number" and index >= 1 and index <= 12 and index == math.floor(index)
@@ -350,6 +353,9 @@ local function Unsubscribe()
     state.subscribed = false
 end
 local function ActivityChanged()
+    -- Runtime may synchronize native leases here before the outer visibility
+    -- observer drains. Publish the completed activation's actual identities.
+    PublishVisibility()
     if state.activityObserver then return state.activityObserver(state.active) end
     return true
 end
@@ -951,4 +957,80 @@ function Engine.MarkLayoutChanged()
     return state.customRevision
 end
 function Engine.GetState() return state end
+PublishVisibility = function()
+    liveMain = state.active == true and state.mainActive == true and state.view ~= nil
+    local mask, bit = 0, 1
+    for barId = 2, 6 do
+        local live = state.active == true and state.customActive[barId] == true and state.views[barId] ~= nil
+        liveCustom[barId] = live
+        if live then mask = mask + bit end
+        bit = bit * 2
+    end
+    return liveMain, mask
+end
+function Engine.GetLiveVisibility()
+    -- A settled cached snapshot, not a frame inspection. The shared table is
+    -- read-only to callers and its identities do not describe action sources.
+    return liveMain, liveCustom
+end
+function Engine.SetVisibilityObserver(callback)
+    if callback ~= nil and type(callback) ~= "function" then return false, "Expected a visibility observer or nil." end
+    local main, mask = PublishVisibility()
+    visibilityObserver, observedMain, observedCustom = callback, main, mask
+    return true
+end
+local function NotifyVisibility()
+    if visibilityDepth > 0 then return true end
+    -- A nested completed lifecycle may publish its newest snapshot during a
+    -- callback; only the outer notifier delivers the next transition.
+    if notifyingVisibility then PublishVisibility(); return true end
+    local firstFailure
+    for pass = 1, 2 do
+        local main, mask = PublishVisibility()
+        if main == observedMain and mask == observedCustom then return firstFailure == nil, firstFailure end
+        observedMain, observedCustom = main, mask
+        if visibilityObserver then
+            notifyingVisibility = true
+            local ok, failure = ProtectedCall(visibilityObserver, main, liveCustom)
+            notifyingVisibility = false
+            if not ok and not firstFailure then firstFailure = failure end
+        end
+    end
+    local main, mask = PublishVisibility()
+    if main ~= observedMain or mask ~= observedCustom then
+        -- Latch the latest state before reporting so error cleanup cannot
+        -- replay a transition which already failed to settle.
+        observedMain, observedCustom = main, mask
+        local failure = "Ordinary action bar visibility did not settle after two updates."
+        firstFailure = firstFailure and tostring(firstFailure) .. " Visibility: " .. failure or failure
+    end
+    return firstFailure == nil, firstFailure
+end
+local function SettledVisibility(callback, first, second)
+    visibilityDepth = visibilityDepth + 1
+    local previousThis, previousEvent, previousArg = this, event, arg1
+    local ran, result, failure = pcall(callback, first, second)
+    this, event, arg1 = previousThis, previousEvent, previousArg
+    visibilityDepth = visibilityDepth - 1
+    if not ran then result, failure = false, tostring(result) end
+    local notified, reason = ProtectedCall(NotifyVisibility)
+    if not notified then
+        if result ~= false then result, failure = false, reason
+        else failure = tostring(failure) .. " Visibility: " .. tostring(reason) end
+        ProtectedCall(Report, failure)
+    end
+    return result, failure
+end
+local function VisibilityBoundary(callback)
+    return function(first, second) return SettledVisibility(callback, first, second) end
+end
+-- Native frame callbacks nest inside these public operations. Publish once
+-- after the outer lifecycle settles, including partial failure and cleanup.
+Engine.Enable = VisibilityBoundary(Engine.Enable)
+Engine.Disable = VisibilityBoundary(Engine.Disable)
+Engine.OnHide = VisibilityBoundary(Engine.OnHide)
+Engine.OnShow = VisibilityBoundary(Engine.OnShow)
+Engine.OnContextHide = VisibilityBoundary(Engine.OnContextHide)
+Engine.OnContextShow = VisibilityBoundary(Engine.OnContextShow)
+Engine.SetMainVisible = VisibilityBoundary(Engine.SetMainVisible)
 if Bars.Modules.CooldownText then Bars.Modules.CooldownText.SetDemandObserver(Engine.CooldownChanged) end
