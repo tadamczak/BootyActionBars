@@ -23,6 +23,11 @@ local function Defaults(store)
     if not valid then error(failure) end
     valid, failure = Bars.Services.BarLayout.ValidateLayouts(store.barLayouts)
     if not valid then error(failure) end
+    valid, failure = Bars.Services.BarLayout.ValidateGlobal(store.globalLayout)
+    if not valid then error(failure) end
+    if store.mainBarShown ~= nil and type(store.mainBarShown) ~= "boolean" then
+        error("Invalid main bar visibility. Preserve the saved file before repairing it.")
+    end
     if Bars.Services.LayoutProfiles then
         valid, failure = Bars.Services.LayoutProfiles.ValidateStore(store.layoutProfiles)
         if not valid then error(failure) end
@@ -36,6 +41,8 @@ local function Defaults(store)
     if store.customBars == nil then store.customBars = {} end
     if store.specialBars == nil then store.specialBars = {} end
     if store.barLayouts == nil then store.barLayouts = {} end
+    if store.globalLayout == nil then store.globalLayout = {} end
+    if store.mainBarShown == nil then store.mainBarShown = true end
     if store.layoutProfiles == nil then store.layoutProfiles = {} end
     if store.editorOptions == nil then store.editorOptions = {} end
     if type(store.presentation) ~= "table" then store.presentation = {} end
@@ -64,6 +71,11 @@ function Database.Ensure()
         if not valid then return nil, failure end
         valid, failure = Bars.Services.BarLayout.ValidateLayouts(store.barLayouts)
         if not valid then return nil, failure end
+        valid, failure = Bars.Services.BarLayout.ValidateGlobal(store.globalLayout)
+        if not valid then return nil, failure end
+        if store.mainBarShown ~= nil and type(store.mainBarShown) ~= "boolean" then
+            return nil, "Invalid main bar visibility. Preserve the saved file before repairing it."
+        end
         if Bars.Services.LayoutProfiles then
             valid, failure = Bars.Services.LayoutProfiles.ValidateStore(store.layoutProfiles)
             if not valid then return nil, failure end
