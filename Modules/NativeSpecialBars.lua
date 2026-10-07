@@ -8,6 +8,42 @@ local records = {
     pet = {name = "PetActionBarFrame", presence = "PetHasActionBar"},
     stance = {name = "ShapeshiftBarFrame", presence = "GetNumShapeshiftForms"},
 }
+local Cleanup, failureObserver
+local changing = 0
+local notifyingFailure = false
+local releaseRequested = false
+local cancellation = "Native special-bar lease was cancelled during synchronization."
+local function GuardFailure(failure)
+    local oldThis, oldEvent, oldArg = this, event, arg1
+    local original = tostring(failure)
+    -- Public Sync already returns failure to Runtime, which releases all
+    -- owners. Retained native Show also runs outside that caller boundary.
+    if changing == 0 then
+        changing = changing + 1
+        local ran, restored, reason = pcall(Cleanup, true, true)
+        changing = changing - 1
+        releaseRequested = false
+        if not ran then original = original .. " Restoration: " .. tostring(restored)
+        elseif not restored then original = original .. " Restoration: " .. tostring(reason) end
+        this, event, arg1 = oldThis, oldEvent, oldArg
+        state.failure = original
+        if failureObserver then
+            notifyingFailure = true
+            local notified, result, detail = pcall(failureObserver, original)
+            notifyingFailure = false
+            this, event, arg1 = oldThis, oldEvent, oldArg
+            if not notified then original = original .. " Failure observer: " .. tostring(result)
+            elseif result == false then original = original .. " Failure observer: " .. tostring(detail or "Native cleanup was declined.")
+            elseif type(detail) == "string" and detail ~= original then
+                if string.sub(detail, 1, string.len(original)) == original then original = detail
+                else original = original .. " Native cleanup: " .. detail end
+            end
+            state.failure = original
+        end
+    end
+    this, event, arg1 = oldThis, oldEvent, oldArg
+    error(original, 0)
+end
 local function Shown(value) return value ~= nil and value ~= false and value ~= 0 end
 local function Global(name)
     if type(getglobal) == "function" then return getglobal(name) end
@@ -44,10 +80,10 @@ for _, kind in ipairs(kinds) do
         record.hiding = true
         local ok, failure = Invoke(record, record.hide)
         record.hiding = nil
-        if not ok then error(failure, 0) end
+        if not ok then return GuardFailure(failure) end
         local read, visible = Invoke(record, record.isShown)
-        if not read then error(visible, 0) end
-        if Shown(visible) then error(record.name .. " rejected its visibility lease.", 0) end
+        if not read then return GuardFailure(visible) end
+        if Shown(visible) then return GuardFailure(record.name .. " rejected its visibility lease.") end
     end
 end
 local function UpdateState()
@@ -112,7 +148,7 @@ local function RestoreVisibility(record)
     if Shown(visible) ~= shown then Fail(record.name .. " visibility could not be restored."); return false end
     return true
 end
-local function Cleanup(pet, stance)
+Cleanup = function(pet, stance)
     local touched = pet and records.pet.touched or stance and records.stance.touched
     if not touched then
         -- Snapshot preflight can retain an untouched first target when the
@@ -177,15 +213,20 @@ local function Snapshot(record)
     return true
 end
 local function Begin(record)
+    if releaseRequested then return false, cancellation end
     record.enabled, record.touched, record.showAttempted = true, true, true
     record.frame.Show = record.showGuard
+    if releaseRequested then return false, cancellation end
     record.onShowAttempted = true
     record.setScript(record.frame, "OnShow", record.onShowGuard)
+    if releaseRequested then return false, cancellation end
     if record.frame.Show ~= record.showGuard or record.getScript(record.frame, "OnShow") ~= record.onShowGuard then
         return false, record.name .. " rejected replacement callbacks."
     end
+    if releaseRequested then return false, cancellation end
     local ok, failure = Invoke(record, record.hide)
     if not ok then return false, failure end
+    if releaseRequested then return false, cancellation end
     if Shown(record.isShown(record.frame)) then return false, record.name .. " could not be hidden." end
     return true
 end
@@ -196,19 +237,25 @@ local function SyncBody(requested, pet, stance)
     if not policy or type(policy.CheckCompeting) ~= "function" then return false, "The native special-bar policy is unavailable." end
     local ok, failure = policy.CheckCompeting()
     if not ok then return false, failure end
+    if releaseRequested then return false, cancellation end
     ok, failure = Cleanup(not pet, not stance)
     if not ok then return false, failure end
+    if releaseRequested then return false, cancellation end
     -- Both new targets are inspected before touching either frame.
     for _, kind in ipairs(kinds) do
+        if releaseRequested then return false, cancellation end
         local record, desired = records[kind], kind == "pet" and pet or kind == "stance" and stance
         if desired then
             if record.enabled then
                 if record.frame.Show ~= record.showGuard or record.getScript(record.frame, "OnShow") ~= record.onShowGuard then
                     return false, record.name .. " ownership changed while replaced."
                 end
+                if releaseRequested then return false, cancellation end
                 if Shown(record.isShown(record.frame)) then
+                    if releaseRequested then return false, cancellation end
                     ok, failure = Invoke(record, record.hide)
                     if not ok then return false, failure end
+                    if releaseRequested then return false, cancellation end
                     if Shown(record.isShown(record.frame)) then return false, record.name .. " could not be hidden." end
                 end
             else
@@ -218,6 +265,7 @@ local function SyncBody(requested, pet, stance)
         end
     end
     for _, kind in ipairs(kinds) do
+        if releaseRequested then return false, cancellation end
         local record, desired = records[kind], kind == "pet" and pet or kind == "stance" and stance
         if desired and not record.enabled then
             ok, failure = Begin(record)
@@ -229,12 +277,20 @@ local function SyncBody(requested, pet, stance)
     return true
 end
 function NativeSpecial.Sync(requested, pet, stance)
+    if notifyingFailure then return false, "Native special-bar ownership is reporting a failure." end
     if type(requested) ~= "boolean" or type(pet) ~= "boolean" or type(stance) ~= "boolean" then
         return false, "Expected explicit native replacement and live special-bar visibility flags."
     end
+    if changing > 0 then
+        if not requested then releaseRequested = true end
+        return false, "Native special-bar ownership is already changing."
+    end
     local previousThis, previousEvent, previousArg = this, event, arg1
+    releaseRequested = false
+    changing = changing + 1
     local ran, ok, failure = pcall(SyncBody, requested, pet, stance)
     if not ran then failure, ok = ok, false end
+    if releaseRequested then ok, failure = false, failure or cancellation end
     if not ok then
         local originalFailure = tostring(failure)
         local restored, reason = Cleanup(true, true)
@@ -243,17 +299,33 @@ function NativeSpecial.Sync(requested, pet, stance)
             state.failure = originalFailure .. " Restoration: " .. tostring(reason)
         end
     end
+    changing = changing - 1
+    releaseRequested = false
     this, event, arg1 = previousThis, previousEvent, previousArg
     return ok, state.failure
 end
 function NativeSpecial.Release()
+    -- A first target may be enabled before UpdateState publishes active. Queue
+    -- OFF at every public mutation boundary rather than overlooking that lease.
+    if changing > 0 then
+        releaseRequested = true
+        return false, "Native special-bar ownership is already changing."
+    end
     if not state.active then
         if state.restorationBlocked then return false, state.failure end
         return true
     end
     local previousThis, previousEvent, previousArg = this, event, arg1
+    changing = changing + 1
     local ok, failure = Cleanup(true, true)
+    changing = changing - 1
+    releaseRequested = false
     this, event, arg1 = previousThis, previousEvent, previousArg
     return ok, failure
+end
+function NativeSpecial.SetFailureObserver(callback)
+    if callback ~= nil and type(callback) ~= "function" then return false, "Native special-bar failure observer must be a function or nil." end
+    failureObserver = callback
+    return true
 end
 function NativeSpecial.GetState() return state end

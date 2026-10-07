@@ -2,7 +2,7 @@
 ## Title: BootyActionBars
 ## Notes: Optional action, pet and form bars with separate keys and native-button hiding. Standalone or integrated into Booty Suite. Early development build.
 ## Author: Mukla
-## Version: 0.1.0-dev.21
+## Version: 0.1.0-dev.22
 ## Dependencies: BootyLib
 ## SavedVariables: BootyActionBarsDB
 
@@ -24,6 +24,7 @@ Modules\CooldownText.lua
 Modules\ButtonAppearance.lua
 Modules\ActionBar.lua
 Modules\NativeBar.lua
+Modules\NativeArtwork.lua
 Modules\NativeSpecialBars.lua
 Core\Engine.lua
 Modules\Editor.lua
