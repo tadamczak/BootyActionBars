@@ -2,7 +2,8 @@ local Bars = BootyActionBars
 local Layout, UI = Bars.Services.BarLayout, Bars.UI.Components
 local Editor = {}
 Bars.Modules.Editor = Editor
-local state = {active = false, editing = false, subscribed = false, handles = {}, drags = {}, handleFailures = {}}
+local state = {active = false, editing = false, subscribed = false, handles = {}, drags = {}, handleFailures = {},
+    anchors = {}, anchorFailures = {}, showAnchors = false, showGrid = false}
 local CancelDrag, EnsureHandle, ContextEvent
 
 local function Run(callback, first, second, third, fourth)
@@ -23,10 +24,17 @@ local function Report(failure)
     if state.failure ~= failure then BootyLib.Print("BootyActionBars: " .. failure) end
     state.failure = failure
 end
-local function View(id)
+local function LiveView(id)
     if id == 7 or id == 8 then return Bars.Modules.SpecialBars and Bars.Modules.SpecialBars.GetView(id) end
     local engine = Bars.Core.Engine.GetState()
     return engine.views and engine.views[id] or id == 1 and engine.view or nil
+end
+local function View(id)
+    local live = LiveView(id)
+    if live and not live.editPreview and live.frame:IsVisible() then return live end
+    local anchor = state.anchors[id]
+    if state.editing and state.showAnchors and anchor and anchor.frame:IsVisible() then return anchor end
+    return live
 end
 local function Screen(withCenter)
     local width, height = UI.GetFrameSpan(UIParent)
@@ -370,9 +378,13 @@ local function CreateHandle(view)
     if _G[name] then error("An action bar editing handle already owns this name.") end
     local drawing = view.layoutDrawing
     if not drawing then error("Action bar geometry is unavailable for its editing handle.") end
-    local handle = UI.CreateButton(view.frame, name, "Move", drawing.barWidth, drawing.barHeight)
+    -- A transparent hit target intercepts the whole bar while its live icons
+    -- and cooldowns remain visible below it. The existing outline owns gold.
+    local handle = UI.CreateControl(name, view.frame)
     state.handles[view.id], view.editHandle = handle, handle
     handle:Hide()
+    handle:SetWidth(drawing.barWidth); handle:SetHeight(drawing.barHeight)
+    handle:EnableMouse(true)
     handle.editBarId = view.id; handle:SetAllPoints(view.frame)
     handle:SetFrameLevel(view.frame:GetFrameLevel() + 10)
     UI.SetProjectButtonOutline(handle, true)
@@ -399,6 +411,15 @@ EnsureHandle = function(view)
         end
         handle, state.handles[id], view.editHandle = created, created, created
     end
+    if handle:GetParent() ~= view.frame then
+        local cancelled, failure = CancelDrag(id)
+        if not cancelled then return false, failure end
+        handle:SetScript("OnHide", nil); handle:Hide()
+        handle:SetParent(view.frame); handle:SetAllPoints(view.frame)
+        handle:SetFrameLevel(view.frame:GetFrameLevel() + 10)
+        UI.SetProjectButtonOutline(handle, true)
+    end
+    view.editHandle = handle
     handle:SetScript("OnDragStart", Start); handle:SetScript("OnDragStop", Stop); handle:SetScript("OnHide", Hidden)
     handle:Show()
     return true
@@ -422,18 +443,36 @@ local function Detach(id)
         local ok, reason = Try(view.CancelInput, view)
         if not ok and not firstFailure then firstFailure = reason end
     end
+    local live = LiveView(id)
+    if live and live ~= view then
+        if live.SetEditing then
+            local ok, reason = Try(live.SetEditing, live, false)
+            if not ok and not firstFailure then firstFailure = reason end
+        end
+        local ok, reason = Try(live.CancelInput, live)
+        if not ok and not firstFailure then firstFailure = reason end
+    end
+    local anchor = state.anchors[id]
+    if anchor then
+        local ok, reason = Try(anchor.frame.Hide, anchor.frame)
+        if not ok and not firstFailure then firstFailure = reason end
+    end
     return firstFailure == nil, firstFailure
 end
 function Editor.End()
     state.editing = false
     local ok, firstFailure = CancelAll()
     if Bars.Modules.SpecialBars then
-        local ended, failure = Try(Bars.Modules.SpecialBars.SetEditing, false)
+        local ended, failure = Try(Bars.Modules.SpecialBars.SetEditing, false, false)
         if not ended and not firstFailure then firstFailure = failure end
     end
     for id = 1, 8 do
         local detached, failure = Detach(id)
         if not detached and not firstFailure then firstFailure = failure end
+    end
+    if state.grid then
+        local hidden, failure = Try(state.grid.frame.Hide, state.grid.frame)
+        if not hidden and not firstFailure then firstFailure = failure end
     end
     return firstFailure == nil, firstFailure
 end
@@ -444,19 +483,151 @@ function Editor.OnBarHidden(id)
     if not detached and not firstFailure then firstFailure = failure end
     return firstFailure == nil, firstFailure
 end
-function Editor.Sync()
+local function CreateAnchor(id)
+    local name = "BootyActionBarsBar" .. id .. "LayoutAnchor"
+    if _G[name] then error("An action bar layout anchor already owns this name.") end
+    local frame = UI.CreateContainer(name, UIParent)
+    local view = {id = id, frame = frame, geometryAnchor = true, displayReady = true}
+    state.anchors[id] = view
+    frame:Hide(); frame:SetMovable(true)
+    if frame.SetDontSavePosition then frame:SetDontSavePosition(true) end
+    if frame.SetUserPlaced then frame:SetUserPlaced(false) end
+    if frame.SetClampedToScreen then frame:SetClampedToScreen(true) end
+    local text = id == 1 and "Main bar" or id == 7 and "Pet bar" or id == 8 and "Forms / stances" or "Bar " .. id
+    view.label = UI.CreateComponentLabel(frame, text, "gold")
+    view.label:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    function view:SetGrid(value)
+        self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
+        self.label:SetWidth(math.max(1, value.barWidth - 8)); self.label:SetHeight(math.max(16, value.barHeight - 4))
+        return true
+    end
+    function view:SetDisplay() self.displayReady = true; return true end
+    function view:CancelInput() return true end
+    return view
+end
+local function Anchor(id)
+    if state.anchorFailures[id] then return nil, state.anchorFailures[id] end
+    if state.anchors[id] then return state.anchors[id] end
+    local ran, view = Run(CreateAnchor, id)
+    if not ran then state.anchorFailures[id] = view; return nil, view end
+    return view
+end
+local function GridLine(grid, list, index, vertical)
+    local line = list[index]
+    if not line then
+        line = UI.CreateTexture(grid.frame, nil, "BACKGROUND")
+        list[index] = line
+        line:SetTexture("Interface\\Buttons\\WHITE8X8")
+        line:SetVertexColor(0.6, 0.6, 0.6, 0.2)
+        if vertical then line:SetWidth(1) else line:SetHeight(1) end
+    end
+    return line
+end
+local function DrawGrid()
+    if not state.editing or not state.showGrid then
+        if state.grid then state.grid.frame:Hide() end
+        return true
+    end
+    local context = Screen(false)
+    local grid = state.grid
+    if not grid then
+        local frame = UI.CreateContainer("BootyActionBarsLayoutGrid", UIParent)
+        grid = {frame = frame, vertical = {}, horizontal = {}}
+        state.grid = grid
+    end
+    if not grid.ready then
+        grid.frame:Hide(); grid.frame:SetAllPoints(UIParent); grid.frame:EnableMouse(false)
+        grid.frame:SetFrameStrata("BACKGROUND"); grid.frame:SetFrameLevel(0)
+        grid.ready = true
+    end
+    if grid.width ~= context.width or grid.height ~= context.height or grid.scale ~= context.scale then
+        local width, height = context.width, context.height
+        -- Fixed square guides for ordinary displays; cap each pooled axis at
+        -- 256 textures even if a hooked API reports an unusually large span.
+        local step = math.max(32, math.ceil(math.max(width, height) / 255))
+        local startX, startY = math.mod(width / 2, step), math.mod(height / 2, step)
+        local vertical, horizontal = math.floor((width - startX) / step) + 1, math.floor((height - startY) / step) + 1
+        for index = 1, vertical do
+            local line, x = GridLine(grid, grid.vertical, index, true), startX + (index - 1) * step
+            line:ClearAllPoints(); line:SetPoint("TOPLEFT", grid.frame, "TOPLEFT", x, 0)
+            line:SetPoint("BOTTOMLEFT", grid.frame, "BOTTOMLEFT", x, 0); line:Show()
+        end
+        for index = vertical + 1, table.getn(grid.vertical) do grid.vertical[index]:Hide() end
+        for index = 1, horizontal do
+            local line, y = GridLine(grid, grid.horizontal, index, false), startY + (index - 1) * step
+            line:ClearAllPoints(); line:SetPoint("TOPLEFT", grid.frame, "TOPLEFT", 0, -y)
+            line:SetPoint("TOPRIGHT", grid.frame, "TOPRIGHT", 0, -y); line:Show()
+        end
+        for index = horizontal + 1, table.getn(grid.horizontal) do grid.horizontal[index]:Hide() end
+        grid.width, grid.height, grid.scale = width, height, context.scale
+    end
+    grid.frame:Show()
+    return true
+end
+local function Sync()
     local firstFailure
     for id = 1, 8 do
-        local view = View(id)
-        if view and view.frame:IsVisible() then
+        local live, view = LiveView(id), nil
+        if live and not live.editPreview and live.frame:IsVisible() then view = live end
+        if not view and state.editing and state.showAnchors then
+            local reason
+            view, reason = Anchor(id)
+            if not view and not firstFailure then firstFailure = reason end
+        end
+        local anchor = state.anchors[id]
+        if anchor and anchor ~= view then
+            local ok, reason = true, nil
+            if state.drags[id] and state.drags[id].view == anchor then ok, reason = CancelDrag(id) end
+            if not ok and not firstFailure then firstFailure = reason end
+            ok, reason = Try(anchor.frame.Hide, anchor.frame)
+            if not ok and not firstFailure then firstFailure = reason end
+        end
+        if view then
             local ok, failure = true, nil
             if view.SetEditing then ok, failure = Try(view.SetEditing, view, state.editing) end
             if ok then ok, failure = Editor.ApplyView(view) end
+            if ok and view.geometryAnchor then ok, failure = Try(view.frame.Show, view.frame) end
             if ok and state.editing then ok, failure = Try(EnsureHandle, view) end
+            if not ok and not firstFailure then firstFailure = failure end
+        elseif state.handles[id] then
+            local ok, failure = Detach(id)
             if not ok and not firstFailure then firstFailure = failure end
         end
     end
+    local ok, failure = Try(DrawGrid)
+    if not ok and not firstFailure then firstFailure = failure end
     return firstFailure == nil, firstFailure
+end
+function Editor.Sync()
+    local ran, ok, failure = Run(Sync)
+    if not ran then return false, ok end
+    return ok, failure
+end
+function Editor.SetShowAnchors(value)
+    if type(value) ~= "boolean" then return false, "Choose whether to show layout anchors." end
+    local previous = state.showAnchors
+    state.showAnchors = value
+    if not state.editing then return true end
+    local ok, failure = Editor.Sync()
+    if not ok then
+        state.showAnchors = previous
+        local restored, reason = Editor.Sync()
+        if not restored then failure = tostring(failure) .. " Restoration: " .. tostring(reason) end
+    end
+    return ok, failure
+end
+function Editor.SetShowGrid(value)
+    if type(value) ~= "boolean" then return false, "Choose whether to show the layout grid." end
+    local previous = state.showGrid
+    state.showGrid = value
+    local ran, ok, failure = Run(DrawGrid)
+    if not ran then ok, failure = false, ok end
+    if not ok then
+        state.showGrid = previous
+        local restored, reason = Try(DrawGrid)
+        if not restored then failure = tostring(failure) .. " Restoration: " .. tostring(reason) end
+    end
+    return ok, failure
 end
 function Editor.Begin()
     if not state.active or not Bars.Core.Engine.GetState().active then return false, "Enable and show the action bars before editing." end
@@ -470,7 +641,7 @@ function Editor.Begin()
         end
     end
     if Bars.Modules.SpecialBars then
-        local prepared, failure = Try(Bars.Modules.SpecialBars.SetEditing, true)
+        local prepared, failure = Try(Bars.Modules.SpecialBars.SetEditing, true, false)
         if not prepared then Editor.End(); return false, failure end
     end
     local ok, failure = Editor.Sync()

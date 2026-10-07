@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.18 — 2026-10-07
+
+- Place the button rectangle flush against screen edges without a reserved title gap.
+- Click a button before assigning a key, show both draft keys on its icon, then release its selection; Save commits and Cancel restores labels.
+- Move visible bars through transparent whole-bar Unlock surfaces, with optional static grid and inert anchors for hidden bars.
+
 ## 0.1.0-dev.17 — 2026-10-07
 
 - Show macro names by default with a separate per-bar toggle; keep labels cached during partial updates.

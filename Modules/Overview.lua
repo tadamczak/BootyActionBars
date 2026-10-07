@@ -92,12 +92,28 @@ function Overview.Create(parent, host)
     end)
     local editOwner = UI.CreateContainer(nil, page)
     editOwner:SetHeight(26)
-    local edit = UI.Settings.CreateCheckbox(editOwner, 0, -2, "Edit layout", "editing", nil, {
+    local edit = UI.Settings.CreateCheckbox(editOwner, 0, -2, "Unlock", "editing", nil, {
         ensure = function() end,
         get = function() return Bars.Core.Runtime.IsEditing() end,
         set = function(_, enabled) Complete(Bars.Core.Runtime.SetEditEnabled(enabled)) end,
     })
-    UI.AttachTooltip(edit, "Edit layout", "Unlock configured bars to move them, including pet/form bars when unavailable. Closing this window locks the bars and cancels an unfinished move.")
+    UI.AttachTooltip(edit, "Unlock", "Drag anywhere on a visible bar to move it. Action input is blocked while unlocked. Show anchors reveals hidden bars; closing this window locks the layout.")
+    local function LayoutTool(caption, key)
+        local owner = UI.CreateContainer(nil, page); owner:SetHeight(26)
+        local control = UI.Settings.CreateCheckbox(owner, 0, -2, caption, key, nil, {
+            ensure = function() end,
+            get = function()
+                local store = Bars.Database.Ensure()
+                return store and store.editorOptions and store.editorOptions[key] == true or false
+            end,
+            set = function(_, value) Complete(Bars.Core.Runtime.SetEditorOption(key, value)) end,
+        })
+        return owner, control
+    end
+    local gridOwner, showGrid = LayoutTool("Show grid", "showGrid")
+    local anchorsOwner, showAnchors = LayoutTool("Show anchors", "showAnchors")
+    UI.AttachTooltip(showGrid, "Show grid", "Show a static positioning grid while the layout is unlocked.")
+    UI.AttachTooltip(showAnchors, "Show anchors", "Show movable placeholders for hidden or unavailable bars without enabling their actions.")
     local scaleOwner = UI.CreateContainer(nil, page)
     scaleOwner:SetWidth(220); scaleOwner:SetHeight(52)
     local scale = UI.Settings.CreateSlider(scaleOwner, "BootyActionBarsLayoutScale", 0, -18,
@@ -251,6 +267,7 @@ function Overview.Create(parent, host)
     view.barChoice, view.addBarButton, view.removeBarButton, view.barStatus = choice, add, remove, status
     view.body, view.editCheckbox, view.scaleSlider, view.resetLayoutButton = body, edit, scale, reset
     view.columnsSlider, view.spacingSlider = columns, spacing
+    view.showGridCheckbox, view.showAnchorsCheckbox = showGrid, showAnchors
     view.titleCheckbox, view.hotkeysCheckbox, view.countsCheckbox = titleCheck, hotkeysCheck, countsCheck
     view.macroNamesCheckbox, view.emptyButtonsCheckbox, view.appearanceSliders = namesCheck, emptyCheck, appearance
     view.bindingButton, view.bindingIndexSlider, view.bindingSaveButton, view.bindingCancelButton = bind, bindingIndex, bindingSave, bindingCancel
@@ -259,6 +276,7 @@ function Overview.Create(parent, host)
     view.profileSaveButton, view.profileLoadButton, view.profileDeleteButton, view.profileUndoButton = profileSave, profileLoad, profileDelete, profileUndo
     local firstRow, barActions, scaleRow = {trial, settings}, {add, remove, editOwner}, {scaleOwner, reset}
     local gridRow = {columnsOwner, spacingOwner}
+    local toolsRow = {gridOwner, anchorsOwner}
     local displayRow = {titleOwner, hotkeysOwner, countsOwner, namesOwner, emptyOwner}
     local bindingRow, bindingActions = {bind, bindingIndexOwner}, {bindingSave, bindingCancel, bindingClear}
     local profileActions = {profileSave, profileLoad, profileDelete, profileUndo}
@@ -272,7 +290,9 @@ function Overview.Create(parent, host)
         hotkeysOwner = hotkeysOwner, hotkeysCheck = hotkeysCheck, countsOwner = countsOwner, countsCheck = countsCheck,
         namesOwner = namesOwner, namesCheck = namesCheck, emptyOwner = emptyOwner, emptyCheck = emptyCheck,
         firstRow = firstRow, native = native, barActions = barActions, scaleRow = scaleRow, gridRow = gridRow,
-        displayRow = displayRow, appearanceRow = appearanceRow, bindingHeading = bindingHeading,
+        displayRow = displayRow, appearanceRow = appearanceRow, toolsRow = toolsRow,
+        gridOwner = gridOwner, showGrid = showGrid, anchorsOwner = anchorsOwner, showAnchors = showAnchors,
+        bindingHeading = bindingHeading,
         bindingRow = bindingRow, bindingActions = bindingActions, bindingStatus = bindingStatus,
         profileHeading = profileHeading, profileOwner = profileOwner, profileName = profileName,
         profileActions = profileActions, profileStatus = profileStatus}
@@ -294,11 +314,13 @@ function Overview.Create(parent, host)
         CheckboxWidth(editOwner, edit)
         CheckboxWidth(titleOwner, titleCheck); CheckboxWidth(hotkeysOwner, hotkeysCheck); CheckboxWidth(countsOwner, countsCheck)
         CheckboxWidth(namesOwner, namesCheck); CheckboxWidth(emptyOwner, emptyCheck)
+        CheckboxWidth(drawing.gridOwner, drawing.showGrid); CheckboxWidth(drawing.anchorsOwner, drawing.showAnchors)
         local top = UI.LayoutFlow(page, firstRow, 16, 52 + body:GetHeight() + 16, width, 12) + 12
         native:ClearAllPoints(); native:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         top = top + native:GetHeight() + 16
         controls:ClearAllPoints(); controls:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         top = UI.LayoutFlow(page, barActions, 16, top + controls:GetHeight() + 12, width, 8) + 12
+        top = UI.LayoutFlow(page, drawing.toolsRow, 16, top, width, 8) + 12
         top = UI.LayoutFlow(page, scaleRow, 16, top, width, 8) + 12
         top = UI.LayoutFlow(page, gridRow, 16, top, width, 8) + 12
         top = UI.LayoutFlow(page, displayRow, 16, top, width, 8) + 10
@@ -332,7 +354,7 @@ function Overview.Create(parent, host)
             self.lastBindingActive = active
         end
         local binding = editor and editor.GetState() or nil
-        local text = "Assign keys by hovering a button or choosing its bar/button above. Changes are staged until Save; conflicting keys require confirmation."
+        local text = "Click a button, then press a key. The selected button releases after assignment and shows the draft. Save commits; Cancel restores."
         if active and binding then
             text = (binding.barId == 7 and "Pet" or binding.barId == 8 and "Form" or "Bar " .. tostring(binding.barId or "?"))
                 .. ", button " .. tostring(binding.index or "?") .. ": " .. (binding.firstKey or "unassigned")
@@ -432,6 +454,10 @@ function Overview.Create(parent, host)
             self:RefreshBindings()
             UI.SetButtonEnabled(reset, configured == true and layout ~= nil)
             edit:SetChecked(Bars.Core.Runtime.IsEditing() and 1 or nil)
+            showGrid:SetChecked(store and store.editorOptions and store.editorOptions.showGrid and 1 or nil)
+            showAnchors:SetChecked(store and store.editorOptions and store.editorOptions.showAnchors and 1 or nil)
+            UI.Settings.SetCheckboxEnabled(showGrid, store ~= nil)
+            UI.Settings.SetCheckboxEnabled(showAnchors, store ~= nil)
             UI.Settings.SetCheckboxEnabled(edit, Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active == true)
             status:SetText(not store and failure or not layout and layoutFailure or main and
                 "Main bar. Actions and keys follow the visible page or form."

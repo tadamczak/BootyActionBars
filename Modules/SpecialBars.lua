@@ -21,6 +21,10 @@ local function BindingMode()
     local editor = Bars.Modules.BindingEditor
     return editor and editor.IsEditing and editor.IsEditing() or false
 end
+local function LayoutMode()
+    local editor = Bars.Modules.Editor
+    return editor and editor.IsEditing and editor.IsEditing() or false
+end
 local UpdateEmpty
 local function LabelFont(label, size)
     local face, previous, flags = label:GetFont()
@@ -90,7 +94,7 @@ local function Settled(callback, first, second)
     return ok, failure
 end
 local function Press(button)
-    if button.keyHeld or button.mousePressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
+    if button.bindingSelected or button.keyHeld or button.mousePressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
 end
 local function ClearTooltip(button)
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
@@ -121,7 +125,7 @@ local function VisibleSlot(button)
 end
 local function InputAvailable(button) return VisibleSlot(button) and button.hasAction end
 local function Use(button, mouseButton)
-    if BindingMode() then return false end
+    if BindingMode() or LayoutMode() then return false end
     if not InputAvailable(button) then return false end
     this = button
     local ok, failure = button.bar.service.Use(button.index, mouseButton)
@@ -129,7 +133,13 @@ local function Use(button, mouseButton)
     return Refresh(owners[button.bar.kind], "ReadState")
 end
 local function Click()
-    if BindingMode() then return end
+    if BindingMode() then
+        this:SetChecked(this.rendered.current and 1 or 0)
+        this.mousePressed, this.mouseHeld = false, false
+        Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index)
+        return
+    end
+    if LayoutMode() then this:SetChecked(this.rendered.current and 1 or 0); Cancel(this); return end
     local button, mouseButton = this, arg1
     button:SetChecked(button.rendered.current and 1 or 0)
     button.mousePressed, button.mouseHeld = false, false; Press(button)
@@ -139,7 +149,7 @@ local function Click()
     if not ok then Report(failure) end
 end
 local function MouseDown()
-    if BindingMode() then return end
+    if BindingMode() or LayoutMode() then return end
     if not VisibleSlot(this) then return end
     if arg1 == "LeftButton" or arg1 == "RightButton" then
         this.skipClick = nil; this.mouseHeld, this.mousePressed = true, true; Press(this)
@@ -147,7 +157,7 @@ local function MouseDown()
 end
 local function MouseUp() this.mouseHeld, this.mousePressed = false, false; Press(this) end
 local function Tooltip(button)
-    if BindingMode() then return true end
+    if BindingMode() or LayoutMode() then return true end
     if not InputAvailable(button) then return true end
     this = button
     return button.bar.service.Tooltip(button.index, button)
@@ -156,10 +166,7 @@ local function Enter()
     local button = this
     if not VisibleSlot(button) then return end
     button.hoverFeedback:Show()
-    if BindingMode() then
-        Bars.Modules.BindingEditor.SelectButton(button, button.bar.id, button.index)
-        return
-    end
+    if BindingMode() or LayoutMode() then return end
     local ok, failure = Run(Tooltip, button)
     if not ok then Report(failure) end
 end
@@ -167,7 +174,7 @@ local function Leave()
     this.hoverFeedback:Hide(); this.mousePressed = false; Press(this); ClearTooltip(this)
 end
 local function Drag(button, placing)
-    if BindingMode() then return true end
+    if BindingMode() or LayoutMode() then return true end
     if not VisibleSlot(button) or not placing and not button.hasAction or button.bar.kind ~= "pet" then return true end
     if not placing and type(IsShiftKeyDown) == "function" then
         local shift = IsShiftKeyDown()
@@ -183,25 +190,53 @@ local function Drag(button, placing)
 end
 local function Pickup() local ok, failure = Run(Drag, this, false); if not ok then Report(failure) end end
 local function Place() local ok, failure = Run(Drag, this, true); if not ok then Report(failure) end end
-local function Hotkey(button, key)
+local function Hotkey(button, key, second)
     local previousEvent, previousArg = event, arg1
     local text = key and (type(GetBindingText) == "function" and GetBindingText(key, "KEY_", 1) or key) or ""
     this, event, arg1 = button, previousEvent, previousArg
+    if second then text = text .. " / " .. (type(GetBindingText) == "function" and GetBindingText(second, "KEY_", 1) or second) end
+    this, event, arg1 = button, previousEvent, previousArg
     button.hotkey:SetText(text)
+end
+local function BindingLabel(button, force, saved)
+    if saved and button.draftActive then button.bindingKey = button.draftPrimary end
+    local editing = BindingMode()
+    local first, second, known = button.bindingKey, nil, false
+    if editing and Bars.Modules.BindingEditor.GetDraftKey then first, second, known = Bars.Modules.BindingEditor.GetDraftKey(button.bindingCommand, first) end
+    local shown = editing or button.bar.showHotkeys
+    if not shown and not button.bindingLabelAssign then
+        if force or button.bindingLabelShown ~= false then button.hotkey:Hide(); button.bindingLabelShown = false end
+        button.draftActive, button.draftPrimary = false, nil
+        return true
+    end
+    if force or not button.bindingLabelReady or button.labelPrimary ~= first or button.labelSecondary ~= second then
+        button.bindingLabelReady = false
+        local ok, failure = Run(Hotkey, button, first, second)
+        if not ok then return false, failure end
+        button.labelPrimary, button.labelSecondary, button.bindingLabelReady = first, second, true
+    end
+    if force or button.bindingLabelShown ~= shown then
+        if shown then button.hotkey:Show() else button.hotkey:Hide() end
+        button.bindingLabelShown = shown
+    end
+    button.draftActive, button.draftPrimary = editing and known or false, editing and first or nil
+    button.bindingLabelAssign = editing
+    return true
 end
 local function Binding(button)
     local previousEvent, previousArg = event, arg1
     this = button
     local key = button.bar.service.GetBindingKeys(button.index)
     this, event, arg1 = button, previousEvent, previousArg
-    if button.bindingKey ~= key or not button.bar.displayReady then
+    if button.bindingKey ~= key or not button.bar.displayReady or BindingMode() then
         button.bindingKey = key
-        if button.bar.showHotkeys then Hotkey(button, key) end
+        return BindingLabel(button, not button.bar.displayReady)
     end
     return true
 end
 local function Render(button, data, force)
     local old = button.rendered
+    if button.bindingSelected then Press(button) end
     if button.hasAction and not data.hasAction then Cancel(button) end
     local availabilityChanged = button.hasAction ~= data.hasAction
     button.hasAction = data.hasAction
@@ -280,6 +315,7 @@ local function Create(owner)
         local buttonName = name .. "Button" .. index
         local button = UI.CreateCheckButton(buttonName, frame)
         view.buttons[index] = button; button.bar, button.index = view, index
+        button.bindingCommand = Bars.Services.BindingService and Bars.Services.BindingService.Command(view.id, index)
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
         UI.StyleButton(button, ""); button.label:Hide(); UI.SetProjectButtonOutline(button, true)
@@ -374,11 +410,8 @@ local function Create(owner)
         if titleChanged then if self.showTitle then self.title:Show() else self.title:Hide() end end
         if keysChanged then
             for _, button in ipairs(self.buttons) do
-                if self.showHotkeys then
-                    local ok, failure = Run(Hotkey, button, button.bindingKey)
-                    if not ok then return false, failure end
-                    button.hotkey:Show()
-                else button.hotkey:Hide() end
+                local ok, failure = BindingLabel(button, true)
+                if not ok then return false, failure end
             end
         end
         if emptyChanged then for _, button in ipairs(self.buttons) do UpdateEmpty(button) end end
@@ -388,6 +421,20 @@ local function Create(owner)
         self.editing = value == true
         for _, button in ipairs(self.buttons) do UpdateEmpty(button) end
         return true
+    end
+    function view:SetBindingSelected(index, selected)
+        local button = self.buttons[index]
+        button.bindingSelected = selected == true
+        Press(button)
+        return true
+    end
+    function view:RefreshBindingDraft(saved)
+        local firstFailure
+        for _, button in ipairs(self.buttons) do
+            local ok, reason = Run(BindingLabel, button, false, saved)
+            if not ok and not firstFailure then firstFailure = reason end
+        end
+        return firstFailure == nil, firstFailure
     end
     return view
 end
@@ -452,7 +499,7 @@ local function SyncBody(owner)
     if not owner.service then owner.service = Bars.Services.SpecialActionService.Create(owner.kind) end
     local count, reason = owner.service.GetCount()
     if count == nil then return false, reason end
-    if count == 0 and not state.editing then return StopKind(owner, false) end
+    if count == 0 and (not state.editing or state.editPreviewAllowed == false) then return StopKind(owner, false) end
     if owner.creationFailure then return false, owner.creationFailure end
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ran, view = pcall(Create, owner)
@@ -568,14 +615,25 @@ local function Disable()
     return firstFailure == nil, firstFailure
 end
 function Special.Disable() return Settled(Disable) end
-function Special.SetEditing(value)
+function Special.SetEditing(value, preview)
     if type(value) ~= "boolean" then return false, "Expected edit mode on or off." end
     if value and not state.active then return false, "Enable the action bars before editing." end
-    if state.editing == value then return true end
+    if preview ~= nil and type(preview) ~= "boolean" then return false, "Expected unavailable preview on or off." end
+    local automatic = preview ~= false
+    if state.editing == value and state.editPreviewAllowed == automatic then return true end
     state.editing = value
+    state.editPreviewAllowed = automatic
     local firstFailure
     for _, kind in ipairs(kinds) do
-        local ok, failure = Run(Sync, owners[kind])
+        local owner, ok, failure = owners[kind], true, nil
+        if preview == false then
+            local view = state.views[owner.id]
+            if view and view.editPreview then ok, failure = StopKind(owner, false)
+            elseif view then
+                ok, failure = Run(view.CancelInput, view)
+                if ok then ok, failure = Run(view.SetEditing, view, value) end
+            end
+        else ok, failure = Run(Sync, owner) end
         if not ok and not firstFailure then firstFailure = failure end
     end
     if firstFailure then
@@ -614,7 +672,7 @@ function Special.HandleEvent(name, unit, kind)
     return ok, failure
 end
 function Special.UseButton(kind, index, keyState)
-    if BindingMode() then return false end
+    if BindingMode() or LayoutMode() then return false end
     local owner = owners[kind]
     if not owner or type(index) ~= "number" or index < 1 or index > 10 or index ~= math.floor(index) then return false end
     local view = state.views[owner.id]

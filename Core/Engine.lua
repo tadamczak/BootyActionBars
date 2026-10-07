@@ -546,6 +546,8 @@ end
 local function InputView(barId, index)
     local binding = Bars.Modules.BindingEditor
     if binding and binding.IsEditing() then return nil end
+    local editor = Bars.Modules.Editor
+    if editor and editor.IsEditing() then return nil end
     if not ValidBar(barId) or not Valid(index) or not IsActive(barId) then return nil end
     local view = state.views[barId]
     if view and view.buttons[index].emptyHidden == true then return nil end

@@ -129,6 +129,15 @@ function BindingService.Create(api)
         return true, Planned(command)
     end
     function service.GetKeys(command) return Protected(GetKeys, command) end
+    function service.GetDraftKeys(command)
+        if not state.active then return false end
+        local record = commandRecords[command]
+        if not record or record.first and not keyRecords[record.first]
+            or record.second and not keyRecords[record.second] then return false end
+        -- Only commands whose native snapshot already belongs to this session
+        -- have a draft. Label refresh must never discover new native bindings.
+        return true, Planned(command)
+    end
     local function Stage(command, key)
         if not state.active or state.committing then return false, "Keybinding editing is inactive or saving." end
         if not OwnCommand(command) then return false, "Choose a BootyActionBars button." end

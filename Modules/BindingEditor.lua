@@ -26,8 +26,9 @@ local function Summary()
         state.pendingCount, state.conflictCount = current.changedCount, current.conflictCount
         state.dirty, state.preview = current.changedCount > 0, service.GetPreview()
     end
-    if state.command and service and state.editing then
-        local ok, first, second = service.GetKeys(state.command)
+    local command = state.command or state.lastCommand
+    if command and service and state.editing then
+        local ok, first, second = service.GetKeys(command)
         if not ok then return false, first end
         state.firstKey, state.secondKey = first, second
     else state.firstKey, state.secondKey = nil, nil end
@@ -38,7 +39,7 @@ Notify = function()
     if not ok then return Failure(failure) end
     if capture and capture.label then
         local label = state.command and ((state.barId == 7 and "Pet" or state.barId == 8 and "Form" or "Bar " .. state.barId)
-            .. ", button " .. state.index) or "Choose a button by hovering or in the panel"
+            .. ", button " .. state.index) or "Click a button or choose it in the panel"
         capture.label:SetText("Keybindings: " .. label .. ". Press a key; Escape clears. Save / Cancel in /bab.")
     end
     if observer then
@@ -85,6 +86,72 @@ local function CancelInput()
         end
     end
     return firstFailure == nil, firstFailure
+end
+function BindingEditor.GetDraftKey(command, nativeKey)
+    if state.editing and service then
+        local known, first, second = service.GetDraftKeys(command)
+        if known then return first, second, true end
+    end
+    return nativeKey, nil, false
+end
+function BindingEditor.RefreshDraft(saved)
+    local firstFailure
+    local engine = Bars.Core.Engine.GetState()
+    for _, view in pairs(engine.views or {}) do
+        if view.RefreshBindingDraft then
+            local ok, reason = Run(view.RefreshBindingDraft, view, saved)
+            if not ok and not firstFailure then firstFailure = reason end
+        end
+    end
+    local special = Bars.Modules.SpecialBars
+    if special and special.GetView then
+        for id = 7, 8 do
+            local view = special.GetView(id)
+            if view and view.RefreshBindingDraft then
+                local ok, reason = Run(view.RefreshBindingDraft, view, saved)
+                if not ok and not firstFailure then firstFailure = reason end
+            end
+        end
+    end
+    return firstFailure == nil, firstFailure
+end
+local function SelectedFeedback(button, selected)
+    if not button then return true end
+    local firstFailure
+    button.bindingSelected = selected == true
+    if button.bar and button.bar.SetBindingSelected then
+        local ok, reason = Run(button.bar.SetBindingSelected, button.bar, button.index, selected)
+        if not ok then firstFailure = reason end
+    elseif button.pressFeedback then
+        local ok, reason = Run(selected and button.pressFeedback.Show or button.pressFeedback.Hide, button.pressFeedback)
+        if not ok then firstFailure = reason end
+    end
+    local callback = selected and button.LockHighlight or button.UnlockHighlight
+    if callback then
+        local ok, reason = Run(callback, button)
+        if not ok and not firstFailure then firstFailure = reason end
+    end
+    return firstFailure == nil, firstFailure
+end
+local function Deselect()
+    if state.command then state.lastCommand = state.command end
+    state.command, state.armed = nil, false
+    local ok, failure = SelectedFeedback(selectedButton, false)
+    if ok then selectedButton = nil end
+    return ok, failure
+end
+local function Choose(barId, index, button)
+    if not state.editing or state.confirming then return false, "Begin binding mode before choosing a button." end
+    local command = Bars.Services.BindingService.Command(barId, index)
+    if not command then return Failure("Choose a known bar and a valid button index.") end
+    local ok, reason = Deselect()
+    if not ok then return Failure(reason) end
+    state.barId, state.index, state.command, state.armed = barId, index, command, true
+    selectedButton = button
+    ok, reason = SelectedFeedback(button, true)
+    if not ok then return Failure(reason) end
+    state.failure, state.message = nil, "Button selected. Press its next key; the draft is shown immediately."
+    return Notify()
 end
 local function KeyDownBody()
     local key = arg1
@@ -151,40 +218,35 @@ function BindingEditor.Begin(owner)
     ok, failure = Run(CaptureKeys, true)
     if ok then ok, failure = RefreshVisibility() end
     if not ok then BindingEditor.Cancel(); return Failure(failure) end
-    state.message = "Hover a button or select its bar/index, then press a key. Save applies staged bindings."
+    ok, failure = BindingEditor.RefreshDraft(false)
+    if not ok then BindingEditor.Cancel(); return Failure(failure) end
+    state.lastCommand, state.armed = nil, false
+    state.message = "Click a button or select its bar/index, then press a key. Save applies staged bindings."
     ok, failure = Run(Notify)
     if not ok then BindingEditor.Cancel(); return Failure(failure) end
     return true
 end
 function BindingEditor.SetSelection(barId, index)
-    if not state.editing or state.confirming then return false, "Begin binding mode before choosing a button." end
-    local command = Bars.Services.BindingService.Command(barId, index)
-    if not command then return Failure("Choose a known bar and a valid button index.") end
-    if selectedButton then
-        local ok, failure = Run(selectedButton.UnlockHighlight, selectedButton)
-        selectedButton = nil
-        if not ok then return Failure(failure) end
-    end
-    state.barId, state.index, state.command = barId, index, command
-    state.failure = nil
-    return Notify()
+    local view
+    if barId == 7 or barId == 8 then
+        local special = Bars.Modules.SpecialBars
+        view = special and special.GetView and special.GetView(barId)
+    else view = Bars.Core.Engine.GetState().views[barId] end
+    return Choose(barId, index, view and view.buttons and view.buttons[index])
 end
 function BindingEditor.SelectButton(button, barId, index)
     if not state.editing or state.confirming then return false end
     if selectedButton == button and state.barId == barId and state.index == index then return true end
-    local ok, failure = BindingEditor.SetSelection(barId, index)
-    if not ok then return false, failure end
-    selectedButton = button
-    if button and button.LockHighlight then
-        local locked, reason = Run(button.LockHighlight, button)
-        if not locked then selectedButton = nil; return Failure(reason) end
-    end
-    return true
+    return Choose(barId, index, button)
 end
 function BindingEditor.StageKey(key)
     if not state.editing or state.confirming or not state.command then return Failure("Select a button before pressing a key.") end
     local ok, failure = service.StageKey(state.command, key)
     if not ok then return Failure(failure) end
+    ok, failure = Deselect()
+    local summarized, summaryFailure = Summary()
+    local refreshed, reason = BindingEditor.RefreshDraft(false)
+    if not ok or not summarized or not refreshed then return Failure(failure or summaryFailure or reason) end
     state.failure, state.message = nil, "Key staged. Save applies it; Cancel leaves client bindings unchanged."
     return Notify()
 end
@@ -192,6 +254,10 @@ function BindingEditor.ClearSelection()
     if not state.editing or state.confirming or not state.command then return Failure("Select a button before clearing its keys.") end
     local ok, failure = service.Clear(state.command)
     if not ok then return Failure(failure) end
+    ok, failure = Deselect()
+    local summarized, summaryFailure = Summary()
+    local refreshed, reason = BindingEditor.RefreshDraft(false)
+    if not ok or not summarized or not refreshed then return Failure(failure or summaryFailure or reason) end
     state.failure, state.message = nil, "Selected button keys cleared in the preview. Save applies this change."
     return Notify()
 end
@@ -202,13 +268,12 @@ EndMode = function(saved)
         local hidden, reason = Run(confirmation.Hide, confirmation)
         if not hidden and not failure then failure = reason end
     end
-    if selectedButton then
-        local unlocked, reason = Run(selectedButton.UnlockHighlight, selectedButton)
-        if not unlocked and not failure then failure = reason end
-        selectedButton = nil
-    end
+    local deselected, selectionFailure = Deselect()
+    if not deselected and not failure then failure = selectionFailure end
     if service then service.Cancel() end
-    state.command, state.barId, state.index = nil, nil, nil
+    state.command, state.lastCommand, state.barId, state.index = nil, nil, nil, nil
+    local drafted, draftFailure = BindingEditor.RefreshDraft(saved)
+    if not drafted and not failure then failure = draftFailure end
     local visible, reason = RefreshVisibility()
     if not visible and not failure then failure = reason end
     local input, inputFailure = CancelInput()
