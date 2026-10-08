@@ -145,7 +145,7 @@ local function Restore(record)
     return restored
 end
 local artworkFields = Layout.ArtworkFields
-local paintFields = {"path", "x", "y", "width", "height", "left", "right", "top", "bottom", "rotated"}
+local paintFields = {"path", "x", "y", "width", "height", "left", "right", "top", "bottom", "rotated", "foreground"}
 local function CopyFields(source, target, fields)
     for _, key in ipairs(fields) do target[key] = source[key] end
 end
@@ -160,7 +160,18 @@ local function ArtworkVisibility(texture, shown, repair)
     if Enabled(texture:IsShown()) ~= shown then error("Native utility artwork visibility was declined.") end
     texture.utilityArtShown, texture.utilityArtReady = shown, true
 end
-local function ArtworkGeometry(texture, frame, paint)
+local function Foreground(group)
+    local art, frame = group.artwork, group.frame
+    if not art.foreground then art.foreground = UI.CreateContainer(nil, frame) end
+    art.foreground:EnableMouse(false); art.foreground:SetAllPoints(frame)
+    local level = frame:GetFrameLevel()
+    for _, record in ipairs(group.records or {}) do level = math.max(level, record.frame:GetFrameLevel()) end
+    art.foreground:SetFrameLevel(level + 4)
+    return art.foreground
+end
+local function ArtworkGeometry(texture, group, paint)
+    local frame = group.frame
+    if paint.foreground then Foreground(group) end
     texture.utilityArtReady = false
     texture.utilityArtPaintComplete = false
     if texture:SetTexture(paint.path) == false then error("Native utility artwork texture is unavailable.") end
@@ -177,13 +188,15 @@ local function ArtworkGeometry(texture, frame, paint)
         error("Native utility artwork dimensions were declined.")
     end
 end
-local function ArtworkPiece(group, scene, index, repair, cleanup)
-    local art, shown = group.artwork, scene.shown and index <= scene.count
-    local texture = art.pieces[index]
+local function ArtworkPiece(group, scene, index, repair, cleanup, frontIndex)
+    local art = group.artwork
+    local shown = scene.shown and (frontIndex and frontIndex <= (scene.frontCount or 0) or not frontIndex and index <= (scene.regularCount or scene.count))
+    local pool, slot = frontIndex and art.frontPieces or art.pieces, frontIndex or index
+    local texture = pool[slot]
     if shown and not texture then
-        texture = UI.CreateTexture(group.frame, nil, "BACKGROUND")
+        texture = UI.CreateTexture(frontIndex and Foreground(group) or group.frame, nil, frontIndex and "OVERLAY" or "BACKGROUND")
         texture.utilityArtPaint, texture.utilityArtCommittedPaint = {}, {}
-        art.pieces[index] = texture
+        pool[slot] = texture
     end
     if not texture then return end
     local paint
@@ -193,11 +206,11 @@ local function ArtworkPiece(group, scene, index, repair, cleanup)
     elseif repair and texture.utilityArtHasPaint then paint = texture.utilityArtCommittedPaint end
     if cleanup then
         local ok, reason = true
-        if paint then ok, reason = pcall(ArtworkGeometry, texture, group.frame, paint) end
+        if paint then ok, reason = pcall(ArtworkGeometry, texture, group, paint) end
         local visible, failure = pcall(ArtworkVisibility, texture, shown, true)
         if not ok then error(reason) elseif not visible then error(failure) end
     else
-        if paint then ArtworkGeometry(texture, group.frame, paint) end
+        if paint then ArtworkGeometry(texture, group, paint) end
         ArtworkVisibility(texture, shown, repair)
     end
     if paint and paint ~= texture.utilityArtPaint then CopyFields(paint, texture.utilityArtPaint, paintFields) end
@@ -205,8 +218,12 @@ local function ArtworkPiece(group, scene, index, repair, cleanup)
 end
 local function DrawArtwork(group, scene, repair, cleanup)
     local failure
-    for index = 1, math.max(scene.count or 0, table.getn(group.artwork.pieces)) do
+    for index = 1, math.max(scene.regularCount or scene.count or 0, table.getn(group.artwork.pieces)) do
         local ok, reason = pcall(ArtworkPiece, group, scene, index, repair, cleanup)
+        if not ok then if not cleanup then error(reason) end; failure = failure or reason end
+    end
+    for index = 1, 2 do
+        local ok, reason = pcall(ArtworkPiece, group, scene, (scene.regularCount or 0) + index, repair, cleanup, index)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
     return failure == nil, failure
@@ -219,14 +236,16 @@ local function HideArtwork(group)
     for _, texture in ipairs(art.pieces) do
         Call(ArtworkVisibility, texture, false, false)
     end
+    for _, texture in ipairs(art.frontPieces) do Call(ArtworkVisibility, texture, false, false) end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
 end
 local function PaintArtwork(group, wanted)
     local art = group.artwork
-    local shown = wanted and group.preferences.nativeTexture == true
+    local value = group.preferences
+    local shown = wanted and (value.nativeBackground or value.nativeBorder or value.nativeSlotArtwork or value.gryphons ~= "none")
     if not art and not shown then return end
     if not art then
-        art = {pieces = {}, current = {}, committed = {}, off = {id = group.id, shown = false, count = 0}}
+        art = {pieces = {}, frontPieces = {}, current = {}, committed = {}, off = {id = group.id, shown = false, count = 0}}
         group.artwork = art
     end
     local scene, failure = Layout.ResolveArtwork(group.id, group.preferences, group.width, group.height, shown, art.current)
@@ -245,6 +264,11 @@ local function PaintArtwork(group, wanted)
     end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     for _, texture in ipairs(art.pieces) do
+        if texture.utilityArtPaintComplete and texture.utilityArtPaint.path then
+            CopyFields(texture.utilityArtPaint, texture.utilityArtCommittedPaint, paintFields); texture.utilityArtHasPaint = true
+        end
+    end
+    for _, texture in ipairs(art.frontPieces) do
         if texture.utilityArtPaintComplete and texture.utilityArtPaint.path then
             CopyFields(texture.utilityArtPaint, texture.utilityArtCommittedPaint, paintFields); texture.utilityArtHasPaint = true
         end
@@ -374,7 +398,7 @@ local function Geometry(group, preferences)
     local columns = math.min(preferences.columns, definition.count)
     local rows = math.ceil(definition.count / columns)
     local width = columns * definition.width + math.max(0, columns - 1) * preferences.spacing
-    local height = rows * definition.height + math.max(0, rows - 1) * preferences.spacing
+    local height = rows * (definition.visualHeight or definition.height) + math.max(0, rows - 1) * preferences.spacing
     local screenWidth, screenHeight = UI.GetFrameSpan(UIParent)
     local drawing, failure = Layout.Resolve(preferences, width, height, screenWidth, screenHeight)
     if not drawing then error(failure) end
@@ -447,7 +471,7 @@ local function Position(group)
             else
                 local row = math.floor((index - 1) / preferences.columns)
                 local column = index - 1 - row * preferences.columns
-                x, y = column * (definition.width + preferences.spacing), -row * (definition.height + preferences.spacing)
+                x, y = column * (definition.width + preferences.spacing), -row * ((definition.visualHeight or definition.height) + preferences.spacing) + (definition.offsetY or 0)
             end
             record.clear(record.frame); record.setPoint(record.frame, "TOPLEFT", group.frame, "TOPLEFT", x, y)
         end
@@ -498,7 +522,8 @@ local function DragHidden()
     if group then CancelDrag(group) end
 end
 EditGroup = function(group)
-    local wanted = state.editing and (state.active and group.preferences.shown or state.showAnchors)
+    local primary = Bars.Services.BarMerging.Read(state.store.barMerges, group.id)
+    local wanted = primary == group.id and state.editing and (state.active and Bars.Services.BarMerging.Shown(state.store, group.id) or state.showAnchors)
     if not wanted then
         CancelDrag(group)
         if group.handle then group.handle:Hide() end
@@ -524,7 +549,11 @@ ApplyGroup = function(id, preferences)
     local failure
     if not preferences then preferences, failure = Layout.Read(state.store and state.store.utilityLayouts, id) end
     if not preferences then error(failure) end
-    local wanted = state.active and preferences.shown
+    local effective; effective, failure = Layout.ReadEffective(state.store, id, preferences)
+    if not effective then error(failure) end
+    preferences = effective
+    local primary = Bars.Services.BarMerging.Read(state.store.barMerges, id)
+    local wanted = state.active and (primary == id and preferences.shown or primary ~= id and Bars.Services.BarMerging.Shown(state.store, id))
     local group = state.groups[id]
     if not wanted and not (state.editing and state.showAnchors) and not group then return end
     group = group or Ensure(id)
@@ -578,6 +607,7 @@ function Utility.SetEditing(editing, showAnchors)
     return state.failure == nil, state.failure
 end
 function Utility.GetLayout(id) return Layout.Read(state.store and state.store.utilityLayouts, id) end
+function Utility.GetView(id) return state.groups[id] end
 Commit = function(id, preferences)
     local owner, saved = state.store, state.store.utilityLayouts
     local snapshot = saved and assert(Layout.Copy(saved))

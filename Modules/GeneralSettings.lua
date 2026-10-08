@@ -15,11 +15,13 @@ function General.Create(parent, host, ownerView)
         return ok, failure
     end
     local title = UI.CreateHeading(page, "General", 2, "gold")
-    local visibilityHeading = UI.CreateHeading(page, "Show bars", 3, "gold")
-    local visibilityHelp = UI.CreateComponentLabel(page,
+    local visibilityHeading = UI.Settings.CreateSectionAccordion(page, "Show bars", 0, 0, 3, "groups")
+    local visibilityBody = UI.CreateContainer(nil, page); visibilityBody:SetAllPoints(page)
+    view.visibilityExpanded = true; visibilityHeading:SetExpanded(true); visibilityHeading.label:SetText("-  Show bars")
+    local visibilityHelp = UI.CreateComponentLabel(visibilityBody,
         "Choose BootyActionBars and the native bar independently. Both can be hidden. Assigned keys keep working.", "white")
     visibilityHelp:SetJustifyH("LEFT"); visibilityHelp:SetJustifyV("TOP")
-    local trialOwner = UI.CreateContainer(nil, page)
+    local trialOwner = UI.CreateContainer(nil, visibilityBody)
     local trial = UI.Settings.CreateCheckbox(trialOwner, 0, -2, "Show BootyActionBars", "trialBarEnabled", nil, {
         ensure = function() end,
         get = function()
@@ -28,7 +30,7 @@ function General.Create(parent, host, ownerView)
         end,
         set = function(_, value) Complete(Bars.Core.Runtime.SetTrialEnabled(value)) end,
     })
-    local nativeOwner = UI.CreateContainer(nil, page)
+    local nativeOwner = UI.CreateContainer(nil, visibilityBody)
     local native = UI.Settings.CreateCheckbox(nativeOwner, 0, -2, "Show Native Bar", "nativeMainBarEnabled", nil, {
         ensure = function() end,
         get = function()
@@ -38,11 +40,13 @@ function General.Create(parent, host, ownerView)
         set = function(_, value) Complete(Bars.Core.Runtime.SetNativeEnabled(not value)) end,
     })
     UI.AttachTooltip(native, "Show Native Bar", "Show or hide the native action bar, panels and gryphons independently of BootyActionBars. Both master switches may be off. Assigned keys keep working.")
-    local profileHeading = UI.CreateHeading(page, "Layout profiles", 3, "gold")
-    local profileHelp = UI.CreateComponentLabel(page,
+    local profileHeading = UI.Settings.CreateSectionAccordion(page, "Layout profiles", 0, 0, 3, "list")
+    local profileBody = UI.CreateContainer(nil, page); profileBody:SetAllPoints(page)
+    view.profileExpanded = true; profileHeading:SetExpanded(true); profileHeading.label:SetText("-  Layout profiles")
+    local profileHelp = UI.CreateComponentLabel(profileBody,
         "Save bar layouts, global appearance, shown bars and behavior rules. Profiles leave client actions, keys and master/native switches unchanged.", "white")
     profileHelp:SetJustifyH("LEFT"); profileHelp:SetJustifyV("TOP")
-    local profileOwner = UI.CreateContainer(nil, page)
+    local profileOwner = UI.CreateContainer(nil, profileBody)
     profileOwner:SetWidth(300); profileOwner:SetHeight(26)
     local profileChoices = {}
     for index = 1, 20 do profileChoices[index] = {value = index, text = ""} end
@@ -57,8 +61,8 @@ function General.Create(parent, host, ownerView)
         end,
         onChanged = function() view:Refresh() end,
     })
-    local nameLabel = UI.CreateComponentLabel(page, "Profile name", "white")
-    local profileName = UI.CreateFramedEditBox(page, "BootyActionBarsLayoutProfileName", 240)
+    local nameLabel = UI.CreateComponentLabel(profileBody, "Profile name", "white")
+    local profileName = UI.CreateFramedEditBox(profileBody, "BootyActionBarsLayoutProfileName", 240)
     profileName:SetMaxLetters(64); profileName:SetAutoFocus(false)
     profileName:SetScript("OnEditFocusGained", function()
         local editor = Bars.Modules.BindingEditor
@@ -66,13 +70,13 @@ function General.Create(parent, host, ownerView)
     end)
     profileName:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     local function Action(text, width)
-        local button = UI.CreateButton(page, nil, text, width, 24)
+        local button = UI.CreateButton(profileBody, nil, text, width, 24)
         UI.StyleActionButton(button); button.mosFlowWidth = width
         return button
     end
     local profileSave, profileLoad = Action("Save layout", 100), Action("Load", 64)
     local profileDelete, profileUndo = Action("Delete", 72), Action("Undo load", 88)
-    local profileStatus = UI.CreateComponentLabel(page, "", "white")
+    local profileStatus = UI.CreateComponentLabel(profileBody, "", "white")
     profileStatus:SetJustifyH("LEFT"); profileStatus:SetJustifyV("TOP")
     local function Confirm(titleText, messageText, actionText, action)
         if not ownerView.profileConfirm then
@@ -122,6 +126,19 @@ function General.Create(parent, host, ownerView)
     ownerView.profileSaveButton, ownerView.profileLoadButton = profileSave, profileLoad
     ownerView.profileDeleteButton, ownerView.profileUndoButton, ownerView.profileStatus = profileDelete, profileUndo, profileStatus
     local actions = {profileSave, profileLoad, profileDelete, profileUndo}
+    visibilityHeading:SetScript("OnClick", function()
+        view.visibilityExpanded = not view.visibilityExpanded
+        visibilityHeading:SetExpanded(view.visibilityExpanded); visibilityHeading.label:SetText((view.visibilityExpanded and "-  " or "+  ") .. "Show bars")
+        Complete(true)
+    end)
+    profileHeading:SetScript("OnClick", function()
+        profileChoice.panel:Hide(); profileName:ClearFocus()
+        if ownerView.profileConfirm then ownerView.profileConfirm:Hide() end
+        view.profileExpanded = not view.profileExpanded
+        profileHeading:SetExpanded(view.profileExpanded); profileHeading.label:SetText((view.profileExpanded and "-  " or "+  ") .. "Layout profiles")
+        Complete(true)
+    end)
+    view.visibilityAccordion, view.profileAccordion = visibilityHeading, profileHeading
     local function Position(control, top, width, height)
         control:ClearAllPoints(); control:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
         control:SetWidth(width); control:SetHeight(height)
@@ -150,11 +167,16 @@ function General.Create(parent, host, ownerView)
     local function Measure(available)
         local width = math.max(1, available - 32)
         local top = Position(title, 16, width, 24) + 20
-        top = Position(visibilityHeading, top, width, 20) + 8
+        top = Position(visibilityHeading, top, width, 24) + 8
+        if view.visibilityExpanded then
+        visibilityBody:Show()
         top = Text(visibilityHelp, top, width) + 12
         top = Checkbox(trialOwner, trial, top, width) + 8
         top = Checkbox(nativeOwner, native, top, width) + 24
-        top = Position(profileHeading, top, width, 20) + 8
+        else visibilityBody:Hide(); top = top + 8 end
+        top = Position(profileHeading, top, width, 24) + 8
+        if view.profileExpanded then
+        profileBody:Show()
         top = Text(profileHelp, top, width) + 14
         top = Position(profileOwner, top, width, 26) + 12
         profileChoice:SetWidth(math.max(1, math.min(200, width - 58)))
@@ -162,6 +184,7 @@ function General.Create(parent, host, ownerView)
         top = Position(profileName, top, math.min(240, width), profileName:GetHeight()) + 12
         top = UI.LayoutFlow(page, actions, 16, top, width, 8) + 12
         view.contentHeight = Text(profileStatus, top, width) + 16
+        else profileBody:Hide(); view.contentHeight = top + 16 end
         return view.contentHeight
     end
     function view:Layout(width, height)

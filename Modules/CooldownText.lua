@@ -11,7 +11,12 @@ local observer, notifying = nil, false
 local function Call(record, method, first, second, third, fourth, fifth)
     local oldThis, oldEvent, oldArg = this, event, arg1
     this = record.button
-    local ok, result = pcall(record.label[method], record.label, first, second, third, fourth, fifth)
+    local ok, result
+    if fifth ~= nil then ok, result = pcall(record.label[method], record.label, first, second, third, fourth, fifth)
+    elseif fourth ~= nil then ok, result = pcall(record.label[method], record.label, first, second, third, fourth)
+    elseif third ~= nil then ok, result = pcall(record.label[method], record.label, first, second, third)
+    elseif first ~= nil then ok, result = pcall(record.label[method], record.label, first)
+    else ok, result = pcall(record.label[method], record.label) end
     this, event, arg1 = oldThis, oldEvent, oldArg
     if not ok then error(result, 0) end
     if result == false then error("Cooldown text rejected " .. method .. ".", 0) end
@@ -77,15 +82,27 @@ local function Owner(view)
     end
     return owner
 end
+local function ColorBand(remaining)
+    if remaining and remaining > 0 and remaining < 5 then return 5 end
+    if remaining and remaining > 0 and remaining < 10 then return 10 end
+    return 0
+end
 local function Style(record)
     local owner = record.owner
-    if record.fontSize ~= owner.size then
-        Call(record, "SetFont", record.face, owner.size, "OUTLINE"); record.fontSize = owner.size
+    local face = Bars.Services.TextStyle.Font(owner.font, record.face)
+    if record.fontSize ~= owner.size or record.fontFace ~= face then
+        record.fontSize, record.fontFace = nil, nil
+        Call(record, "SetFont", face, owner.size, "OUTLINE"); record.fontSize, record.fontFace = owner.size, face
     end
-    if record.r ~= owner.r or record.g ~= owner.g or record.b ~= owner.b or record.a ~= owner.a then
-        Call(record, "SetTextColor", owner.r, owner.g, owner.b, owner.a)
-        record.r, record.g, record.b, record.a = owner.r, owner.g, owner.b, owner.a
+    local band = ColorBand(record.remaining)
+    local r, g, b, a = owner.r, owner.g, owner.b, owner.a
+    if band == 5 then r, g, b, a = owner.under5R, owner.under5G, owner.under5B, owner.under5A
+    elseif band == 10 then r, g, b, a = owner.under10R, owner.under10G, owner.under10B, owner.under10A end
+    if record.r ~= r or record.g ~= g or record.b ~= b or record.a ~= a then
+        Call(record, "SetTextColor", r, g, b, a)
+        record.r, record.g, record.b, record.a = r, g, b, a
     end
+    record.colorBand = band
 end
 local function Attach(button)
     local view, index = button and button.bar, button and button.index
@@ -131,10 +148,28 @@ local function ConfigureView(view, drawing)
         or not Service.ValidFontSize(size) or not Service.ValidColor(r) or not Service.ValidColor(g)
         or not Service.ValidColor(b) or not Service.ValidColor(a) then return false, "Invalid cooldown appearance." end
     local owner = Owner(view)
+    local font = drawing.cooldownFont or "default"
+    if not Bars.Services.TextStyle.Choices[font] or drawing.cooldownFullSeconds ~= nil and type(drawing.cooldownFullSeconds) ~= "boolean" then
+        return false, "Invalid cooldown font or precision."
+    end
+    for _, seconds in ipairs({5, 10}) do
+        local prefix = "cooldownUnder" .. seconds
+        local defaults = {r, g, b, a}
+        for index, channel in ipairs({"R", "G", "B", "A"}) do
+            local value = drawing[prefix .. channel]
+            if value == nil then value = defaults[index] end
+            if not Service.ValidColor(value) then return false, "Invalid cooldown threshold color." end
+        end
+    end
     local configured, effectsChanged = Effects.Configure(owner, drawing)
     if not configured then return false, effectsChanged end
     owner.enabled, owner.size, owner.r, owner.g, owner.b, owner.a = enabled, size, r, g, b, a
+    local precisionChanged = owner.fullSeconds ~= drawing.cooldownFullSeconds
+    owner.fullSeconds, owner.font = drawing.cooldownFullSeconds, font
+    owner.under5R, owner.under5G, owner.under5B, owner.under5A = drawing.cooldownUnder5R or r, drawing.cooldownUnder5G or g, drawing.cooldownUnder5B or b, drawing.cooldownUnder5A or a
+    owner.under10R, owner.under10G, owner.under10B, owner.under10A = drawing.cooldownUnder10R or r, drawing.cooldownUnder10G or g, drawing.cooldownUnder10B or b, drawing.cooldownUnder10A or a
     for _, record in pairs(owner.records) do
+        if precisionChanged then record.kind, record.value = nil, nil end
         if effectsChanged then record.revision = (record.revision or 0) + 1 end
         Style(record)
         if owner.visible then record.suspended = false end
@@ -159,7 +194,10 @@ local function Update(button, start, duration, enabled)
     if changed or record.enabled ~= activeTimer or record.suspended then record.revision = (record.revision or 0) + 1 end
     record.start, record.duration, record.enabled = start, duration, activeTimer
     record.suspended = false
-    if changed then record.expired, record.kind, record.value = nil, nil, nil end
+    if changed then
+        record.expired, record.kind, record.value, record.remaining = nil, nil, nil, nil
+        if TextEligible(record) then Style(record) end
+    end
     Sync(record)
     return true
 end
@@ -193,11 +231,13 @@ local function Tick(now)
         local record = active[index]
         if not Eligible(record) then Remove(record)
         else
-            local kind, value = Service.Bucket(record.start + record.duration - now)
+            record.remaining = record.start + record.duration - now
+            local kind, value = Service.Bucket(record.remaining, record.owner.fullSeconds)
             if kind == nil then return false, value end
             if kind == 0 then record.expired = true; Remove(record)
             else
                 local revision = record.revision
+                if TextEligible(record) and record.colorBand ~= ColorBand(record.remaining) then Style(record) end
                 Effects.Paint(record, now)
                 if record.revision == revision and record.activeIndex and TextEligible(record)
                     and (record.kind ~= kind or record.value ~= value) then

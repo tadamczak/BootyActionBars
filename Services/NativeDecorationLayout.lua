@@ -57,6 +57,7 @@ function Layout.Resolve(drawing, count, target)
     local size = Number(drawing.buttonSize, 40, 24, 64)
     local spacing = Number(drawing.spacing, 4, 0, 20)
     local textureScale = Number(drawing.nativeTextureScalePct, 100, 50, 200) / 100
+    local borderScale = Number(drawing.nativeBorderScalePct, textureScale * 100, 50, 200) / 100
     local buttonScale = Number(drawing.nativeButtonScalePct, textureScale * 100, 50, 200) / 100
     local gryphonScale = Number(drawing.gryphonScalePct, 100, 50, 200) / 100
     local rows = math.ceil(count / columns)
@@ -79,7 +80,7 @@ function Layout.Resolve(drawing, count, target)
     target.socketSize = socketSize
     target.buttonScale = buttonScale
     target.innerLeft, target.innerTop, target.innerRight, target.innerBottom = -extent, -extent, width + extent, height + extent
-    local padding = border and 6 * textureScale or 0
+    local padding = border and 6 * borderScale or 0
     target.padLeft, target.padRight, target.padTop, target.padBottom = padding, padding, padding, padding
     target.left, target.top = target.innerLeft - target.padLeft, target.innerTop - target.padTop
     target.right, target.bottom = target.innerRight + target.padRight, target.innerBottom + target.padBottom

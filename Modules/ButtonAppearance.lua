@@ -5,7 +5,7 @@ Bars.Modules.ButtonAppearance = Appearance
 local NativeLayout = Bars.Services.NativeDecorationLayout
 local fields = {"hoverMode", "hoverSize", "hoverBackgroundShadow", "hoverBorderShadow", "hoverBorder", "hoverBorderSize", "hoverRadius",
     "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
-    "nativeTextureScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
+    "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
 for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
@@ -14,20 +14,32 @@ local borderFields = {hoverMode = true, hoverBorder = true, hoverSize = true, ho
     hoverR = true, hoverG = true, hoverB = true, hoverA = true, borderR = true, borderG = true, borderB = true, borderA = true}
 local hoverFields = {hoverMode = true, hoverSize = true, hoverBackgroundShadow = true, hoverBorderShadow = true,
     hoverBorder = true, hoverBorderSize = true, hoverRadius = true, hoverR = true, hoverG = true, hoverB = true, hoverA = true}
+local legacyHover = {}
+for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
+    for _, suffix in ipairs({"Size", "Radius", "R", "G", "B", "A"}) do
+        local key = prefix .. suffix
+        table.insert(fields, key); hoverFields[key] = true
+        if prefix == "hoverOutline" then borderFields[key] = true end
+        legacyHover[key] = "hover" .. suffix
+    end
+end
 local sides = {"left", "right"}
 local function Style(view, drawing)
     local style = view.buttonAppearance
     if not style then
-        style = {borderColor = {}, hoverColor = {}, borderRevision = 0, hoverRevision = 0}
+        style = {borderColor = {}, hoverColor = {}, hoverOutlineColor = {}, borderRevision = 0, hoverRevision = 0}
         view.buttonAppearance = style
     end
     local borderChanged, hoverChanged = false, false
     for _, key in ipairs(fields) do
         local value = drawing and drawing[key]
         if value == nil then
-            if key == "nativeSlotArtwork" then value = drawing and drawing.nativeTexture == true and drawing.nativeTextureBackground ~= false or false
+            if legacyHover[key] then
+                value = drawing and drawing[legacyHover[key]]
+                if value == nil then value = Bars.Services.BarLayout.DefaultValue(legacyHover[key]) end
+            elseif key == "nativeSlotArtwork" then value = drawing and drawing.nativeTexture == true and drawing.nativeTextureBackground ~= false or false
             elseif key == "nativeBackground" or key == "nativeBorder" then value = drawing and drawing.nativeTexture == true or false
-            elseif key == "nativeButtonScalePct" then value = drawing and drawing.nativeTextureScalePct or Bars.Services.BarLayout.DefaultValue("nativeTextureScalePct")
+            elseif key == "nativeButtonScalePct" or key == "nativeBorderScalePct" then value = drawing and drawing.nativeTextureScalePct or Bars.Services.BarLayout.DefaultValue("nativeTextureScalePct")
             elseif key == "hoverBackgroundShadow" then value = drawing and drawing.hoverMode == "shadow" or false
             elseif key == "hoverBorderShadow" then value = not drawing or not drawing.hoverMode or drawing.hoverMode == "default"
             elseif key == "hoverBorder" then value = drawing and drawing.hoverMode == "border" or false
@@ -41,6 +53,7 @@ local function Style(view, drawing)
     end
     style.borderColor[1], style.borderColor[2], style.borderColor[3] = style.borderR, style.borderG, style.borderB
     style.hoverColor[1], style.hoverColor[2], style.hoverColor[3] = style.hoverR, style.hoverG, style.hoverB
+    style.hoverOutlineColor[1], style.hoverOutlineColor[2], style.hoverOutlineColor[3] = style.hoverOutlineR, style.hoverOutlineG, style.hoverOutlineB
     local size, inset = drawing and drawing.buttonSize or 40, drawing and drawing.iconInset or 4
     if style.buttonSize ~= size or style.iconInset ~= inset then hoverChanged, borderChanged = true, true end
     if drawing then
@@ -56,17 +69,17 @@ local function Border(button, repair)
     local hover = button.appearanceHovered and style.hoverBorder
     local visible = style.showButtonBorder or hover
     local size = hover and style.hoverBorderSize or style.borderSize
-    local color = hover and style.hoverColor or style.borderColor
-    local alpha = hover and style.hoverA or style.borderA
+    local color = hover and style.hoverOutlineColor or style.borderColor
+    local alpha = hover and style.hoverOutlineA or style.borderA
     if not repair and button.appearanceBorderReady and button.appearanceBorderRevision == style.borderRevision
         and button.appearanceBorderHovered == hover then return end
     button.appearanceBorderReady = false
     if visible or button.mosProjectOutline then
         local minimum = math.max(button:GetFrameLevel(), button.cooldown and button.cooldown:GetFrameLevel() or 0) + 1
-        UI.SetProjectButtonOutline(button, visible, size, color, nil, minimum, hover and style.hoverRadius or nil)
+        UI.SetProjectButtonOutline(button, visible, size, color, nil, minimum, hover and style.hoverOutlineRadius or nil)
         local outline = button.mosProjectOutline
         if hover then
-            local expansion = style.hoverSize - 1
+            local expansion = style.hoverOutlineSize - 1
             outline:ClearAllPoints(); outline:SetPoint("TOPLEFT", button, "TOPLEFT", -expansion, expansion)
             outline:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", expansion, -expansion)
             outline:SetAlpha(alpha)
@@ -91,15 +104,15 @@ local function Feedback(button, repair)
     if background then
         if repair and background.mosRoundedHover then background.mosRoundedHover.ready = false end
         local ok, reason = pcall(UI.SetRoundedHoverSurface, button, background, backgroundShown, "background",
-            style.buttonSize * style.hoverSize / 5, style.hoverRadius,
-            style.hoverR, style.hoverG, style.hoverB, style.hoverA)
+            style.buttonSize * style.hoverBackgroundSize / 5, style.hoverBackgroundRadius,
+            style.hoverBackgroundR, style.hoverBackgroundG, style.hoverBackgroundB, style.hoverBackgroundA)
         if not ok then failure = tostring(reason) end
     end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     if repair and feedback.mosRoundedHover then feedback.mosRoundedHover.ready = false end
     local ok, reason = pcall(UI.SetRoundedHoverSurface, button, feedback, shown, "shadow",
-        style.buttonSize + 2 * (style.hoverSize - 1), style.hoverRadius,
-        style.hoverR, style.hoverG, style.hoverB, style.hoverA)
+        style.buttonSize + 2 * (style.hoverShadowSize - 1), style.hoverShadowRadius,
+        style.hoverShadowR, style.hoverShadowG, style.hoverShadowB, style.hoverShadowA)
     if not ok then failure = failure or tostring(reason) end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     if failure then error(failure) end
@@ -332,9 +345,30 @@ local function Decorations(view, style, repair)
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     CommitPaint(view, scene); NativeLayout.Copy(scene, art.committed); art.ready, art.hasCommitted = true, true
 end
+function Appearance.ApplyFont(label, choice, size)
+    if not label then return end
+    if not label.babOriginalFont then
+        local face, originalSize, flags = label:GetFont()
+        label.babOriginalFont, label.babOriginalSize, label.babOriginalFlags = face, originalSize, flags
+        label.babAppliedFont, label.babAppliedSize = face, originalSize
+    end
+    local face, failure = Bars.Services.TextStyle.Font(choice, label.babOriginalFont)
+    if not face then error(failure or "The button font is unavailable.") end
+    size = size or label.babOriginalSize
+    if label.babAppliedFont ~= face or label.babAppliedSize ~= size then
+        label.babAppliedFont, label.babAppliedSize = nil, nil
+        local ok = label:SetFont(face, size, label.babOriginalFlags)
+        if ok == false then error("The button font was declined.") end
+        label.babAppliedFont, label.babAppliedSize = face, size
+    end
+end
 local function ApplyView(view, drawing, repair)
     local style = Style(view, drawing)
+    Appearance.ApplyFont(view.title, drawing.titleFont)
     for _, button in ipairs(view.buttons) do
+        Appearance.ApplyFont(button.hotkey, drawing.hotkeyFont, drawing.labelFontSize)
+        Appearance.ApplyFont(button.count, drawing.countFont, drawing.labelFontSize)
+        Appearance.ApplyFont(button.nameLabel, drawing.macroFont, drawing.labelFontSize)
         if repair or button.appearanceBackground ~= style.buttonBackground then
             button.appearanceBackground = nil
             button:SetBackdropColor(0.08, 0.08, 0.08, style.buttonBackground and 0.95 or 0)

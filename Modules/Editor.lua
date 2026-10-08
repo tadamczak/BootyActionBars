@@ -8,14 +8,19 @@ local state = {active = false, editing = false, subscribed = false, handles = {}
 local CancelDrag, EnsureHandle, ContextEvent
 local function MergeOwner(id)
     if not Config.ValidOrdinaryID(id) or not Bars.Services.BarMerging then return id, Layout.SlotCount(id) end
-    return Bars.Services.BarMerging.Read(state.store and state.store.barMerges, id)
+    local store = state.store or {}
+    local groups, failure = state.ordinaryGroups
+    if not groups then groups, failure = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides) end
+    if not groups then return nil, failure end
+    return Bars.Services.BarMerging.Read(groups, id)
 end
 local function Slots(id)
     local _, count = MergeOwner(id)
     return count
 end
 local function Independent(id)
-    if MergeOwner(id) ~= id then return false, "This bar uses its merge owner's settings. Choose None to restore its individual settings." end
+    local store = state.store or {}
+    if Bars.Services.BarMerging.StyleOwner(store, id) ~= id then return false, "Turn off Use group settings to customize this bar." end
     return true
 end
 
@@ -111,13 +116,17 @@ function Editor.Configure(store)
     if not ok then return false, failure end
     ok, failure = Layout.ValidateGlobal(store.globalLayout)
     if not ok then return false, failure end
+    local groups; groups, failure = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides)
+    if not groups then return false, failure end
+    state.ordinaryGroups = groups
     state.store = store
     return true
 end
 function Editor.GetLayout(id)
     if not Layout.ValidID(id) then return nil, "Choose an action bar." end
     id = MergeOwner(id)
-    return Layout.Read(state.store and state.store.barLayouts, id, state.store and state.store.globalLayout, Slots(id))
+    if not state.store then return Layout.Read(nil, id, nil, Slots(id)) end
+    return Layout.ReadEffective(state.store, id, Slots(id))
 end
 function Editor.GetGlobalLayout() return Layout.ReadGlobal(state.store and state.store.globalLayout) end
 function Editor.ApplyView(view, force)
@@ -332,6 +341,9 @@ local function SetAppearance(id, key, value)
     record[key] = value
     if key == "hoverMode" then
         record.hoverBackgroundShadow, record.hoverBorderShadow, record.hoverBorder = value == "shadow", value == "default", value == "border"
+    elseif key == "hoverSize" or key == "hoverRadius" then
+        local suffix = key == "hoverSize" and "Size" or "Radius"
+        for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do record[prefix .. suffix] = value end
     end
     return Commit(id, record, false)
 end
@@ -349,6 +361,11 @@ local function SetColor(id, group, rgba)
     local record, message = LocalSettings(id)
     if not record then return false, message end
     for key, value in pairs(patch) do record[key] = value end
+    if group == "hover" then
+        for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
+            for _, channel in ipairs({"R", "G", "B", "A"}) do record[prefix .. channel] = patch["hover" .. channel] end
+        end
+    end
     return Commit(id, record, false)
 end
 function Editor.SetColor(id, group, rgba)
@@ -515,6 +532,9 @@ function Editor.SetGlobalLayout(key, value)
     if key == "nativeTexture" then patch.nativeBackground, patch.nativeBorder = value, value end
     if key == "hoverMode" then
         patch.hoverBackgroundShadow, patch.hoverBorderShadow, patch.hoverBorder = value == "shadow", value == "default", value == "border"
+    elseif key == "hoverSize" or key == "hoverRadius" then
+        local suffix = key == "hoverSize" and "Size" or "Radius"
+        for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do patch[prefix .. suffix] = value end
     end
     local ran, ok, failure = Run(SetGlobalPatch, patch)
     if not ran then return false, ok end
@@ -524,6 +544,11 @@ function Editor.SetGlobalColor(group, rgba)
     local ran, patch, reason = Run(Layout.ColorPatch, group, rgba)
     if not ran then return false, patch end
     if not patch then return false, reason end
+    if group == "hover" then
+        for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
+            for _, channel in ipairs({"R", "G", "B", "A"}) do patch[prefix .. channel] = patch["hover" .. channel] end
+        end
+    end
     local ok, failure
     ran, ok, failure = Run(SetGlobalPatch, patch)
     if not ran then return false, ok end
@@ -718,6 +743,25 @@ local function Anchor(id)
     if not ran then state.anchorFailures[id] = view; return nil, view end
     return view
 end
+function Editor.GetGroupAnchor(id)
+    local view, failure = Anchor(id)
+    if not view then return nil, failure end
+    local ok, reason = Editor.ApplyView(view)
+    if not ok then return nil, reason end
+    return view
+end
+function Editor.SetGroupExtent(id, width, height)
+    local handle = state.handles[id]
+    if not handle then return true end
+    local view = LiveView(id) or state.anchors[id]
+    if not view then return true end
+    if handle:ClearAllPoints() == false or handle:SetPoint("TOPLEFT", view.frame, "TOPLEFT", 0, 0) == false
+        or handle:SetWidth(width) == false or handle:SetHeight(height) == false then
+        return false, "Merged layout handle sizing was declined."
+    end
+    return true
+end
+function Editor.GetGroupHandle(id) return state.handles[id] end
 local function GridLine(grid, list, index, vertical)
     local line = list[index]
     if not line then
@@ -774,7 +818,7 @@ local function Sync()
     local firstFailure
     for _, id in ipairs(Config.LayoutIDs) do
         local live, view = LiveView(id), nil
-        local independent = MergeOwner(id) == id
+        local independent = Bars.Services.BarMerging.Read(state.store and state.store.barMerges, id) == id
         if independent and live and not live.editPreview and live.frame:IsVisible() then view = live end
         if independent and not view and state.editing and state.showAnchors then
             local reason
@@ -800,6 +844,10 @@ local function Sync()
             local ok, failure = Detach(id)
             if not ok and not firstFailure then firstFailure = failure end
         end
+        if live and live.SetEditing then
+            local ok, reason = Try(live.SetEditing, live, state.editing)
+            if not ok and not firstFailure then firstFailure = reason end
+        end
     end
     local ok, failure = Try(DrawGrid)
     if not ok and not firstFailure then firstFailure = failure end
@@ -808,6 +856,7 @@ end
 function Editor.Sync()
     local ran, ok, failure = Run(Sync)
     if not ran then return false, ok end
+    if ok and Bars.Modules.BarGroups then ok, failure = Bars.Modules.BarGroups.Refresh() end
     return ok, failure
 end
 function Editor.SetShowAnchors(value)
