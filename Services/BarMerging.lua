@@ -1,15 +1,16 @@
 local Merging = {}
 BootyActionBars.Services.BarMerging = Merging
-Merging.LIMIT, Merging.SLOTS_PER_BAR = 6, 12
+local Config = BootyActionBars.Services.BarConfig
+Merging.LIMIT, Merging.SLOTS_PER_BAR = table.getn(Config.OrdinaryIDs), Config.SLOT_COUNT
 
 function Merging.ValidID(id)
-    return type(id) == "number" and id >= 1 and id <= Merging.LIMIT and id == math.floor(id)
+    return Config.ValidOrdinaryID(id)
 end
 local function Children(list, allowEmpty)
     if type(list) ~= "table" then return nil, "Merged action bars need an ordered child list." end
     local count, seen = 0, {}
     for index, id in pairs(list) do
-        if type(index) ~= "number" or index < 1 or index > 5 or index ~= math.floor(index)
+        if type(index) ~= "number" or index < 1 or index >= Merging.LIMIT or index ~= math.floor(index)
             or not Merging.ValidID(id) or seen[id] then return nil, "Merged action bars contain an invalid or duplicate child." end
         seen[id], count = true, count + 1
     end
@@ -22,7 +23,7 @@ function Merging.Validate(groups)
     if type(groups) ~= "table" then return false, "Invalid saved merged action bars." end
     local owners = {}
     for host, list in pairs(groups) do
-        if not Merging.ValidID(host) then return false, "Only ordinary action bars 1-6 can own merged groups." end
+        if not Merging.ValidID(host) then return false, "Only ordinary action bars can own merged groups." end
         local count, failure = Children(list, false)
         if not count then return false, failure end
         for index = 1, count do
@@ -48,7 +49,7 @@ function Merging.Copy(groups)
 end
 function Merging.Equal(first, second)
     if not Merging.Validate(first) or not Merging.Validate(second) then return false end
-    for host = 1, Merging.LIMIT do
+    for _, host in ipairs(Config.OrdinaryIDs) do
         local left, right = first and rawget(first, host), second and rawget(second, host)
         if (left == nil) ~= (right == nil) then return false end
         if left then
@@ -62,7 +63,7 @@ function Merging.Read(groups, id)
     if not Merging.ValidID(id) then return nil, "Only ordinary action bars can be merged." end
     local valid, failure = Merging.Validate(groups)
     if not valid then return nil, failure end
-    for host = 1, Merging.LIMIT do
+    for _, host in ipairs(Config.OrdinaryIDs) do
         local children = groups and rawget(groups, host)
         if children then
             local count = (table.getn(children) + 1) * Merging.SLOTS_PER_BAR
@@ -116,7 +117,7 @@ local function Detach(groups, owner, source)
 end
 function Merging.SetDestination(groups, source, destination)
     if not Merging.ValidID(source) or destination ~= nil and not Merging.ValidID(destination) then
-        return nil, "Only ordinary action bars 1-6 can be merged."
+        return nil, "Only ordinary action bars can be merged."
     end
     if source == destination then return nil, "An action bar cannot be merged into itself." end
     local copy, failure = Merging.Copy(groups)

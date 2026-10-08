@@ -38,7 +38,7 @@ Notify = function()
     local ok, failure = Summary()
     if not ok then return Failure(failure) end
     if capture and capture.label then
-        local label = state.command and ((state.barId == 7 and "Pet" or state.barId == 8 and "Form" or "Bar " .. state.barId)
+        local label = state.command and ((Bars.Services.BarConfig.Name(state.barId))
             .. ", button " .. state.index) or "Click a button or choose it in the panel"
         capture.label:SetText("Keybindings: " .. label .. ". Press a key; Escape clears. Save / Cancel in /bab.")
     end

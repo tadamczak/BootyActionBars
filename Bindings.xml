@@ -275,4 +275,148 @@
     <Binding name="BOOTYACTIONBARS_STANCE_BUTTON10" runOnUp="true">
         BootyActionBars.Modules.SpecialBars.UseButton("stance", 10, keystate);
     </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON1" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 1, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON2" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 2, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON3" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 3, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON4" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 4, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON5" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 5, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON6" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 6, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON7" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 7, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON8" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 8, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON9" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 9, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON10" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 10, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON11" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 11, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR7_BUTTON12" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(9, 12, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON1" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 1, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON2" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 2, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON3" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 3, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON4" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 4, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON5" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 5, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON6" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 6, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON7" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 7, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON8" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 8, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON9" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 9, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON10" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 10, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON11" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 11, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR8_BUTTON12" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(10, 12, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON1" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 1, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON2" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 2, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON3" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 3, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON4" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 4, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON5" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 5, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON6" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 6, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON7" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 7, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON8" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 8, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON9" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 9, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON10" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 10, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON11" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 11, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR9_BUTTON12" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(11, 12, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON1" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 1, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON2" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 2, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON3" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 3, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON4" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 4, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON5" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 5, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON6" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 6, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON7" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 7, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON8" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 8, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON9" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 9, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON10" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 10, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON11" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 11, keystate);
+    </Binding>
+    <Binding name="BOOTYACTIONBARS_BAR10_BUTTON12" runOnUp="true">
+        BootyActionBars.Core.Engine.UseCustomButton(12, 12, keystate);
+    </Binding>
 </Bindings>

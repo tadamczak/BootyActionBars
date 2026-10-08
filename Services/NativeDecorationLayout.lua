@@ -8,7 +8,7 @@ Layout.GryphonTexture = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf"
 Layout.SlotUV = {47 / 256, 90 / 256, 213 / 256, 1}
 Layout.BackingUV = {56 / 256, 248 / 256, 94 / 256, 126 / 256}
 Layout.BackingPixels = {192, 32}
-Layout.MaxBackingPieces = 693 -- Worst legal 72-slot partial row at 50% body / 200% socket scale; lazy only.
+Layout.MaxBackingPieces = 1155 -- Worst legal 120-slot partial row at 50% body / 200% socket scale; lazy only.
 local keys = {"count", "columns", "buttonSize", "spacing", "nativeTexture", "nativeBackground", "nativeBorder", "slotArtwork", "gryphons",
     "textureScale", "buttonScale", "gryphonScale", "width", "height", "tileSize", "socketSize", "step", "left", "top", "right", "bottom",
     "innerLeft", "innerTop", "innerRight", "innerBottom", "padLeft", "padRight", "padTop", "padBottom",
@@ -52,7 +52,7 @@ end
 function Layout.Resolve(drawing, count, target)
     target = target or {}
     drawing = drawing or {}
-    count = math.floor(Number(count, 12, 1, 72))
+    count = math.floor(Number(count, 12, 1, 120))
     local columns = math.floor(Number(drawing.columns, count, 1, count))
     local size = Number(drawing.buttonSize, 40, 24, 64)
     local spacing = Number(drawing.spacing, 4, 0, 20)

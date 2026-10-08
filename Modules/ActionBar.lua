@@ -92,18 +92,19 @@ end
 local function UpdateCaption(view)
     if not view.showTitle then return end
     if view.mergeViews then
-        view.title:SetText("Bar " .. view.id .. " (" .. table.getn(view.layoutButtons) .. " slots)")
+        view.title:SetText(Bars.Services.BarConfig.Name(view.id) .. " (" .. table.getn(view.layoutButtons) .. " slots)")
         return
     end
     if view.gridWidth < 320 then
-        local label = "Bar " .. view.id
-        if view.behaviorMatched then label = view.gridWidth < 80 and view.id .. ">" .. view.page or label .. " >" .. view.page end
+        local page = Bars.Services.BarConfig.Page(view.id)
+        local label = "Bar " .. page
+        if view.behaviorMatched then label = view.gridWidth < 80 and page .. ">" .. view.page or label .. " >" .. view.page end
         view.title:SetText(label); return
     end
     if not view.page then view.title:SetText("BootyActionBars (slots 1-12)"); return end
     local label
-    if view.behaviorMatched then label = "BootyActionBars " .. view.id .. " (source " .. view.page
-    else label = view.id == 1 and "BootyActionBars (page " .. view.page or "BootyActionBars custom " .. view.id .. " (fixed" end
+    if view.behaviorMatched then label = "BootyActionBars " .. Bars.Services.BarConfig.Page(view.id) .. " (source " .. view.page
+    else label = view.id == 1 and "BootyActionBars (page " .. view.page or "BootyActionBars custom " .. Bars.Services.BarConfig.Page(view.id) .. " (fixed" end
     view.title:SetText(label .. ", slots " .. (view.offset + 1) .. "-" .. (view.offset + 12) .. ")")
 end
 local function FormatHotkey(button, key, second, nativeEvent, nativeArg)
@@ -294,7 +295,7 @@ end
 
 function ActionBar.Create(callbacks, barId)
     barId = barId or 1
-    if type(barId) ~= "number" or barId < 1 or barId > 6 or barId ~= math.floor(barId) then
+    if not Bars.Services.BarConfig.ValidOrdinaryID(barId) then
         error("Invalid action bar identity.")
     end
     if pooled[barId] then return pooled[barId] end
@@ -313,7 +314,7 @@ function ActionBar.Create(callbacks, barId)
     if frame.SetUserPlaced then frame:SetUserPlaced(false) end
     if frame.SetClampedToScreen then frame:SetClampedToScreen(true) end
     frame:SetWidth(524); frame:SetHeight(40)
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, -180 + (barId - 1) * 68)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, -180 + (Bars.Services.BarConfig.Page(barId) - 1) * 68)
     local title = UI.CreateComponentLabel(frame, "BootyActionBars (slots 1-12)", "white")
     view.title = title
     title:SetPoint("BOTTOM", frame, "TOP", 0, 8)
@@ -324,7 +325,7 @@ function ActionBar.Create(callbacks, barId)
         local name = prefix .. index
         local button = UI.CreateCheckButton(name, frame)
         view.buttons[index] = button
-        button.index, button.action, button.bar = index, (barId - 1) * 12 + index, view
+        button.index, button.action, button.bar = index, Bars.Services.BarConfig.Offset(barId) + index, view
         button.bindingCommand = Bars.Services and Bars.Services.BindingService and Bars.Services.BindingService.Command(barId, index)
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
@@ -376,14 +377,14 @@ function ActionBar.Create(callbacks, barId)
     function view:SetMergeGroup(host, ordinal, members)
         host, ordinal = host or self, ordinal or 0
         if type(host) ~= "table" or not host.frame or not host.buttons or type(ordinal) ~= "number"
-            or ordinal < 0 or ordinal > 5 or ordinal ~= math.floor(ordinal) then return false, "Invalid merged action bar composition." end
+            or ordinal < 0 or ordinal >= table.getn(Bars.Services.BarConfig.OrdinaryIDs) or ordinal ~= math.floor(ordinal) then return false, "Invalid merged action bar composition." end
         local signature = 0
         if host == self then
             members = members or {self}
-            if table.getn(members) < 1 or table.getn(members) > 6 or members[1] ~= self then return false, "Invalid merged source order." end
+            if table.getn(members) < 1 or table.getn(members) > table.getn(Bars.Services.BarConfig.OrdinaryIDs) or members[1] ~= self then return false, "Invalid merged source order." end
             for _, source in ipairs(members) do
                 if type(source) ~= "table" or not source.buttons or table.getn(source.buttons) ~= 12 then return false, "Merged sources must retain twelve buttons." end
-                signature = signature * 7 + source.id
+                signature = signature * (table.getn(Bars.Services.BarConfig.LayoutIDs) + 1) + source.id
             end
         end
         local expectedParent = host ~= self and host.frame or self.mergeOriginal and self.mergeOriginal.parent or self.frame:GetParent()

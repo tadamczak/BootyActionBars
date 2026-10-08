@@ -34,6 +34,9 @@ local function Defaults(store)
     if store.mainBarShown ~= nil and type(store.mainBarShown) ~= "boolean" then
         error("Invalid main bar visibility. Preserve the saved file before repairing it.")
     end
+    if store.mainBarFollowClient ~= nil and type(store.mainBarFollowClient) ~= "boolean" then
+        error("Invalid main bar page following. Preserve the saved file before repairing it.")
+    end
     if Bars.Services.LayoutProfiles then
         valid, failure = Bars.Services.LayoutProfiles.ValidateStore(store.layoutProfiles)
         if not valid then error(failure) end
@@ -94,6 +97,9 @@ function Database.Ensure()
         if not valid then return nil, failure end
         if store.mainBarShown ~= nil and type(store.mainBarShown) ~= "boolean" then
             return nil, "Invalid main bar visibility. Preserve the saved file before repairing it."
+        end
+        if store.mainBarFollowClient ~= nil and type(store.mainBarFollowClient) ~= "boolean" then
+            return nil, "Invalid main bar page following. Preserve the saved file before repairing it."
         end
         if Bars.Services.LayoutProfiles then
             valid, failure = Bars.Services.LayoutProfiles.ValidateStore(store.layoutProfiles)

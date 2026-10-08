@@ -1,10 +1,11 @@
 local Bars = BootyActionBars
 local UI, Runtime = Bars.UI.Components, Bars.Core.Runtime
+local Config = Bars.Services.BarConfig
 local BehaviorSettings = {}
 Bars.Modules.BehaviorSettings = BehaviorSettings
 local MAX_RULES, MAX_CHOICES = 16, 12
 
-local function Ordinary(id) return type(id) == "number" and id >= 1 and id <= 6 end
+local function Ordinary(id) return Config.ValidOrdinaryID(id) end
 local function SameForm(left, right)
     return left.classToken == right.classToken and left.locale == right.locale and left.formName == right.formName
 end
@@ -60,6 +61,26 @@ function BehaviorSettings.Create(parent, context)
     local add = UI.CreateButton(frame, nil, "Add", 72, 24); UI.StyleActionButton(add)
     view.add, view.help, view.status = add, help, status
     local function Complete(ok, failure, skipRefresh) return context.Complete(ok, failure, skipRefresh) end
+    local followingRow = UI.CreateContainer(nil, frame); followingRow.babBaseHeight = 32
+    local following = UI.Settings.CreateCheckbox(followingRow, 0, 0, "Follow client pages and forms", "mainBarFollowClient", nil,
+        {ensure = function() end, get = Runtime.GetMainBarFollowClient, set = function(_, value)
+            if context.GetSelection() ~= 1 or not frame:IsVisible() or not Available() then
+                return Complete(false, "Choose the independent Main Action Bar.", true)
+            end
+            local closed, failure = view:Close(); if not closed then return Complete(false, failure) end
+            if context.Prepare then
+                closed, failure = context.Prepare(); if not closed then return Complete(false, failure) end
+            end
+            if context.GetSelection() ~= 1 or not frame:IsVisible() or not Available() then
+                return Complete(false, "The selected action bar changed.", true)
+            end
+            return Complete(Runtime.SetMainBarFollowClient(value))
+        end})
+    followingRow.kind, followingRow.control = "check", following
+    local followingHelp = UI.CreateComponentLabel(frame,
+        "Fallback when no custom rule matches: follow the game's pages, Stealth and forms. Turn off to use Main Action Bar slots 1-12.", "white")
+    followingHelp:SetJustifyH("LEFT"); followingHelp:SetJustifyV("TOP")
+    view.followingRow, view.followingCheckbox, view.followingHelp = followingRow, following, followingHelp
     local function Current(session)
         local runtimeState = Runtime.GetState()
         return view.session == session and frame:IsVisible() and context.GetSelection() == session.id
@@ -115,7 +136,7 @@ function BehaviorSettings.Create(parent, context)
         end
         view.when = Choice(-86, placeholders, "choice")
         local sources = {}
-        for index = 1, 6 do sources[index] = {value = index, text = index == 1 and "Main Action Bar" or "Action Bar " .. index} end
+        for _, id in ipairs(Config.OrdinaryIDs) do table.insert(sources, {value = id, text = Config.Name(id)}) end
         view.source = Choice(-154, sources, "sourceBar")
         local whenLabel = UI.CreateComponentLabel(modal, "When", "white")
         whenLabel:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -62); whenLabel:SetWidth(288); whenLabel:SetHeight(18)
@@ -175,7 +196,7 @@ function BehaviorSettings.Create(parent, context)
         CreateModal(); self.session = session
         if UI.WindowStack then UI.WindowStack.SetOwner(self.modal, session.owner) end
         Choices(self.when, session.options, session.choice); Choices(self.source, self.source.choices, session.sourceBar)
-        self.modal:Open(id == 1 and "Main Action Bar" or "Action Bar " .. id, function()
+        self.modal:Open(Config.Name(id), function()
             if not Current(session) then
                 if self.session == session then self.session = nil end
                 return Complete(false, "The selected bar changed. Open the rule again.", true)
@@ -222,6 +243,15 @@ function BehaviorSettings.Create(parent, context)
         local id = context.GetSelection()
         if not Ordinary(id) then self:Close(); frame:Hide(); return true end
         frame:Show()
+        if id == 1 then
+            followingRow:Show(); followingHelp:Show()
+            following:SetChecked(Runtime.GetMainBarFollowClient() and 1 or nil)
+            UI.Settings.SetCheckboxEnabled(following, Available())
+            help:SetText("First matching custom rule wins. If none matches, the built-in fallback below chooses the actions.")
+        else
+            followingRow:Hide(); followingHelp:Hide()
+            help:SetText("First matching rule wins. If none matches, this bar uses its fixed action slots.")
+        end
         local token, tokenFailure = Runtime.CaptureBarBehaviors(id)
         local rules, failure = Runtime.GetBarBehaviors(id)
         local catalog, catalogFailure = Runtime.GetBehaviorCatalog()
@@ -231,13 +261,13 @@ function BehaviorSettings.Create(parent, context)
         local count = table.getn(self.rules)
         local available = Conditions(self.rules, self.catalog)
         if self.failure or count == 0 or table.getn(available) == 0 then
-            status:SetText(self.failure or (count == 0 and "No rules. The bar uses its normal actions."
+            status:SetText(self.failure or (count == 0 and (id == 1 and "No custom rules." or "No rules. The bar uses its fixed action slots.")
                 or "All available conditions are already configured.")); status:Show()
         else status:Hide() end
         for index = 1, math.min(MAX_RULES, count) do
             local row = self.rows[index] or Row(index)
             local source = self.rules[index].sourceBar
-            row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog) .. " -> " .. (source == 1 and "Main Action Bar" or "Action Bar " .. source))
+            row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog) .. " -> " .. Config.Name(source))
             row:Show()
             UI.SetButtonEnabled(row.edit, Available()); UI.SetButtonEnabled(row.remove, Available())
             UI.SetButtonEnabled(row.up, Available() and index > 1)
@@ -270,6 +300,12 @@ function BehaviorSettings.Create(parent, context)
                 row:SetHeight((inline and math.max(row.label:GetHeight(), actionHeight) or row.label:GetHeight() + 4 + actionHeight) + 10)
                 top = top + row:GetHeight()
             end
+        end
+        if followingRow:IsShown() then
+            top = top + Bars.Modules.AppearanceSettings.LayoutRow(followingRow, frame, 0, -top, width) + 4
+            followingHelp:ClearAllPoints(); followingHelp:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top)
+            followingHelp:SetWidth(width); followingHelp:SetHeight(UI.MeasureTextHeight(followingHelp, width))
+            top = top + followingHelp:GetHeight() + 8
         end
         add:ClearAllPoints(); add:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top); add:SetWidth(math.min(72, width))
         frame:SetHeight(top + add:GetHeight() + 10); return frame:GetHeight()

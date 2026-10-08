@@ -178,10 +178,10 @@ function ActionService.Create(api)
 
     function service.GetBindingKeys(index, barId)
         if not ValidIndex(index, 12) then return nil, nil, "invalid-button" end
-        if barId ~= nil and (not ValidIndex(barId, 6) or barId < 2) then return nil, nil, "invalid-bar" end
+        if barId ~= nil and not Bars.Services.BarConfig.ValidID(barId) then return nil, nil, "invalid-bar" end
         local getBindingKey = Function(api, "GetBindingKey")
         if not getBindingKey then return nil, nil, "unavailable-api" end
-        local command = barId and "BOOTYACTIONBARS_BAR" .. barId .. "_BUTTON" .. index or "BOOTYACTIONBARS_BUTTON" .. index
+        local command = Bars.Services.BindingService.Command(barId or 1, index)
         return getBindingKey(command)
     end
 

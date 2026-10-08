@@ -1,12 +1,13 @@
 local Bars = BootyActionBars
 local Layout, UI = Bars.Services.BarLayout, Bars.UI.Components
+local Config = Bars.Services.BarConfig
 local Editor = {}
 Bars.Modules.Editor = Editor
 local state = {active = false, editing = false, subscribed = false, handles = {}, drags = {}, handleFailures = {},
     anchors = {}, anchorFailures = {}, showAnchors = false, showGrid = false}
 local CancelDrag, EnsureHandle, ContextEvent
 local function MergeOwner(id)
-    if id > 6 or not Bars.Services.BarMerging then return id, Layout.SlotCount(id) end
+    if not Config.ValidOrdinaryID(id) or not Bars.Services.BarMerging then return id, Layout.SlotCount(id) end
     return Bars.Services.BarMerging.Read(state.store and state.store.barMerges, id)
 end
 local function Slots(id)
@@ -114,7 +115,7 @@ function Editor.Configure(store)
     return true
 end
 function Editor.GetLayout(id)
-    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
+    if not Layout.ValidID(id) then return nil, "Choose an action bar." end
     id = MergeOwner(id)
     return Layout.Read(state.store and state.store.barLayouts, id, state.store and state.store.globalLayout, Slots(id))
 end
@@ -244,7 +245,7 @@ local function Capture(view, context)
     return Layout.Capture(x, y, view.frame:GetEffectiveScale(), context.scale, context.x, context.y)
 end
 local function SetScale(id, percent)
-    if not Layout.ValidID(id) or not Layout.ValidScale(percent) then return false, "Choose bar 1-8 and an integer scale from 50 to 200." end
+    if not Layout.ValidID(id) or not Layout.ValidScale(percent) then return false, "Choose an action bar and an integer scale from 50 to 200." end
     local cancelled, failure = CancelDrag(id)
     if not cancelled then return false, failure end
     local record, reason = LocalSettings(id)
@@ -296,7 +297,7 @@ function Editor.SetGrid(id, columns, spacing)
 end
 local function SetDisplay(id, key, value)
     if not Layout.ValidID(id) or not Layout.ValidDisplayKey(key) or type(value) ~= "boolean" then
-        return false, "Choose bar 1-8 and a true or false display setting."
+        return false, "Choose an action bar and a true or false display setting."
     end
     local record, failure = LocalSettings(id)
     if not record then return false, failure end
@@ -340,7 +341,7 @@ function Editor.SetAppearance(id, key, value)
     return ok, failure
 end
 local function SetColor(id, group, rgba)
-    if not Layout.ValidID(id) then return false, "Choose bar 1-8." end
+    if not Layout.ValidID(id) then return false, "Choose an action bar." end
     local patch, reason = Layout.ColorPatch(group, rgba)
     if not patch then return false, reason end
     local cancelled, failure = CancelDrag(id)
@@ -370,7 +371,7 @@ function Editor.SetPosition(id, x, y)
     return ok, failure
 end
 local function Reset(id)
-    if not Layout.ValidID(id) then return false, "Choose an action bar from 1 to 8." end
+    if not Layout.ValidID(id) then return false, "Choose an action bar." end
     local ok, failure = CancelDrag(id)
     if not ok then return false, failure end
     local current, reason = Editor.GetLayout(id)
@@ -402,14 +403,14 @@ CancelDrag = function(id)
 end
 local function CancelAll()
     local firstFailure
-    for id = 1, 8 do
+    for _, id in ipairs(Config.LayoutIDs) do
         local ok, failure = CancelDrag(id)
         if not ok and not firstFailure then firstFailure = failure end
     end
     return firstFailure == nil, firstFailure
 end
 local function SetUseGlobalLayout(id, enabled)
-    if not Layout.ValidID(id) or type(enabled) ~= "boolean" then return false, "Choose bar 1-8 and whether to use global settings." end
+    if not Layout.ValidID(id) or type(enabled) ~= "boolean" then return false, "Choose an action bar and whether to use global settings." end
     local independent, detail = Independent(id)
     if not independent then return false, detail end
     local cancelled, failure = CancelDrag(id)
@@ -451,7 +452,7 @@ local function SetGlobalPatch(patch)
     local merges = store.barMerges
     local beforeMerges = Bars.Services.BarMerging and Bars.Services.BarMerging.Copy(merges)
     local beforeGlobal, beforeLayouts, records = Copy(global), Copy(layouts), {}
-    for id = 1, 8 do records[id] = Copy(layouts and layouts[id]) end
+    for _, id in ipairs(Config.LayoutIDs) do records[id] = Copy(layouts and layouts[id]) end
     local proposed = Copy(global)
     for key in pairs(Layout.ExplicitKeys) do proposed[key] = current[key] end
     for key, value in pairs(patch) do
@@ -461,7 +462,7 @@ local function SetGlobalPatch(patch)
         local owner = Owner()
         if owner ~= store or store.barLayouts ~= layouts or store.globalLayout ~= global
             or not Same(global, beforeGlobal) or not Same(layouts, beforeLayouts) or not SameMerges(store, merges, beforeMerges) then return false end
-        for id = 1, 8 do if not Same(layouts and layouts[id], records[id]) then return false end end
+        for _, id in ipairs(Config.LayoutIDs) do if not Same(layouts and layouts[id], records[id]) then return false end end
         return true
     end
     local function Repair(message)
@@ -469,7 +470,7 @@ local function SetGlobalPatch(patch)
         -- replacement store belongs to Runtime's lifecycle, not this editor.
         local owner = Owner()
         if owner == store then
-            for id = 1, 8 do
+            for _, id in ipairs(Config.LayoutIDs) do
                 local view = View(id)
                 if view and view.frame:IsVisible() then
                     local ok, failure = Try(Editor.ApplyView, view, false)
@@ -479,7 +480,7 @@ local function SetGlobalPatch(patch)
         end
         return false, message
     end
-    for id = 1, 8 do
+    for _, id in ipairs(Config.LayoutIDs) do
         local view = View(id)
         if view then
             local previous = Layout.Read(layouts, id, global, Slots(id))
@@ -492,7 +493,7 @@ local function SetGlobalPatch(patch)
     if not Owned() then return Repair("Global action bar settings ownership changed while cancelling input.") end
     Bars.Core.Engine.MarkLayoutChanged()
     local firstFailure
-    for id = 1, 8 do
+    for _, id in ipairs(Config.LayoutIDs) do
         local view = View(id)
         if view and view.frame:IsVisible() then
             local candidate, message = Layout.Read(layouts, id, proposed, Slots(id))
@@ -671,7 +672,7 @@ function Editor.End()
         local ended, failure = Try(Bars.Modules.SpecialBars.SetEditing, false, false)
         if not ended and not firstFailure then firstFailure = failure end
     end
-    for id = 1, 8 do
+    for _, id in ipairs(Config.LayoutIDs) do
         local detached, failure = Detach(id)
         if not detached and not firstFailure then firstFailure = failure end
     end
@@ -698,7 +699,7 @@ local function CreateAnchor(id)
     if frame.SetDontSavePosition then frame:SetDontSavePosition(true) end
     if frame.SetUserPlaced then frame:SetUserPlaced(false) end
     if frame.SetClampedToScreen then frame:SetClampedToScreen(true) end
-    local text = id == 1 and "Main bar" or id == 7 and "Pet bar" or id == 8 and "Forms / stances" or "Bar " .. id
+    local text = Config.Name(id)
     view.label = UI.CreateComponentLabel(frame, text, "gold")
     view.label:SetPoint("CENTER", frame, "CENTER", 0, 0)
     function view:SetGrid(value)
@@ -771,7 +772,7 @@ local function DrawGrid()
 end
 local function Sync()
     local firstFailure
-    for id = 1, 8 do
+    for _, id in ipairs(Config.LayoutIDs) do
         local live, view = LiveView(id), nil
         local independent = MergeOwner(id) == id
         if independent and live and not live.editPreview and live.frame:IsVisible() then view = live end
@@ -839,7 +840,7 @@ function Editor.Begin()
     if not state.active or not Bars.Core.Engine.GetState().active then return false, "Enable and show the action bars before editing." end
     if state.editing then return true end
     state.editing = true
-    for id = 1, 8 do
+    for _, id in ipairs(Config.LayoutIDs) do
         local view = View(id)
         if view and view.frame:IsVisible() then
             local ok, failure = Try(view.CancelInput, view)

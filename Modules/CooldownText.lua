@@ -1,6 +1,7 @@
 local Bars = BootyActionBars
 local Service, UI = Bars.Services.CooldownTextService, Bars.UI.Components
 local Effects = Bars.Modules.CooldownEffects
+local Config = Bars.Services.BarConfig
 local Module = {}
 Bars.Modules.CooldownText = Module
 local records, views, active = {}, {}, {}
@@ -48,7 +49,7 @@ local function TextEligible(record)
 end
 local function Eligible(record)
     local view = record.owner
-    local count = view.view.count or (view.view.id <= 6 and 12 or 0)
+    local count = view.view.count or (Config.ValidOrdinaryID(view.view.id) and Config.SLOT_COUNT or 0)
     return view.visible and not record.suspended and not record.expired
         and record.button.index <= count and record.button.emptyHidden ~= true
         and record.enabled and record.start > 0 and record.duration > 0
@@ -88,12 +89,12 @@ local function Style(record)
 end
 local function Attach(button)
     local view, index = button and button.bar, button and button.index
-    if type(view) ~= "table" or type(view.id) ~= "number" or view.id < 1 or view.id > 8 or view.id ~= math.floor(view.id)
+    if type(view) ~= "table" or not Config.ValidLayoutID(view.id)
         or type(index) ~= "number" or index < 1 or index ~= math.floor(index)
-        or index > (view.id <= 6 and 12 or 10) or not button.cooldown then
+        or index > Config.SlotCount(view.id) or not button.cooldown then
         return false, "Invalid cooldown button."
     end
-    local id = view.id <= 6 and (view.id - 1) * 12 + index or 72 + (view.id - 7) * 10 + index
+    local id = Config.RecordOffset(view.id) + index
     local record = records[id]
     if record then
         if record.button ~= button then return false, "A cooldown button identity is already owned." end
