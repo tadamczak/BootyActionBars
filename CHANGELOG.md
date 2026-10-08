@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.32
+
+- Smooth circular cooldown transitions with the existing atlas and one adaptive shared clock.
+- Apply column dragging once on release; cancelled dragging keeps the saved layout.
+- Add Top, Bottom, Left and Right merge sides for ordinary, pet, form and utility bars, saved in layout profiles.
+
+
 ## 0.1.0-dev.31 — 2026-10-08
 
 - Fix overlapping Layout editing controls by moving their anchors into the accordion rows after reparenting.

@@ -37,7 +37,7 @@ function Profiles.Validate(profile)
     for key in pairs(profile) do
         if key ~= "version" and key ~= "barLayouts" and key ~= "customBars" and key ~= "specialBars"
             and not (profile.version == 2 and (key == "globalLayout" or key == "mainBarShown" or key == "mainBarFollowClient"
-                or key == "barBehaviors" or key == "utilityLayouts" or key == "barMerges" or key == "mergeStyleOverrides")) then return false, "Unexpected layout profile data." end
+                or key == "barBehaviors" or key == "utilityLayouts" or key == "barMerges" or key == "mergeStyleOverrides" or key == "mergeSides")) then return false, "Unexpected layout profile data." end
     end
     local ok, failure = Bars.Services.BarConfig.Validate(profile.customBars)
     if not ok then return false, failure end
@@ -51,6 +51,11 @@ function Profiles.Validate(profile)
         if profile.barMerges ~= nil then
             if not Bars.Services.BarMerging then return false, "Merged layouts are unavailable." end
             ok, failure = Bars.Services.BarMerging.Validate(profile.barMerges)
+            if not ok then return false, failure end
+        end
+        if profile.mergeSides ~= nil then
+            if not Bars.Services.BarMerging then return false, "Merged layouts are unavailable." end
+            ok, failure = Bars.Services.BarMerging.ValidateSides(profile.mergeSides)
             if not ok then return false, failure end
         end
         if profile.mergeStyleOverrides ~= nil then
@@ -115,6 +120,8 @@ function Profiles.Capture(store)
         if not result.barMerges then return nil, failure end
         local valid; valid, failure = Bars.Services.BarMerging.ValidateOverrides(store.mergeStyleOverrides)
         if not valid then return nil, failure end
+        result.mergeSides, failure = Bars.Services.BarMerging.CopySides(store.mergeSides)
+        if not result.mergeSides then return nil, failure end
         result.mergeStyleOverrides = Flags(store.mergeStyleOverrides)
     end
     if Bars.Services.UtilityLayout then
@@ -143,6 +150,9 @@ function Profiles.Prepare(profile, existingLayouts, existingGlobal, existingBeha
         result.barMerges, failure = Bars.Services.BarMerging.Copy(profile.barMerges)
         if not result.barMerges then return nil, failure end
         result.replaceMerges = true
+    end
+    if profile.version == 2 and profile.mergeSides ~= nil then
+        result.mergeSides = Flags(profile.mergeSides); result.replaceMergeSides = true
     end
     if profile.version == 2 and profile.mergeStyleOverrides ~= nil then
         result.mergeStyleOverrides = Flags(profile.mergeStyleOverrides)

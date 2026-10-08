@@ -6,7 +6,7 @@ Bars.Modules.UtilitySettings = Settings
 function Settings.Create(parent, context)
     local frame = UI.CreateContainer(nil, parent); frame.mosTextSizeDelta = -2
     local view = {frame = frame, rows = {}, sliders = {}}
-    local function Complete(ok, failure) return context.Complete(ok, failure) end
+    local function Complete(ok, failure, skipRefresh) return context.Complete(ok, failure, skipRefresh) end
     local function Available()
         local id = context.GetSelection()
         return Runtime.IsAvailable() and (Runtime.GetMergeOwner(id) == id or not Runtime.GetUseGroupSettings(id))
@@ -14,7 +14,8 @@ function Settings.Create(parent, context)
     local function Update(key, value)
         local id = context.GetSelection()
         if not Utility.ValidID(id) then return Complete(false, "Choose a listed utility bar.") end
-        return Complete(Runtime.SetUtilityPreference(id, key, value))
+        local ok, failure = Runtime.SetUtilityPreference(id, key, value)
+        return Complete(ok, failure, key == "columns" and ok == true)
     end
     local geometry = Bars.Modules.AppearanceSettings.Section(frame, "Geometry", {Complete = Complete})
     view.geometry = geometry
@@ -32,9 +33,18 @@ function Settings.Create(parent, context)
         local slider = UI.Settings.CreateSlider(item, "BootyActionBarsUtility" .. key, 0, -15,
             caption, key, minimum, maximum, nil, {ensure = function() end,
                 get = function() return view.layout and view.layout[key] or minimum end,
-                set = function(_, value) return Update(key, value) end})
+                set = function(_, value)
+                    local control = view.sliders[key]
+                    if key == "columns" and control and control.babDragging then control.babPending = value
+                    else return Update(key, value) end
+                end})
         item.control, item.key, item.kind, item.babBaseHeight = slider, key, "slider", 44
-        view.sliders[key] = slider; table.insert(view.rows, item); table.insert(geometry.rows, item)
+        view.sliders[key] = slider
+        if key == "columns" then
+            Bars.Modules.BarSettings.ConfigureColumnSlider(slider, function(value) Update(key, value) end,
+                function() return view.layout and view.layout[key] end)
+        end
+        table.insert(view.rows, item); table.insert(geometry.rows, item)
     end
     local appearance = Bars.Modules.AppearanceSettings.Create(frame, {
         OnlyDecoration = true, ControlPrefix = "BootyActionBarsUtilityAppearance",

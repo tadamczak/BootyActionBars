@@ -200,7 +200,7 @@ local function SyncEngineBody()
     local layoutOK, layoutFailure = Bars.Modules.Editor.Configure(store)
     if not layoutOK then return false, layoutFailure end
     if Bars.Core.Engine.ConfigureMerges then
-        local configured, reason = Bars.Core.Engine.ConfigureMerges(store.barMerges, store.mergeStyleOverrides)
+        local configured, reason = Bars.Core.Engine.ConfigureMerges(store.barMerges, store.mergeStyleOverrides, store.mergeSides)
         if not configured then return false, reason end
     end
     local options = store.editorOptions or {}
@@ -626,7 +626,7 @@ function Runtime.GetMergeCount(id)
     if id == 7 or id == 8 then return 10 end
     if not Bars.Services.BarConfig.ValidOrdinaryID(id) then return 12 end
     local store = state.store or {}
-    local groups = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides)
+    local groups = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides, store.mergeSides)
     local _, count = Bars.Services.BarMerging.Read(groups, id)
     return count or 12
 end
@@ -671,6 +671,51 @@ function Runtime.SetUseGroupSettings(id, enabled)
     state.groupStyleBusy = true
     local ok, failure = CallLifecycle(SetUseGroupSettings, id, enabled)
     state.groupStyleBusy = nil
+    return ok, failure
+end
+function Runtime.GetMergeSide(id)
+    return state.store and state.store.mergeSides and state.store.mergeSides[id]
+end
+local function SetMergeSide(id, side)
+    local service = Bars.Services.BarMerging
+    if not Runtime.IsAvailable() or not service.ValidID(id) or Runtime.GetMergeOwner(id) == id then
+        return false, "Choose a merged member."
+    end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    local previous, before = store.mergeSides, service.CopySides(store.mergeSides)
+    local candidate = service.CopySides(previous); candidate[id] = side
+    local valid, reason = service.ValidateSides(candidate)
+    if not valid then return false, reason end
+    if service.EqualSides(candidate, previous) then return true end
+    local ended, detail = CallLifecycle(Bars.Modules.Editor.End)
+    if not ended then return false, detail end
+    if Bars.Modules.BindingEditor then
+        ended, detail = CallLifecycle(Bars.Modules.BindingEditor.Cancel)
+        if not ended then return false, detail end
+    end
+    if BootyActionBarsDB ~= store or store.mergeSides ~= previous or not service.EqualSides(previous, before) then
+        return false, "Merge side ownership changed."
+    end
+    store.mergeSides = candidate
+    local expected = service.CopySides(candidate)
+    Bars.Core.Engine.MarkLayoutChanged()
+    local ok, message = SyncEngine()
+    local owned = BootyActionBarsDB == store and store.mergeSides == candidate and service.EqualSides(candidate, expected)
+    if not ok or not owned then
+        if owned then store.mergeSides = previous end
+        local restored, why = SyncEngine()
+        message = message or "Merge side ownership changed while applying."
+        if not restored then message = tostring(message) .. " Restoration: " .. tostring(why) end
+        RefreshView(); return false, message
+    end
+    RefreshView(); return true
+end
+function Runtime.SetMergeSide(id, side)
+    if state.mergeSideBusy then return false, "Merge side is already being changed." end
+    state.mergeSideBusy = true
+    local ok, failure = CallLifecycle(SetMergeSide, id, side)
+    state.mergeSideBusy = nil
     return ok, failure
 end
 function Runtime.SetBarMerge(id, destination)
@@ -894,6 +939,10 @@ local function ApplyLayoutSnapshot(snapshot)
     local expectedFollowing = prepared.mainBarFollowClient
     if expectedFollowing == nil then expectedFollowing = oldFollowing end
     local oldBehaviors, oldUtilities = store.barBehaviors, store.utilityLayouts
+    local oldSides = store.mergeSides
+    local sideValues = Bars.Services.BarMerging.CopySides(oldSides)
+    local expectedSides = prepared.replaceMergeSides and prepared.mergeSides or oldSides
+    local expectedSideValues = Bars.Services.BarMerging.CopySides(expectedSides)
     local oldMerges, oldMergeStyles = store.barMerges, store.mergeStyleOverrides
     local mergeStyleValues = Bars.Services.BarMerging.CopyOverrides(oldMergeStyles)
     local expectedMergeStyles = prepared.replaceMergeStyles and prepared.mergeStyleOverrides or oldMergeStyles
@@ -909,7 +958,8 @@ local function ApplyLayoutSnapshot(snapshot)
     if not stopped then return false, stopFailure end
     if BootyActionBarsDB ~= store or store.mainBarFollowClient ~= oldFollowing or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues)
         or not OwnsUtilities(store, oldUtilities, utilityValues) or not OwnsMerges(store, oldMerges, mergeValues)
-        or store.mergeStyleOverrides ~= oldMergeStyles or not Bars.Services.BarMerging.EqualOverrides(oldMergeStyles, mergeStyleValues) then
+        or store.mergeStyleOverrides ~= oldMergeStyles or not Bars.Services.BarMerging.EqualOverrides(oldMergeStyles, mergeStyleValues)
+        or store.mergeSides ~= oldSides or not Bars.Services.BarMerging.EqualSides(oldSides, sideValues) then
         local restored, restoration = CallLifecycle(SyncEngine)
         local ownershipFailure = "Layout settings ownership changed before loading."
         if not restored then ownershipFailure = ownershipFailure .. " Resynchronization: " .. tostring(restoration) end
@@ -923,6 +973,7 @@ local function ApplyLayoutSnapshot(snapshot)
     if prepared.replaceUtilities then store.utilityLayouts = prepared.utilityLayouts end
     if prepared.replaceMerges then store.barMerges = prepared.barMerges end
     if prepared.replaceMergeStyles then store.mergeStyleOverrides = prepared.mergeStyleOverrides end
+    if prepared.replaceMergeSides then store.mergeSides = prepared.mergeSides end
     Bars.Core.Engine.MarkLayoutChanged()
     local ok, message = CallLifecycle(SyncEngine)
     local owned = BootyActionBarsDB == store and store.barLayouts == prepared.barLayouts
@@ -934,6 +985,7 @@ local function ApplyLayoutSnapshot(snapshot)
         and (not prepared.replaceUtilities or OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities))
         and (not prepared.replaceMerges or OwnsMerges(store, prepared.barMerges, preparedMerges))
         and store.mergeStyleOverrides == expectedMergeStyles and Bars.Services.BarMerging.EqualOverrides(expectedMergeStyles, preparedMergeStyleValues)
+        and store.mergeSides == expectedSides and Bars.Services.BarMerging.EqualSides(expectedSides, expectedSideValues)
     if ok and owned then return true end
     local firstFailure = message or "Layout settings ownership changed while loading."
     local cleaned, cleanupFailure = CallLifecycle(Bars.Core.Engine.Disable)
@@ -950,6 +1002,8 @@ local function ApplyLayoutSnapshot(snapshot)
         if prepared.replaceMerges and OwnsMerges(store, prepared.barMerges, preparedMerges) then store.barMerges = oldMerges end
         if prepared.replaceMergeStyles and store.mergeStyleOverrides == expectedMergeStyles
             and Bars.Services.BarMerging.EqualOverrides(expectedMergeStyles, preparedMergeStyleValues) then store.mergeStyleOverrides = oldMergeStyles end
+        if prepared.replaceMergeSides and store.mergeSides == expectedSides
+            and Bars.Services.BarMerging.EqualSides(expectedSides, expectedSideValues) then store.mergeSides = oldSides end
         -- Keep native ownership refusals; a profile must not undo conflict policy.
         store.trialBarEnabled = enabled
         local restored, restoreFailure = CallLifecycle(SyncEngine)

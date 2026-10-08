@@ -66,7 +66,7 @@ function Engine.GetMergeMembers(id, target)
     for index = 2, table.getn(target) do target[index] = nil end
     return target
 end
-function Engine.ConfigureMerges(groups, overrides)
+function Engine.ConfigureMerges(groups, overrides, sides)
     local factory = Bars.Services.BarMerging
     if not factory then
         if groups == nil or type(groups) == "table" and next(groups) == nil then return true end
@@ -74,7 +74,7 @@ function Engine.ConfigureMerges(groups, overrides)
     end
     local valid, failure = factory.Validate(groups)
     if not valid then return false, failure end
-    groups, failure = factory.OrdinaryGroups(groups, overrides)
+    groups, failure = factory.OrdinaryGroups(groups, overrides, sides)
     if not groups then return false, failure end
     if factory.Equal(state.merges, groups) then return true end
     local copy; copy, failure = factory.Copy(groups)
@@ -223,8 +223,10 @@ local function CooldownUpdate(elapsed)
     local cooldown = Bars.Modules.CooldownText
     if not cooldown or not cooldown.GetDemand() then state.cooldownElapsed = 0; return true end
     state.cooldownElapsed = (state.cooldownElapsed or 0) + (elapsed or 0)
-    if state.cooldownElapsed < 0.1 then return true end
-    state.cooldownElapsed = 0
+    local interval = cooldown.GetInterval and cooldown.GetInterval() or 0.1
+    if state.cooldownElapsed + 0.000001 < interval then return true end
+    state.cooldownElapsed = math.max(0, state.cooldownElapsed - interval)
+    if state.cooldownElapsed >= interval then state.cooldownElapsed = math.mod(state.cooldownElapsed, interval) end
     local oldThis, oldEvent, oldArg = this, event, arg1
     local ran, now = pcall(GetTime)
     this, event, arg1 = oldThis, oldEvent, oldArg

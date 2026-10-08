@@ -163,7 +163,7 @@ function Merging.SetDestination(groups, source, destination)
 end
 -- The action engine keeps a continuous grid of ordinary twelve-slot sources.
 -- Other members retain their native functions and dock after that grid.
-function Merging.OrdinaryGroups(groups, overrides)
+function Merging.OrdinaryGroups(groups, overrides, sides)
     local valid, failure = Merging.Validate(groups)
     if not valid then return nil, failure end
     local result = {}
@@ -171,7 +171,7 @@ function Merging.OrdinaryGroups(groups, overrides)
         if groups and groups[host] then
             local members, ordinary = Merging.Members(groups, host), {}
             for _, id in ipairs(members) do
-                if Config.ValidOrdinaryID(id) and (id == host or not overrides or not overrides[id]) then table.insert(ordinary, id) end
+                if Config.ValidOrdinaryID(id) and (id == host or (not overrides or not overrides[id]) and (not sides or not sides[id])) then table.insert(ordinary, id) end
             end
             if table.getn(ordinary) > 1 then
                 local children = {}; for index = 2, table.getn(ordinary) do table.insert(children, ordinary[index]) end
@@ -213,5 +213,27 @@ end
 function Merging.EqualOverrides(first, second)
     if not Merging.ValidateOverrides(first) or not Merging.ValidateOverrides(second) then return false end
     for _, id in ipairs(Merging.IDs) do if (first ~= nil and first[id] == true) ~= (second ~= nil and second[id] == true) then return false end end
+    return true
+end
+
+function Merging.ValidateSides(values)
+    if values == nil then return true end
+    if type(values) ~= "table" then return false, "Invalid merge sides." end
+    for id, side in pairs(values) do
+        if not Merging.ValidID(id) or (side ~= "top" and side ~= "bottom" and side ~= "left" and side ~= "right") then
+            return false, "Invalid merge side."
+        end
+    end
+    return true
+end
+function Merging.CopySides(values)
+    local ok, failure = Merging.ValidateSides(values)
+    if not ok then return nil, failure end
+    local copy = {}; for id, side in pairs(values or {}) do copy[id] = side end
+    return copy
+end
+function Merging.EqualSides(first, second)
+    if not Merging.ValidateSides(first) or not Merging.ValidateSides(second) then return false end
+    for _, id in ipairs(Merging.IDs) do if (first and first[id]) ~= (second and second[id]) then return false end end
     return true
 end

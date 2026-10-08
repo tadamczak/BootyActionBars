@@ -5,7 +5,7 @@ local Config = Bars.Services.BarConfig
 local Module = {}
 Bars.Modules.CooldownText = Module
 local records, views, active = {}, {}, {}
-local state = {activeCount = 0, attachedCount = 0}
+local state = {activeCount = 0, attachedCount = 0, fastCount = 0}
 local observer, notifying = nil, false
 
 local function Call(record, method, first, second, third, fourth, fifth)
@@ -33,6 +33,7 @@ local function Notify(previous)
     return true
 end
 local function Remove(record)
+    if record.fast then state.fastCount = state.fastCount - 1; record.fast = nil end
     if record.activeIndex then
         local index, last = record.activeIndex, active[state.activeCount]
         active[index] = last; last.activeIndex = index
@@ -60,6 +61,13 @@ local function Eligible(record)
         and record.enabled and record.start > 0 and record.duration > 0
         and (TextEligible(record) or Effects.Demand(record))
 end
+local function UpdateCadence(record, remaining)
+    local fast = record.owner.effectA > 0 and (record.duration <= 10 or remaining and remaining <= 10) or false
+    if fast ~= (record.fast == true) then
+        state.fastCount = state.fastCount + (fast and 1 or -1)
+        record.fast = fast and true or nil
+    end
+end
 local function Sync(record)
     if Eligible(record) then
         if not TextEligible(record) and record.shown then Call(record, "Hide"); record.shown = false end
@@ -67,6 +75,7 @@ local function Sync(record)
             state.activeCount = state.activeCount + 1
             active[state.activeCount] = record; record.activeIndex = state.activeCount
         end
+        UpdateCadence(record, record.start + record.duration - (state.lastNow or record.start))
         -- Repaint style/timer changes from the latest shared clock, without
         -- another GetTime read. Fresh timers begin with the complete mask.
         Effects.Paint(record, state.lastNow or record.start)
@@ -238,6 +247,7 @@ local function Tick(now)
             else
                 local revision = record.revision
                 if TextEligible(record) and record.colorBand ~= ColorBand(record.remaining) then Style(record) end
+                UpdateCadence(record, record.remaining)
                 Effects.Paint(record, now)
                 if record.revision == revision and record.activeIndex and TextEligible(record)
                     and (record.kind ~= kind or record.value ~= value) then
@@ -311,3 +321,5 @@ function Module.SetDemandObserver(callback)
     return true
 end
 function Module.GetState() return state end
+
+function Module.GetInterval() return state.fastCount > 0 and 1 / 30 or 0.1 end

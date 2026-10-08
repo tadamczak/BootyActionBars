@@ -22,6 +22,8 @@ local function Defaults(store)
     if Bars.Services.BarMerging then
         valid, failure = Bars.Services.BarMerging.Validate(store.barMerges)
         if not valid then error(failure) end
+        valid, failure = Bars.Services.BarMerging.ValidateSides(store.mergeSides)
+        if not valid then error(failure) end
         valid, failure = Bars.Services.BarMerging.ValidateOverrides(store.mergeStyleOverrides)
         if not valid then error(failure) end
     end
@@ -87,6 +89,8 @@ function Database.Ensure()
         if not valid then return nil, failure end
         if Bars.Services.BarMerging then
             valid, failure = Bars.Services.BarMerging.Validate(store.barMerges)
+            if not valid then return nil, failure end
+            valid, failure = Bars.Services.BarMerging.ValidateSides(store.mergeSides)
             if not valid then return nil, failure end
             valid, failure = Bars.Services.BarMerging.ValidateOverrides(store.mergeStyleOverrides)
             if not valid then return nil, failure end

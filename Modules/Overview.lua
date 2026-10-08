@@ -63,7 +63,7 @@ function Overview.Create(parent, host)
     end
     function view:Refresh()
         if not frame:IsVisible() then return end
-        Panel(self.activeTab):Refresh(); self:OnResize()
+        Panel(self.activeTab):Refresh(true); self:OnResize()
     end
     function view:Show()
         if not Bars.Core.Runtime.IsAvailable() then return false end
