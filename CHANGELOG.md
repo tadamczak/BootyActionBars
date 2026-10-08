@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-dev.31 — 2026-10-08
+
+- Fix overlapping Layout editing controls by moving their anchors into the accordion rows after reparenting.
+
 ## 0.1.0-dev.30 — 2026-10-08
 
 - Give each hover effect its own color, size and rounding, and each button text its own font.

@@ -96,7 +96,10 @@ function BarSettings.Create(parent, host, owner)
     local toolSection = Bars.Modules.AppearanceSettings.Section(tools, "Layout editing", {Complete = Complete})
     for _, check in ipairs(toolChecks) do
         local row = UI.CreateContainer(nil, tools); row:SetHeight(32)
-        check:SetParent(row); row.control, row.kind, row.babBaseHeight = check, "check", 32
+        check:SetParent(row)
+        -- Reparenting retains native anchors to the previous tools container.
+        check:ClearAllPoints(); check:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        row.control, row.kind, row.babBaseHeight = check, "check", 32
         table.insert(toolSection.rows, row)
     end
     view.toolSection = toolSection
