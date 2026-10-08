@@ -6,7 +6,13 @@ local circle = "Interface\\AddOns\\BootyLib\\Assets\\CooldownCircle"
 local function Call(record, region, method, first, second, third, fourth, fifth)
     local oldThis, oldEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9 = this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9
     this = record.button
-    local ran, result = pcall(region[method], region, first, second, third, fourth, fifth)
+    -- These native calls take zero, one, four or five operands. Even nil
+    -- counts as an extra operand in the client, notably for SetTexCoord.
+    local ran, result
+    if fifth ~= nil then ran, result = pcall(region[method], region, first, second, third, fourth, fifth)
+    elseif fourth ~= nil then ran, result = pcall(region[method], region, first, second, third, fourth)
+    elseif first ~= nil then ran, result = pcall(region[method], region, first)
+    else ran, result = pcall(region[method], region) end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = oldThis, oldEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     if not ran then error(result, 0) end
     if result == false and method ~= "IsShown" then error("Cooldown effect rejected " .. method .. ".", 0) end

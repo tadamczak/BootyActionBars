@@ -1,19 +1,18 @@
 local BindingService = {}
 BootyActionBars.Services.BindingService = BindingService
 local floor = math.floor
+local Config = BootyActionBars.Services.BarConfig
 local function Integer(value, limit)
     return type(value) == "number" and value >= 1 and value <= limit and value == floor(value)
 end
 function BindingService.Command(barId, index)
-    if not Integer(barId, 8) or not Integer(index, barId >= 7 and 10 or 12) then return nil end
-    if barId == 1 then return "BOOTYACTIONBARS_BUTTON" .. index end
-    if barId <= 6 then return "BOOTYACTIONBARS_BAR" .. barId .. "_BUTTON" .. index end
-    return "BOOTYACTIONBARS_" .. (barId == 7 and "PET" or "STANCE") .. "_BUTTON" .. index
+    if not Config.ValidLayoutID(barId) or not Integer(index, Config.ValidOrdinaryID(barId) and Config.SLOT_COUNT or 10) then return nil end
+    return Config.BindingPrefix(barId) .. index
 end
 local function OwnCommand(command)
     if type(command) ~= "string" then return false end
-    for barId = 1, 8 do
-        for index = 1, barId >= 7 and 10 or 12 do
+    for _, barId in ipairs(Config.LayoutIDs) do
+        for index = 1, Config.ValidOrdinaryID(barId) and Config.SLOT_COUNT or 10 do
             if command == BindingService.Command(barId, index) then return true end
         end
     end

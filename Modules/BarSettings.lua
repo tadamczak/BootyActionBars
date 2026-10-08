@@ -3,18 +3,20 @@ local UI, Runtime = Bars.UI.Components, Bars.Core.Runtime
 local BarSettings = {}
 Bars.Modules.BarSettings = BarSettings
 local Utility = Bars.Services.UtilityLayout
-local sliders = {{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, 72},
+local Config = Bars.Services.BarConfig
+local sliders = {{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, Config.MAX_SLOTS},
     {"spacing", "Spacing", 0, 20}, {"buttonSize", "Button size", 24, 64},
     {"iconInset", "Icon inset", 0, 8}, {"opacityPct", "Opacity (%)", 20, 100}, {"labelFontSize", "Label size", 8, 16}}
 local checks = {{"showTitle", "Title"}, {"showHotkeys", "Hotkeys"}, {"showCounts", "Counts"},
     {"showMacroNames", "Macro names"}, {"showEmptyButtons", "Empty buttons"}}
-local identities = {"layout", "global", 1, 2, 3, 4, 5, 6, 7, 8}
+local identities = {"layout", "global"}
+for _, id in ipairs(Config.OrdinaryIDs) do table.insert(identities, id) end
+table.insert(identities, 7); table.insert(identities, 8)
 if Utility then for _, id in ipairs(Utility.Keys) do table.insert(identities, id) end end
 local function IsUtility(id) return Utility and Utility.ValidID(id) end
 local function Name(id)
     return id == "layout" and "Layout" or id == "global" and "Global Settings"
-        or id == 1 and "Main Action Bar" or id == 7 and "Pet Bar" or id == 8 and "Forms / stances"
-        or IsUtility(id) and Utility.Name(id) or "Action Bar " .. id
+        or IsUtility(id) and Utility.Name(id) or Config.Name(id)
 end
 local function SelectListedBar()
     local view = this.barSettingsView
@@ -47,13 +49,13 @@ function BarSettings.Create(parent, host, owner)
         return Runtime.IsAvailable() and (type(view.selected) ~= "number" or Runtime.GetMergeOwner(view.selected) == view.selected)
     end
     local mergeChoices = {{value = "none", text = "None"}}
-    for id = 1, 6 do table.insert(mergeChoices, {value = id, text = Name(id)}) end
+    for _, id in ipairs(Config.OrdinaryIDs) do table.insert(mergeChoices, {value = id, text = Name(id)}) end
     local mergeLabel, mergeChoice = UI.CreateChoiceField({parent = mergeRegion, x = 0, y = -22,
-        label = "Merge with Action Bar:", initialText = "None", width = 180, height = 168, firstY = -7,
+        label = "Merge with Action Bar:", initialText = "None", width = 180, height = table.getn(mergeChoices) * 22 + 14, firstY = -7,
         step = 22, buttonOffset = 0, labelValue = true, choices = mergeChoices,
         getValue = function()
             local id = view.selected
-            if type(id) ~= "number" or id > 6 then return "none" end
+            if not Config.ValidOrdinaryID(id) then return "none" end
             local primary = Runtime.GetMergeOwner(id)
             return primary == id and "none" or primary
         end,
@@ -92,13 +94,13 @@ function BarSettings.Create(parent, host, owner)
         local store, id = Bars.Database.Ensure(), view.selected
         if not store or type(id) ~= "number" then return false end
         return id == 1 and store.mainBarShown ~= false or id == 7 and store.specialBars.pet == true
-            or id == 8 and store.specialBars.stance == true or id > 1 and id < 7 and store.customBars[id] == true
+            or id == 8 and store.specialBars.stance == true or Config.ValidID(id) and store.customBars[id] == true
     end
     local show = Checkbox(visibility, "Show Action Bar", "visible", IsShown, function(value)
         local id = view.selected
         if type(id) ~= "number" then return false, "Choose an action bar." end
         if id == 1 then return Runtime.SetMainBarShown(value) end
-        if id >= 7 then return Runtime.SetSpecialBar(id == 7 and "pet" or "stance", value) end
+        if id == 7 or id == 8 then return Runtime.SetSpecialBar(id == 7 and "pet" or "stance", value) end
         return Runtime.SetCustomBar(id, value)
     end)
     local useGlobal = Checkbox(inherited, "Use Global Settings", "useGlobalLayout", function()
@@ -277,19 +279,21 @@ function BarSettings.Create(parent, host, owner)
         if not frame:IsVisible() then return end
         local id, store = self.selected, Bars.Database.Ensure()
         local isLayout, isGlobal, isUtility = id == "layout", id == "global", IsUtility(id)
-        local merged = type(id) == "number" and id <= 6 and Runtime.GetMergeOwner(id) ~= id
+        local merged = Config.ValidOrdinaryID(id) and Runtime.GetMergeOwner(id) ~= id
         for key, button in pairs(self.buttons) do UI.StyleWarmListRow(button, key == id) end
         title:SetText(Name(id))
         description:SetText(isLayout and "Unlock to position bars. Show anchors also reveals hidden bars."
             or isGlobal and "Shared appearance for bars using Global Settings. Each bar keeps its own position."
             or isUtility and "Position and scale these native controls separately. Their original actions keep working."
             or merged and "Merged into " .. Name(Runtime.GetMergeOwner(id)) .. ". Its appearance and position follow that bar. Choose None to restore individual settings."
-            or id == 1 and "Actions follow the page or form. Hiding this bar keeps other bars active."
-            or type(id) == "number" and id >= 7 and "Shown when a pet or form is available. Use Layout and Show anchors to position it while absent."
+            or id == 1 and ((Runtime.GetMainBarFollowClient() and "Actions follow the client page or form."
+                or "Actions use fixed Main slots 1-12.") .. " Custom behavior rules take priority. Hiding this bar keeps other bars active.")
+            or (id == 7 or id == 8) and "Shown when a pet or form is available. Use Layout and Show anchors to position it while absent."
+            or Config.ValidOrdinaryID(id) and Config.Page(id) > 6 and "These fixed slots are shared with class forms and stealth. Changing an action here also changes that form's action."
             or "Actions use fixed slots. Hiding preserves layout, actions and keys.")
         if isLayout then tools:Show() else tools:Hide() end
         behaviors:Refresh()
-        if type(id) == "number" and id <= 6 then
+        if Config.ValidOrdinaryID(id) then
             mergeRegion:Show()
             local primary = Runtime.GetMergeOwner(id)
             mergeChoice.label:SetText(primary == id and "None" or Name(primary))
@@ -308,7 +312,7 @@ function BarSettings.Create(parent, host, owner)
             appearance:Refresh(layout)
             for key, slider in pairs(self.sliders) do
                 if key == "columns" then
-                    local maximum = isGlobal and 72 or Runtime.GetMergeCount(id)
+                    local maximum = isGlobal and Config.MAX_SLOTS or Runtime.GetMergeCount(id)
                     local syncing = slider.mosSynchronizing; slider.mosSynchronizing = true
                     slider:SetMinMaxValues(1, maximum); slider.mosSynchronizing = syncing
                     getglobal(slider:GetName() .. "High"):SetText(tostring(maximum))
@@ -316,7 +320,7 @@ function BarSettings.Create(parent, host, owner)
                 UI.Settings.SynchronizeSlider(slider, layout[key]); UI.Settings.SetSliderEnabled(slider, IsAvailable())
             end
             for key, check in pairs(self.checks) do
-                local relevant = isGlobal or id < 7 or key ~= "showCounts" and key ~= "showMacroNames"
+                local relevant = isGlobal or Config.ValidOrdinaryID(id) or key ~= "showCounts" and key ~= "showMacroNames"
                 if relevant then check:GetParent():Show() else check:GetParent():Hide() end
                 check:SetChecked(layout[key] and 1 or nil); UI.Settings.SetCheckboxEnabled(check, IsAvailable())
             end

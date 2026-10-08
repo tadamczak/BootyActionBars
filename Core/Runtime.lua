@@ -167,6 +167,12 @@ local function SyncEngine()
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
     state.store = store
+    if Bars.Core.Engine.ConfigureMainFollowing then
+        local configured, reason = Bars.Core.Engine.ConfigureMainFollowing(store.mainBarFollowClient ~= false)
+        if not configured then return false, reason end
+    elseif store.mainBarFollowClient == false then
+        return false, "Main action bar following is unavailable in the current engine."
+    end
     if Bars.Modules.BehaviorEditor then
         local configured, reason = Bars.Modules.BehaviorEditor.Configure(store)
         if not configured then return false, reason end
@@ -344,7 +350,7 @@ end
 function Runtime.SetCustomBar(id, enabled)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     if not Bars.Services.BarConfig.ValidID(id) or type(enabled) ~= "boolean" then
-        return false, "Choose an additional bar from 2 to 6 and show or hide it."
+        return false, "Choose an additional bar from 2 to 10 and show or hide it."
     end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
@@ -368,6 +374,50 @@ function Runtime.SetMainBarShown(value)
     local ok, reason = SyncEngine()
     RefreshView()
     return ok, reason
+end
+
+function Runtime.GetMainBarFollowClient()
+    local store, failure = Bars.Database.Ensure()
+    if not store then return nil, failure end
+    return store.mainBarFollowClient ~= false
+end
+local function SetMainBarFollowClient(value)
+    if not Runtime.IsAvailable() or type(value) ~= "boolean" then
+        return false, "Choose whether Main Action Bar follows client pages and forms."
+    end
+    local store, failure = Bars.Database.Ensure()
+    if not store then return false, failure end
+    if Runtime.GetMergeOwner(1) ~= 1 then return false, "Main Action Bar uses its merge owner's settings." end
+    if (store.mainBarFollowClient ~= false) == value then return true end
+    if type(Bars.Core.Engine.ConfigureMainFollowing) ~= "function" then return false, "Main action bar following is unavailable." end
+    local previous, enabled = store.mainBarFollowClient, store.trialBarEnabled
+    local ended, reason = CallLifecycle(Bars.Modules.Editor.End)
+    if not ended then return false, reason end
+    if Bars.Modules.BindingEditor then
+        ended, reason = CallLifecycle(Bars.Modules.BindingEditor.Cancel)
+        if not ended then return false, reason end
+    end
+    if BootyActionBarsDB ~= store or store.mainBarFollowClient ~= previous or store.trialBarEnabled ~= enabled then
+        return false, "Main action bar following changed while cancelling input."
+    end
+    store.mainBarFollowClient = value
+    local ok, message = CallLifecycle(SyncEngine)
+    local owned = BootyActionBarsDB == store and store.mainBarFollowClient == value
+    if not ok or not owned then
+        message = message or "Main action bar following changed while applying."
+        if owned then store.mainBarFollowClient, store.trialBarEnabled = previous, enabled end
+        local restored, restoration = CallLifecycle(SyncEngine)
+        if not restored then message = tostring(message) .. " Restoration: " .. tostring(restoration) end
+        RefreshView(); return false, message
+    end
+    RefreshView(); return true
+end
+function Runtime.SetMainBarFollowClient(value)
+    if state.mainFollowingBusy then return false, "Main action bar following is already being changed." end
+    state.mainFollowingBusy = true
+    local ok, failure = CallLifecycle(SetMainBarFollowClient, value)
+    state.mainFollowingBusy = nil
+    return ok, failure
 end
 
 function Runtime.SetSpecialBar(kind, enabled)
@@ -515,23 +565,23 @@ end
 local function LayoutAvailable(id)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
     if not Bars.Services.BarLayout.ValidID(id) then
-        return false, "Choose a bar from 1 to 8."
+        return false, "Choose an action bar, pet bar or form bar."
     end
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
-    if id <= 6 and Runtime.GetMergeOwner(id) ~= id then
+    if Bars.Services.BarConfig.ValidOrdinaryID(id) and Runtime.GetMergeOwner(id) ~= id then
         return false, "This bar uses its merge owner's settings. Choose None to restore its individual settings."
     end
     return true
 end
 function Runtime.GetMergeOwner(id)
     local service = Bars.Services.BarMerging
-    if not service or type(id) ~= "number" or id > 6 then return id end
+    if not service or not Bars.Services.BarConfig.ValidOrdinaryID(id) then return id end
     return service.Read(state.store and state.store.barMerges, id)
 end
 function Runtime.GetMergeCount(id)
-    if type(id) ~= "number" or id < 1 or id > 8 then return 12 end
-    if id > 6 then return 10 end
+    if id == 7 or id == 8 then return 10 end
+    if not Bars.Services.BarConfig.ValidOrdinaryID(id) then return 12 end
     local _, count = Runtime.GetMergeOwner(id)
     return count or 12
 end
@@ -757,7 +807,9 @@ local function ApplyLayoutSnapshot(snapshot)
         if not ended then return false, endFailure end
     end
     local oldLayouts, oldCustom, oldSpecial = store.barLayouts, store.customBars, store.specialBars
-    local oldGlobal, oldMain = store.globalLayout, store.mainBarShown
+    local oldGlobal, oldMain, oldFollowing = store.globalLayout, store.mainBarShown, store.mainBarFollowClient
+    local expectedFollowing = prepared.mainBarFollowClient
+    if expectedFollowing == nil then expectedFollowing = oldFollowing end
     local oldBehaviors, oldUtilities = store.barBehaviors, store.utilityLayouts
     local oldMerges = store.barMerges
     local mergeValues = Bars.Services.BarMerging and Bars.Services.BarMerging.Copy(oldMerges)
@@ -769,7 +821,7 @@ local function ApplyLayoutSnapshot(snapshot)
     local enabled = store.trialBarEnabled
     local stopped, stopFailure = CallLifecycle(Bars.Core.Engine.Disable)
     if not stopped then return false, stopFailure end
-    if BootyActionBarsDB ~= store or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues)
+    if BootyActionBarsDB ~= store or store.mainBarFollowClient ~= oldFollowing or not OwnsBehaviors(store, oldBehaviors, oldBehaviorValues)
         or not OwnsUtilities(store, oldUtilities, utilityValues) or not OwnsMerges(store, oldMerges, mergeValues) then
         local restored, restoration = CallLifecycle(SyncEngine)
         local ownershipFailure = "Layout settings ownership changed before loading."
@@ -779,6 +831,7 @@ local function ApplyLayoutSnapshot(snapshot)
     store.barLayouts, store.customBars, store.specialBars = prepared.barLayouts, prepared.customBars, prepared.specialBars
     if prepared.replaceGlobal then store.globalLayout = prepared.globalLayout end
     if prepared.mainBarShown ~= nil then store.mainBarShown = prepared.mainBarShown end
+    if prepared.mainBarFollowClient ~= nil then store.mainBarFollowClient = prepared.mainBarFollowClient end
     if prepared.replaceBehaviors then store.barBehaviors = prepared.barBehaviors end
     if prepared.replaceUtilities then store.utilityLayouts = prepared.utilityLayouts end
     if prepared.replaceMerges then store.barMerges = prepared.barMerges end
@@ -788,6 +841,7 @@ local function ApplyLayoutSnapshot(snapshot)
         and store.customBars == prepared.customBars and store.specialBars == prepared.specialBars
         and (not prepared.replaceGlobal or store.globalLayout == prepared.globalLayout)
         and (prepared.mainBarShown == nil or store.mainBarShown == prepared.mainBarShown)
+        and store.mainBarFollowClient == expectedFollowing
         and (not prepared.replaceBehaviors or OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors))
         and (not prepared.replaceUtilities or OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities))
         and (not prepared.replaceMerges or OwnsMerges(store, prepared.barMerges, preparedMerges))
@@ -801,6 +855,7 @@ local function ApplyLayoutSnapshot(snapshot)
         if store.specialBars == prepared.specialBars then store.specialBars = oldSpecial end
         if prepared.replaceGlobal and store.globalLayout == prepared.globalLayout then store.globalLayout = oldGlobal end
         if prepared.mainBarShown ~= nil and store.mainBarShown == prepared.mainBarShown then store.mainBarShown = oldMain end
+        if prepared.mainBarFollowClient ~= nil and store.mainBarFollowClient == prepared.mainBarFollowClient then store.mainBarFollowClient = oldFollowing end
         if prepared.replaceBehaviors and OwnsBehaviors(store, prepared.barBehaviors, preparedBehaviors) then store.barBehaviors = oldBehaviors end
         if prepared.replaceUtilities and OwnsUtilities(store, prepared.utilityLayouts, preparedUtilities) then store.utilityLayouts = oldUtilities end
         if prepared.replaceMerges and OwnsMerges(store, prepared.barMerges, preparedMerges) then store.barMerges = oldMerges end
@@ -926,13 +981,13 @@ function Runtime.Open(command)
     if number and (choice == "" or choice == "on" or choice == "off") then
         local store, failure = Bars.Database.Ensure()
         if not store then state.host.Print(failure); return false, failure end
-        local id = tonumber(number)
+        local id = Bars.Services.BarConfig.IDForPage(tonumber(number))
         local enabled = choice == "on" or choice == "" and not store.customBars[id]
         local ok, reason = Runtime.SetCustomBar(id, enabled)
         if not ok and reason then state.host.Print(reason) end
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-6 on|off, /bab unlock|lock, /bab scale 1-8 50-200, /bab columns 1-8 1-72 (up to the bar's slots), /bab gap 1-8 0-20, /bab title|hotkeys|counts 1-8 on|off, or /bab reset 1-8.")
+    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-10 on|off, /bab unlock|lock, /bab scale ID 50-200, /bab columns ID 1-120 (up to the bar's slots), /bab gap ID 0-20, /bab title|hotkeys|counts ID on|off, or /bab reset ID. Layout IDs: 1-6 action bars, 7 pet, 8 forms, 9-12 action bars 7-10.")
     return false
 end

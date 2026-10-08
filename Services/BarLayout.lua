@@ -1,14 +1,15 @@
 local Bars = BootyActionBars
 local Layout = {}
 Bars.Services.BarLayout = Layout
+local Config = Bars.Services.BarConfig
 
 function Layout.Finite(value)
     return type(value) == "number" and value == value and math.abs(value) <= 1000000
 end
 function Layout.ValidID(id)
-    return type(id) == "number" and id >= 1 and id <= 8 and id == math.floor(id)
+    return Config.ValidLayoutID(id)
 end
-function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or 12 end
+function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or Config.SLOT_COUNT end
 -- One declaration owns saved values, validation, inheritance and profile keys.
 -- Colors stay scalar so picker inputs and saved snapshots never share tables.
 local fields, colorKeys = {}, {}
@@ -24,7 +25,7 @@ local function Define(key, kind, value, minimum, maximum, version, geometry, cho
     table.insert(Layout.GlobalKeys, key)
 end
 Define("scalePct", "integer", 100, 50, 200, 1, true)
-Define("columns", "integer", 12, 1, 72, 1, true)
+Define("columns", "integer", Config.SLOT_COUNT, 1, Config.MAX_SLOTS, 1, true)
 Define("spacing", "integer", 4, 0, 20, 1, true)
 Define("showTitle", "boolean", true, nil, nil, 1)
 Define("showHotkeys", "boolean", true, nil, nil, 1)
@@ -191,19 +192,19 @@ function Layout.ValidateLayouts(layouts)
     if layouts == nil then return true end
     if type(layouts) ~= "table" then return false, "Invalid saved action bar layouts." end
     for id, record in pairs(layouts) do
-        if not Layout.ValidID(id) then return false, "Saved layouts support bars 1-6, pet and forms." end
+        if not Layout.ValidID(id) then return false, "Saved layouts support ordinary action bars, pet and forms." end
         local ok, failure = Layout.Validate(record)
         if not ok then return false, failure end
     end
     return true
 end
 function Layout.ReadLocal(layouts, id)
-    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
+    if not Layout.ValidID(id) then return nil, "Choose an action bar." end
     local ok, failure = Layout.ValidateLayouts(layouts)
     if not ok then return nil, failure end
     local record = layouts and layouts[id]
     local result = {x = record and record.x or 0,
-        y = record and record.y or (id == 7 and -250 or id == 8 and -320 or -180 + (id - 1) * 68),
+        y = record and record.y or (id == 7 and -250 or id == 8 and -320 or -180 + (Config.Page(id) - 1) * 68),
         useGlobalLayout = Layout.UsesGlobal(layouts, id),
         localLayoutSaved = record ~= nil and (record.localLayoutSaved == true or record.useGlobalLayout ~= true)}
     for _, key in ipairs(Layout.GlobalKeys) do
@@ -236,7 +237,7 @@ local function Clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
 function Layout.Resolve(id, record, width, height, slots)
-    if not Layout.ValidID(id) then return nil, "Choose an action bar from 1 to 8." end
+    if not Layout.ValidID(id) then return nil, "Choose an action bar." end
     if record == nil then record = Layout.Read(nil, id) end
     local ok, failure = Layout.Validate(record)
     if not ok then return nil, failure end
@@ -245,7 +246,7 @@ function Layout.Resolve(id, record, width, height, slots)
     end
     local scale = record.scalePct / 100
     slots = slots or Layout.SlotCount(id)
-    if not Layout.Finite(slots) or slots < 1 or slots > 72 or slots ~= math.floor(slots) then return nil, "Invalid action bar slot count." end
+    if not Layout.Finite(slots) or slots < 1 or slots > Config.MAX_SLOTS or slots ~= math.floor(slots) then return nil, "Invalid action bar slot count." end
     local columns, spacing = math.min(record.columns or slots, slots), record.spacing or 4
     local rows = math.ceil(slots / columns)
     local size = record.buttonSize or 40

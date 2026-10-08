@@ -1,5 +1,6 @@
 local Bars = BootyActionBars
 local UI = Bars.UI.Components
+local Config = Bars.Services.BarConfig
 local Keybindings = {}
 Bars.Modules.KeybindingSettings = Keybindings
 
@@ -23,11 +24,7 @@ function Keybindings.Create(parent, host, ownerView)
     local choiceOwner = UI.CreateContainer(nil, page)
     choiceOwner:SetWidth(300); choiceOwner:SetHeight(26)
     local choices = {}
-    for id = 1, 6 do
-        choices[id] = {value = id, text = id == 1 and "Main Action Bar"
-            or "Action Bar " .. id}
-    end
-    choices[7], choices[8] = {value = 7, text = "Pet Bar"}, {value = 8, text = "Forms / stances"}
+    for _, id in ipairs(Config.LayoutIDs) do choices[id] = {value = id, text = Config.Name(id)} end
     local function Select()
         local editor = Bars.Modules.BindingEditor
         if editor and editor.IsEditing() and not editor.GetState().confirming then
@@ -38,12 +35,12 @@ function Keybindings.Create(parent, host, ownerView)
     end
     local _, choice = UI.CreateChoiceField({parent = choiceOwner, x = 0, y = 0,
         label = "Bar", initialText = choices[ownerView.bindingSelectedBar].text,
-        width = 200, height = 186, firstY = -7, step = 20, buttonOffset = 40,
+        width = 200, height = table.getn(choices) * 20 + 26, firstY = -7, step = 20, buttonOffset = 40,
         labelValue = true, choices = choices,
         getValue = function() return ownerView.bindingSelectedBar end,
         onSelect = function(value)
             ownerView.bindingSelectedBar = value
-            ownerView.bindingIndex = math.min(ownerView.bindingIndex, value >= 7 and 10 or 12)
+            ownerView.bindingIndex = math.min(ownerView.bindingIndex, Config.SlotCount(value))
             Select()
         end,
         onChanged = function() view:Refresh() end,
@@ -120,7 +117,7 @@ function Keybindings.Create(parent, host, ownerView)
         if active and state and state.barId then
             ownerView.bindingSelectedBar, ownerView.bindingIndex = state.barId, state.index or ownerView.bindingIndex
         end
-        local maximum = ownerView.bindingSelectedBar >= 7 and 10 or 12
+        local maximum = Config.SlotCount(ownerView.bindingSelectedBar)
         ownerView.bindingIndex = math.min(ownerView.bindingIndex, maximum)
         local synchronizing = index.mosSynchronizing
         index.mosSynchronizing = true; index:SetMinMaxValues(1, maximum); index.mosSynchronizing = synchronizing
@@ -135,7 +132,7 @@ function Keybindings.Create(parent, host, ownerView)
         UI.SetButtonEnabled(clear, active and state and state.armed == true and not confirming)
         local text = "Choose Assign keys to start. Client bindings remain unchanged until Save."
         if active and state then
-            local selected = state.barId and ((state.barId == 1 and "Main Action Bar" or state.barId == 7 and "Pet Bar" or state.barId == 8 and "Forms / stances" or "Action Bar " .. state.barId)
+            local selected = state.barId and ((Config.Name(state.barId))
                 .. ", button " .. tostring(state.index or "?") .. ": " .. (state.firstKey or "unassigned")
                 .. (state.secondKey and " / " .. state.secondKey or "") .. ". ") or ""
             text = selected .. tostring(state.pendingCount or 0) .. " pending changes. "

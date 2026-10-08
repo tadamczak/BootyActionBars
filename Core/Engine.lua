@@ -1,9 +1,10 @@
 local Bars = BootyActionBars
+local Config = Bars.Services.BarConfig
 local Engine = {}
 Bars.Core.Engine = Engine
 local state = {active = false, requested = false, subscribed = false, views = {}, customBars = {},
     customActive = {}, customRevision = 0, customConfiguredCount = 0, customActiveCount = 0, macroDirty = {},
-    mainShown = true, mainActive = false, mappingOffsets = {}, mappingPages = {}, mappingMatches = {},
+    mainShown = true, mainActive = false, mainFollowing = true, mappingOffsets = {}, mappingPages = {}, mappingMatches = {},
     mappingChanged = {}, mappingCaptions = {}, behaviorLive = {}, mergeOwners = {}, mergeCounts = {},
     mergeOrdinals = {}, mergeViewLists = {}, mergeMemberIDs = {}, mergePlans = {}}
 local events = {"PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_UPDATE_COOLDOWN",
@@ -22,13 +23,14 @@ local stateEvents = {ACTIONBAR_UPDATE_STATE = true, PLAYER_ENTER_COMBAT = true, 
 local SyncRange, SyncWorker, FlushMacroChanges, SyncMain, SyncContext, UpdateMappings, PublishVisibility
 local visibilityObserver, visibilityDepth, notifyingVisibility = nil, 0, false
 local liveMain, observedMain, observedCustom = false, false, 0
-local liveCustom = {[2] = false, [3] = false, [4] = false, [5] = false, [6] = false}
+local liveCustom = {}
+for _, id in ipairs(Config.CustomIDs) do liveCustom[id] = false end
 
 local function Valid(index)
     return type(index) == "number" and index >= 1 and index <= 12 and index == math.floor(index)
 end
 local function ValidBar(barId)
-    return type(barId) == "number" and barId >= 1 and barId <= 6 and barId == math.floor(barId)
+    return Config.ValidOrdinaryID(barId)
 end
 local function MergeOwner(id) return state.mergeOwners[id] or id end
 local function RequestedBar(id)
@@ -63,7 +65,7 @@ function Engine.ConfigureMerges(groups)
     local copy; copy, failure = factory.Copy(groups)
     if not copy then return false, failure end
     state.merges, state.hasMerges, state.mergeDirty = copy, next(copy) ~= nil, true
-    for id = 1, 6 do
+    for _, id in ipairs(Config.OrdinaryIDs) do
         local host, count, ordinal = factory.Read(copy, id)
         state.mergeOwners[id], state.mergeCounts[id], state.mergeOrdinals[id] = host, count, ordinal
     end
@@ -124,7 +126,7 @@ local function IsActive(barId)
     return state.active and (barId == 1 and state.mainActive == true or barId ~= 1 and state.customActive[barId] == true)
 end
 local function RefreshAll(category, force)
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if IsActive(barId) then
             local ok, failure = RefreshView(state.views[barId], category, force)
             if not ok then return false, failure end
@@ -160,7 +162,7 @@ local function RangeUpdate(elapsed)
         if not ok then Engine.Disable(); Report(failure) end
         return
     end
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if IsActive(barId) then
             local view = state.views[barId]
             for index = 1, 12 do
@@ -232,7 +234,7 @@ end
 SyncRange = function()
     if not state.active or not state.rangeService then return StopRange() end
     local candidates = false
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if IsActive(barId) then
             for index = 1, 12 do
                 if state.views[barId].buttons[index].read.hasRange then candidates = true; break end
@@ -255,7 +257,7 @@ local function SyncBehaviorDemand(force, prospectiveBar)
     if not service then return true, false end
     local changed = state.behaviorMaskConfigured ~= true
     local demand = false
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         local live
         if state.enabling then live = state.active and RequestedBar(barId)
         else live = IsActive(barId) or barId == prospectiveBar and state.active and RequestedBar(barId) end
@@ -274,13 +276,22 @@ local function SyncBehaviorDemand(force, prospectiveBar)
     return true, changed
 end
 local function ResolveMapping(barId)
-    local offset, page = (barId - 1) * 12, barId
-    if barId == 1 then
+    local offset, page = Config.Offset(barId), Config.Page(barId)
+    if barId == 1 and state.mainFollowing then
         offset, page = Bars.Services.ActionPageService.Read()
         if offset == nil then return nil, page end
     end
     if state.behaviorService then return state.behaviorService.Resolve(barId, offset, page) end
     return offset, page
+end
+function Engine.ConfigureMainFollowing(enabled)
+    if type(enabled) ~= "boolean" then return false, "Choose whether Main Action Bar follows the client page and form." end
+    if state.mainFollowing ~= enabled then
+        state.mainFollowing = enabled
+        state.customRevision = state.customRevision + 1
+        state.mainMappingDirty = true
+    end
+    return true
 end
 local function SetMapping(view, offset, page, matched)
     for index = 1, 12 do view.buttons[index].action = offset + index end
@@ -300,7 +311,7 @@ local function ReadMappings(name, refreshAll)
         state.behaviorPendingConfig = nil
     end
     local anyChanged = false
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         state.mappingChanged[barId], state.mappingCaptions[barId] = nil, nil
         if IsActive(barId) then
             local view = state.views[barId]
@@ -313,7 +324,7 @@ local function ReadMappings(name, refreshAll)
         end
     end
     -- Every affected old input is cancelled before any bar takes its new source.
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if state.mappingChanged[barId] then
             local view = state.views[barId]
             view.offset, view.page, view.behaviorMatched = nil, nil, nil
@@ -322,13 +333,13 @@ local function ReadMappings(name, refreshAll)
             if ok == false then return false, changed or "The old action source could not be suspended." end
         end
     end
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if state.mappingChanged[barId] or state.mappingCaptions[barId] then
             ok, changed = SetMapping(state.views[barId], state.mappingOffsets[barId], state.mappingPages[barId], state.mappingMatches[barId])
             if not ok then return false, changed end
         end
     end
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if IsActive(barId) and (state.mappingChanged[barId] or refreshAll) then
             ok, changed = RefreshView(state.views[barId], "Read", state.mappingChanged[barId] or name == "PLAYER_ENTERING_WORLD")
             if not ok then return false, changed end
@@ -349,7 +360,7 @@ UpdateMappings = function(name, refreshAll)
     end
     if ran and ok and state.mappingPending then ok, result = false, "Action bar source changes did not settle after two updates." end
     if not ran or not ok then
-        for barId = 1, 6 do
+        for _, barId in ipairs(Config.OrdinaryIDs) do
             if state.mappingChanged[barId] or state.mappingCaptions[barId] then
                 local view = state.views[barId]
                 if view then view.offset, view.page, view.behaviorMatched = nil, nil, nil end
@@ -381,7 +392,7 @@ local function ViewBindings(view, barId)
     return true
 end
 local function RefreshBindings()
-    for barId = 1, 6 do
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if IsActive(barId) then
             local ok, failure = ViewBindings(state.views[barId], barId)
             if not ok then return false, failure end
@@ -442,7 +453,7 @@ end
 local function HideCustoms()
     local firstFailure
     state.hidingCustoms = true
-    for barId = 2, 6 do
+    for _, barId in ipairs(Config.CustomIDs) do
         SetCustomActive(barId, false, false)
         if state.views[barId] then
             local ok, failure = HideView(state.views[barId])
@@ -457,10 +468,10 @@ local function Configure(customBars)
     if type(customBars) ~= "table" then return false, "Invalid custom action bar configuration." end
     for barId, enabled in pairs(customBars) do
         if not ValidBar(barId) or barId < 2 or enabled ~= true then
-            return false, "Custom action bars must be enabled identities 2 through 6."
+            return false, "Custom action bars must use enabled ordinary identities."
         end
     end
-    for barId = 2, 6 do
+    for _, barId in ipairs(Config.CustomIDs) do
         local enabled = customBars[barId] == true
         if (state.customBars[barId] == true) ~= enabled then
             state.customBars[barId] = enabled and true or nil
@@ -544,9 +555,9 @@ local function ComposeMerges()
     if not factory then return true end
     if state.mergeDirty then
         state.mainActive = false
-        for id = 2, 6 do SetCustomActive(id, false, false) end
+        for _, id in ipairs(Config.CustomIDs) do SetCustomActive(id, false, false) end
     end
-    for host = 1, 6 do
+    for _, host in ipairs(Config.OrdinaryIDs) do
         if MergeOwner(host) == host then
             local ids = state.mergeMemberIDs[host] or {}; state.mergeMemberIDs[host] = ids
             local members, failure = factory.Members(state.merges, host, ids)
@@ -564,7 +575,7 @@ local function ComposeMerges()
             end
         end
     end
-    for id = 1, 6 do
+    for _, id in ipairs(Config.OrdinaryIDs) do
         local view = state.views[id]
         if view then
             local owner = MergeOwner(id)
@@ -682,7 +693,7 @@ local function ActivateCustom(barId, revise)
     return true
 end
 local function SyncCustoms(revise)
-    for barId = 2, 6 do
+    for _, barId in ipairs(Config.CustomIDs) do
         if RequestedBar(barId) and state.active then
             local ok, failure = ActivateCustom(barId, revise)
             if not ok then return false, failure end
@@ -697,8 +708,8 @@ local function SyncCustoms(revise)
     return true
 end
 local function RefreshSlot(slot)
-    if type(slot) ~= "number" or slot < 1 or slot > 120 or slot ~= math.floor(slot) then return true end
-    for barId = 1, 6 do
+    if type(slot) ~= "number" or slot < 1 or slot > Config.MAX_SLOTS or slot ~= math.floor(slot) then return true end
+    for _, barId in ipairs(Config.OrdinaryIDs) do
         if IsActive(barId) then
             local view = state.views[barId]
             local index = view.offset and slot - view.offset
@@ -716,7 +727,7 @@ FlushMacroChanges = function()
     for pass = 1, 2 do
         if not state.macroPending then return true end
         state.macroPending = nil
-        for slot = 1, 120 do
+        for slot = 1, Config.MAX_SLOTS do
             if state.macroDirty[slot] then
                 state.macroDirty[slot] = nil
                 local ok, failure = RefreshSlot(slot)
@@ -724,7 +735,7 @@ FlushMacroChanges = function()
             end
         end
     end
-    for slot = 1, 120 do
+    for slot = 1, Config.MAX_SLOTS do
         if state.macroDirty[slot] then return false, "Macro updates did not settle after refreshing actions." end
     end
     return true
@@ -743,7 +754,7 @@ function Engine.HandleEvent(name, unit)
         local depth = math.max(0, before + (name == "ACTIONBAR_SHOWGRID" and 1 or -1))
         state.cursorGridDepth = depth
         if (before > 0) ~= (depth > 0) then
-            for barId = 1, 6 do
+            for _, barId in ipairs(Config.OrdinaryIDs) do
                 local view = state.views[barId]
                 if IsActive(barId) and view.SetCursorGrid then
                     local ok, failure = ProtectedCall(view.SetCursorGrid, view, depth > 0)
@@ -754,7 +765,7 @@ function Engine.HandleEvent(name, unit)
         return
     end
     if name == "BOOTY_ACTIONBARS_MACRO_UPDATE" and ((state.readingDepth or 0) > 0 or state.mappingUpdating) then
-        if type(unit) == "number" and unit >= 1 and unit <= 120 and unit == math.floor(unit) then
+        if type(unit) == "number" and unit >= 1 and unit <= Config.MAX_SLOTS and unit == math.floor(unit) then
             state.macroDirty[unit] = true
             state.macroPending = true
         end
@@ -783,7 +794,7 @@ function Engine.HandleEvent(name, unit)
         if unit == nil or type(unit) == "number" and unit <= 0 then
             ok, failure = RefreshAll("Read")
         elseif type(unit) == "number" then
-            for barId = 1, 6 do
+            for _, barId in ipairs(Config.OrdinaryIDs) do
                 if IsActive(barId) then
                     local view = state.views[barId]
                     local index = view.offset and unit - view.offset
@@ -817,7 +828,7 @@ local function Subscribe()
     for _, name in ipairs(events) do BootyLib.Subscribe(name, Engine, Event) end
     state.subscribed = true
     if (state.cursorGridDepth or 0) > 0 then
-        for barId = 1, 6 do
+        for _, barId in ipairs(Config.OrdinaryIDs) do
             local view = state.views[barId]
             if IsActive(barId) and view.SetCursorGrid then
                 local ok, failure = ProtectedCall(view.SetCursorGrid, view, true)
@@ -963,7 +974,7 @@ local function Activate(wasActive)
     if ok and state.hasMerges and state.active then
         -- A custom primary must be visible before its main-source child is
         -- activated. Every source still uses its original twelve-slot pipeline.
-        for id = 2, 6 do
+        for _, id in ipairs(Config.CustomIDs) do
             if MergeOwner(id) == id and RequestedBar(id) then
                 ok, failure = ActivateCustom(id, wasActive)
                 if not ok then break end
@@ -973,6 +984,10 @@ local function Activate(wasActive)
     if ok then ok, failure = SyncMain() end
     if ok and RequestedBar(1) and not state.mainActive then state.active = false end
     if ok then ok, failure = SyncCustoms(wasActive) end
+    if ok and state.mainMappingDirty then
+        if state.mainActive then ok, failure = UpdateMappings() end
+        if ok then state.mainMappingDirty = nil end
+    end
     if ok and state.behaviorActivationPending then
         ok, failure = UpdateMappings()
         state.behaviorActivationPending = nil
@@ -1019,7 +1034,7 @@ function Engine.Disable()
     local stopped, firstFailure = StopRange()
     if state.service and state.service.DisableMacroEvents then state.service.DisableMacroEvents() end
     state.macroEnabled = false
-    for slot = 1, 120 do state.macroDirty[slot] = nil end
+    for slot = 1, Config.MAX_SLOTS do state.macroDirty[slot] = nil end
     state.macroPending = nil
     Unsubscribe()
     local ok, activityFailure = ProtectedCall(ActivityChanged)
@@ -1111,7 +1126,7 @@ function Engine.GetState() return state end
 PublishVisibility = function()
     liveMain = state.active == true and state.mainActive == true and state.view ~= nil
     local mask, bit = 0, 1
-    for barId = 2, 6 do
+    for _, barId in ipairs(Config.CustomIDs) do
         local live = state.active == true and state.customActive[barId] == true and state.views[barId] ~= nil
         liveCustom[barId] = live
         if live then mask = mask + bit end

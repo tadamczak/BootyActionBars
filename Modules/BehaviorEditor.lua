@@ -28,7 +28,7 @@ local function Owned(value)
     local valid, failure = Behavior.Validate(store.barBehaviors)
     if not valid then return false, failure end
     if not Behavior.Equal(store.barBehaviors, value.values) then return false, "Action bar rules changed while editing." end
-    for id = 1, 6 do
+    for _, id in ipairs(Bars.Services.BarConfig.OrdinaryIDs) do
         local list = store.barBehaviors and store.barBehaviors[id]
         if list ~= value.lists[id] then return false, "Action bar rule ownership changed while editing." end
         for index = 1, Behavior.LIMIT do
@@ -52,7 +52,7 @@ function Editor.ValidateCapture(token, id)
     return Owned(value)
 end
 local function Owner(id, token)
-    if not Behavior.ValidID(id) then return nil, "Choose an ordinary action bar from 1 to 6." end
+    if not Behavior.ValidID(id) then return nil, "Choose an ordinary action bar from 1 to 10." end
     -- Reject a stale modal before the defaults pipeline can write a new owner.
     if token ~= nil then
         local ok, failure = Editor.ValidateCapture(token, id)

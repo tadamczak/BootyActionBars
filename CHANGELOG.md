@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.29 — 2026-10-08
+
+- Expose Main Action Bar's default page/form following in Behaviours, with an option to keep its normal slots fixed.
+- Add Action Bars7–10 for all120 native slots, including their layouts, behaviors, merges, keybindings and profiles.
+- Fix the cooldown texture error caused by forwarding an extra argument to the native SetTexCoord API.
+
 ## 0.1.0-dev.28 — 2026-10-08
 
 - Remove an unused cooldown state copy while preserving the existing cooldown-number ownership flag.

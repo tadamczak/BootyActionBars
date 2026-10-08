@@ -1,6 +1,7 @@
 local Bars = BootyActionBars
 local Behavior = {}
 Bars.Services.BehaviorService = Behavior
+local Config = Bars.Services.BarConfig
 Behavior.LIMIT = 16
 local floor = math.floor
 local classes = {WARRIOR=true, PALADIN=true, HUNTER=true, ROGUE=true, PRIEST=true,
@@ -17,9 +18,9 @@ local function Locale(value)
     return type(value) == "string" and string.find(value, "^[a-z][a-z][A-Z][A-Z]$") ~= nil
 end
 local function Plain(value) return type(value) == "table" and getmetatable(value) == nil end
-function Behavior.ValidID(id) return Integer(id, 1, 6) end
+function Behavior.ValidID(id) return Config.ValidOrdinaryID(id) end
 function Behavior.ValidateRule(rule)
-    if not Plain(rule) or not Integer(rule.sourceBar, 1, 6) then return false, "Choose a source action bar from 1 to 6." end
+    if not Plain(rule) or not Behavior.ValidID(rule.sourceBar) then return false, "Choose a source action bar from 1 to 10." end
     if rule.condition ~= "stealth" and rule.condition ~= "form" then return false, "Choose Stealth or a form." end
     for key in pairs(rule) do
         if key ~= "condition" and key ~= "sourceBar" and not (rule.condition == "form"
@@ -34,7 +35,7 @@ function Behavior.Validate(value)
     if value == nil then return true end
     if not Plain(value) then return false, "Invalid saved action bar rules. Preserve the saved file before repairing it." end
     for id, list in pairs(value) do
-        if not Behavior.ValidID(id) or not Plain(list) then return false, "Rules belong only to ordinary action bars 1 to 6." end
+        if not Behavior.ValidID(id) or not Plain(list) then return false, "Rules belong only to ordinary action bars 1 to 10." end
         local count = 0
         for index, rule in pairs(list) do
             if not Integer(index, 1, Behavior.LIMIT) then return false, "At most 16 ordered rules are supported per bar." end
@@ -73,7 +74,7 @@ end
 function Behavior.Equal(first, second)
     -- Ownership checks also see values written by callbacks after validation.
     if not Behavior.Validate(first) or not Behavior.Validate(second) then return false end
-    for id = 1, 6 do
+    for _, id in ipairs(Config.OrdinaryIDs) do
         local a, b = first and first[id], second and second[id]
         for index = 1, Behavior.LIMIT do
             local x, y = a and a[index], b and b[index]
@@ -84,7 +85,7 @@ function Behavior.Equal(first, second)
     return true
 end
 local function Candidate(value, id)
-    if not Behavior.ValidID(id) then return nil, "Choose an ordinary action bar from 1 to 6." end
+    if not Behavior.ValidID(id) then return nil, "Choose an ordinary action bar from 1 to 10." end
     local result, failure = Behavior.Copy(value)
     if not result then return nil, failure end
     result[id] = result[id] or {}
@@ -223,7 +224,7 @@ function Behavior.Create(api)
         end
         local changed = not Behavior.Equal(candidate, state.rules)
         local forms, stealth = false, false
-        for id = 1, 6 do
+        for _, id in ipairs(Config.OrdinaryIDs) do
             if (state.live[id] == true) ~= (liveBars[id] == true) then changed = true end
             state.live[id] = liveBars[id] == true
             if state.live[id] then
@@ -267,7 +268,7 @@ function Behavior.Create(api)
         return false, "Action bar behavior updates did not settle after two reads."
     end
     function service.Resolve(id, baseOffset, basePage)
-        if not Behavior.ValidID(id) then return nil, "Choose an ordinary action bar from 1 to 6." end
+        if not Behavior.ValidID(id) then return nil, "Choose an ordinary action bar from 1 to 10." end
         local list = state.live[id] and state.rules[id]
         if list and table.getn(list) > 0 then
             if not state.ready then return nil, "Action bar behavior state is not ready." end
@@ -275,7 +276,7 @@ function Behavior.Create(api)
                 if rule.condition == "stealth" and state.snapshot.stealthed
                     or rule.condition == "form" and rule.classToken == state.snapshot.classToken
                     and rule.locale == state.snapshot.locale and rule.formName == state.snapshot.formName then
-                    return (rule.sourceBar - 1) * 12, rule.sourceBar, index
+                    return Config.Offset(rule.sourceBar), Config.Page(rule.sourceBar), index
                 end
             end
         end

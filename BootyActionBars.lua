@@ -14,7 +14,7 @@ function Bars.GetProfilingTargets()
     local targets = {{kind = "function", owner = Engine, key = "HandleEvent",
         name = "Action bar events", parameters = 2, results = 0}}
     local initialized = false
-    for barId = 1, 6 do
+    for _, barId in ipairs(Bars.Services.BarConfig.OrdinaryIDs) do
         local view = state.views and state.views[barId]
         if barId == 1 and not view then view = state.view end
         if view then
@@ -22,7 +22,7 @@ function Bars.GetProfilingTargets()
             for index = 1, 12 do
                 local button = view.buttons[index]
                 if button and button.cooldown then
-                    local name = barId == 1 and "Cooldown " .. index or "Bar " .. barId .. " cooldown " .. index
+                    local name = barId == 1 and "Cooldown " .. index or "Bar " .. Bars.Services.BarConfig.Page(barId) .. " cooldown " .. index
                     targets[table.getn(targets) + 1] = {kind = "script", frame = button.cooldown,
                         script = "OnUpdateModel", name = name, parameters = 0, results = 0}
                 end
