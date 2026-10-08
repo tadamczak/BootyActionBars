@@ -103,29 +103,74 @@ function Appearance.LayoutRow(row, parent, x, y, width)
     return height
 end
 
+local sectionIcons = {Geometry = "settings", Appearance = "settings", Decoration = "groups", ["Labels and slots"] = "list",
+    ["Range colors"] = "health", Hover = "settings", ["Button border"] = "settings", Cooldown = "analyze", Behaviors = "list", ["Text fonts"] = "list"}
+local controlKinds = {"check", "choice", "color", "slider"}
+function Appearance.Section(parent, caption, context)
+    local row = UI.CreateContainer(nil, parent); row:SetHeight(24)
+    row.kind = "heading"
+    row.control = UI.Settings.CreateSectionAccordion(row, caption, 0, 0, 3, sectionIcons[caption] or "settings")
+    row.control:SetExpanded(true); row.control.label:SetText("-  " .. caption)
+    local group = {caption = caption, heading = row, rows = {}, expanded = true, content = UI.CreateContainer(nil, parent), scratch = {}}
+    row.control:SetScript("OnClick", function()
+        if context.Close then local ok, reason = context.Close(); if ok == false then return context.Complete(false, reason) end end
+        group.expanded = not group.expanded
+        row.control:SetExpanded(group.expanded); row.control.label:SetText((group.expanded and "-  " or "+  ") .. caption)
+        return context.Complete(true)
+    end)
+    return group
+end
+function Appearance.LayoutSection(group, parent, top, width)
+    local heading, body = group.heading, group.content
+    heading:ClearAllPoints(); heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -top); heading:SetWidth(width)
+    heading.control:SetWidth(width)
+    top = top + heading:GetHeight()
+    if not group.expanded then body:Hide(); return top + 6 end
+    body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -top); body:SetWidth(width)
+    local offset, lastBlock, rows = 0, nil, group.scratch
+    local blockRows = group.blockRows or {}; group.blockRows = blockRows
+    rows.mosMaxColumns = 3; rows.mosMeasureItem, rows.mosLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
+    while table.getn(rows) > 0 do table.remove(rows) end
+    while table.getn(blockRows) > 0 do table.remove(blockRows) end
+    local function Flush()
+        for _, kind in ipairs(controlKinds) do
+            for _, row in ipairs(blockRows) do if row.kind == kind then table.insert(rows, row) end end
+            if table.getn(rows) > 0 then offset = offset + UI.Settings.LayoutGrid(body, rows, 0, -offset, width, 0) end
+            while table.getn(rows) > 0 do table.remove(rows) end
+        end
+        while table.getn(blockRows) > 0 do table.remove(blockRows) end
+    end
+    for _, row in ipairs(group.rows) do
+        if row:IsShown() then
+            if row.babBlock ~= lastBlock then Flush(); if offset > 0 then offset = offset + 8 end end
+            if row:GetParent() ~= body then row:SetParent(body) end
+            table.insert(blockRows, row); lastBlock = row.babBlock
+        end
+    end
+    Flush(); body:SetHeight(offset)
+    return top + offset + 8
+end
 function Appearance.Create(parent, context)
     local view = {rows = {}, sections = {}, sliders = {}, checks = {}, choices = {}, colors = {}}
-    local section
+    local section, block
     local function Complete(ok, failure) return context.Complete(ok, failure) end
     local function Row(height)
         local row = UI.CreateContainer(nil, parent); row:SetHeight(height)
         row.babBaseHeight = height
+        row.babBlock = block
         row.mosTextSizeDelta = math.min(-2, UI.GetTextSizeDelta(parent))
         table.insert(view.rows, row)
         if section then table.insert(section.rows, row) end
         return row
     end
     local function Section(text)
-        section = nil
-        local row = Row(24)
-        row.kind, row.control = "heading", UI.CreateHeading(row, text, 3, "gold")
-        row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3); row.control:SetHeight(16)
-        section = {caption = text, heading = row, rows = {}}
+        block = nil
+        section = Appearance.Section(parent, text, {Complete = Complete, Close = function() return view:Close() end})
         table.insert(view.sections, section)
     end
     local function Slider(key, caption, low, high, getter, setter)
         local row = Row(44)
-        local control = UI.Settings.CreateSlider(row, "BootyActionBarsAppearance" .. key, 0, -15,
+        local control = UI.Settings.CreateSlider(row, (context.ControlPrefix or "BootyActionBarsAppearance") .. key, 0, -15,
             caption, key, low, high, nil, {ensure = function() end,
                 get = getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end,
                 set = function(_, value) Complete((setter or function(item) return context.SetPreference(key, item) end)(value)) end})
@@ -234,7 +279,7 @@ function Appearance.Create(parent, context)
             entry.opening = false
         end)
         local alphaKey = group .. "A"
-        Slider(alphaKey, "Color opacity (%)", 0, 100, function()
+        Slider(alphaKey, caption .. " opacity (%)", 0, 100, function()
             local layout = context.GetLayout(); return math.floor((layout and layout[alphaKey] or 1) * 100 + 0.5)
         end, function(percent)
             local layout = context.GetLayout(); if not layout then return false, "Choose a bar or Global." end
@@ -242,34 +287,54 @@ function Appearance.Create(parent, context)
         end)
     end
     Section("Decoration")
+    block = "background"
     Checkbox("nativeBackground", "Native bar background")
+    local textureScale = Slider("nativeTextureScalePct", "Background scale (%)", 50, 200)
+    UI.AttachTooltip(textureScale, "Background scale (%)", "Scale only the native stone background.")
+    block = "nativeBorder"
     Checkbox("nativeBorder", "Native bar border")
-    local textureScale = Slider("nativeTextureScalePct", "Bar texture scale (%)", 50, 200)
-    UI.AttachTooltip(textureScale, "Bar texture scale (%)", "Scale the bar's native stone and outer frame independently from its button backgrounds.")
+    Slider("nativeBorderScalePct", "Border scale (%)", 50, 200)
+    block = "nativeButtons"
     local nativeBackground = Checkbox("nativeSlotArtwork", "Native button background")
     UI.AttachTooltip(nativeBackground, "Native button background", "Show native recessed slot artwork independently from the bar background, behind occupied and empty buttons.")
     Slider("nativeButtonScalePct", "Button texture scale (%)", 50, 200)
+    block = "gryphons"
     Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
         {value = "right", text = "Right"}, {value = "both", text = "Both"}})
     Slider("gryphonScalePct", "Gryphon scale (%)", 50, 200)
+    if not context.OnlyDecoration then
     Section("Range colors"); Color("rangeIn", "In range"); Color("rangeOut", "Out of range")
     Section("Hover")
-    Checkbox("hoverBackgroundShadow", "Background shadow")
-    Checkbox("hoverBorderShadow", "Border shadow")
-    Checkbox("hoverBorder", "Border")
-    Color("hover", "Hover color"); Slider("hoverSize", "Effect size", 1, 10)
-    Slider("hoverBorderSize", "Border thickness", 1, 10)
-    Slider("hoverRadius", "Corner radius", 0, 10)
+    for _, effect in ipairs({{"hoverBackgroundShadow", "hoverBackground", "Background shadow"},
+        {"hoverBorderShadow", "hoverShadow", "Border shadow"}, {"hoverBorder", "hoverOutline", "Border"}}) do
+        block = effect[2]
+        Checkbox(effect[1], effect[3]); Color(effect[2], effect[3] .. " color")
+        Slider(effect[2] .. "Size", "Effect size", 1, 10)
+        Slider(effect[2] .. "Radius", "Corner radius", 0, 10)
+        if effect[2] == "hoverOutline" then Slider("hoverBorderSize", "Border thickness", 1, 10) end
+    end
     Section("Button border")
     Checkbox("showButtonBorder", "Show button border"); Color("border", "Border color")
     Slider("borderSize", "Border size", 1, 6); Checkbox("buttonBackground", "Button background")
     Section("Cooldown")
+    block = "numbers"
     Checkbox("showCooldownText", "Cooldown numbers"); Color("cooldown", "Text color")
+    Color("cooldownUnder10", "Text below 10 seconds"); Color("cooldownUnder5", "Text below 5 seconds")
+    local precision = Checkbox("cooldownFullSeconds", "Full seconds")
+    UI.AttachTooltip(precision, "Full seconds", "On: whole seconds. Off: one digit after the decimal point.")
+    Choice("cooldownFont", "Cooldown font", Bars.Services.TextStyle.Options)
     Slider("cooldownFontSize", "Font size", 8, 32)
+    block = "indicator"
     Choice("cooldownEffectMode", "Cooldown indicator", {{value = "circle", text = "Circle"}, {value = "vertical", text = "Top to bottom"}})
     Color("cooldownEffect", "Indicator color")
+    block = "blink"
     Checkbox("cooldownFlash", "Blink in last 3 seconds")
     Color("cooldownFlash", "Blink color")
+    Section("Text fonts")
+    for _, item in ipairs({{"titleFont", "Title font"}, {"hotkeyFont", "Keybinding font"}, {"countFont", "Count font"}, {"macroFont", "Macro name font"}}) do
+        Choice(item[1], item[2], Bars.Services.TextStyle.Options)
+    end
+    end
     function view:Refresh(layout)
         if not layout then return end
         for key, slider in pairs(self.sliders) do

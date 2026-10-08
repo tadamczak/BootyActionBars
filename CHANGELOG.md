@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-dev.30 — 2026-10-08
+
+- Give each hover effect its own color, size and rounding, and each button text its own font.
+- Add cooldown colors below ten/five seconds, full seconds or one decimal, and one-second blinking above toggle icons.
+- Organize settings into compact accordions and related controls; show behavior rules in a table with reorder arrows.
+- Merge pet, form and native utility bars with other bars, with optional independent member appearance and clear group visibility.
+- Add independently scaled native backgrounds, borders, button artwork and gryphons to special/utility bars; align Micro Menu spacing with its visible icons.
+
 ## 0.1.0-dev.29 — 2026-10-08
 
 - Expose Main Action Bar's default page/form following in Behaviours, with an option to keep its normal slots fixed.

@@ -53,15 +53,25 @@ function BehaviorSettings.Create(parent, context)
     local function Available() return Runtime.IsAvailable() and (not context.IsAvailable or context.IsAvailable()) end
     local frame = UI.CreateContainer(nil, parent); frame.mosTextSizeDelta = -2
     local view = {frame = frame, rows = {}, rules = {}, catalog = {}}
-    local heading = UI.CreateHeading(frame, "Behaviors", 3, "gold")
-    local help = UI.CreateComponentLabel(frame, "First matching rule wins. Rules choose the actions shown on this bar.", "white")
+    local heading = UI.Settings.CreateSectionAccordion(frame, "Behaviors", 0, 0, 3, "list")
+    local content = UI.CreateContainer(nil, frame)
+    view.heading, view.content = heading, content
+    view.expanded, view.content = true, content
+    heading:SetExpanded(true); heading.label:SetText("-  Behaviors")
+    heading:SetScript("OnClick", function()
+        local ok, failure = view:Close(); if not ok then return context.Complete(false, failure) end
+        view.expanded = not view.expanded
+        heading:SetExpanded(view.expanded); heading.label:SetText((view.expanded and "-  " or "+  ") .. "Behaviors")
+        return context.Complete(true)
+    end)
+    local help = UI.CreateComponentLabel(content, "First matching rule wins. Rules choose the actions shown on this bar.", "white")
     help:SetJustifyH("LEFT"); help:SetJustifyV("TOP")
-    local status = UI.CreateComponentLabel(frame, "No rules. The bar uses its normal actions.", "white")
+    local status = UI.CreateComponentLabel(content, "No rules. The bar uses its normal actions.", "white")
     status:SetJustifyH("LEFT"); status:SetJustifyV("TOP")
-    local add = UI.CreateButton(frame, nil, "Add", 72, 24); UI.StyleActionButton(add)
+    local add = UI.CreateButton(content, nil, "Add", 72, 24); UI.StyleActionButton(add)
     view.add, view.help, view.status = add, help, status
     local function Complete(ok, failure, skipRefresh) return context.Complete(ok, failure, skipRefresh) end
-    local followingRow = UI.CreateContainer(nil, frame); followingRow.babBaseHeight = 32
+    local followingRow = UI.CreateContainer(nil, content); followingRow.babBaseHeight = 32
     local following = UI.Settings.CreateCheckbox(followingRow, 0, 0, "Follow client pages and forms", "mainBarFollowClient", nil,
         {ensure = function() end, get = Runtime.GetMainBarFollowClient, set = function(_, value)
             if context.GetSelection() ~= 1 or not frame:IsVisible() or not Available() then
@@ -77,7 +87,7 @@ function BehaviorSettings.Create(parent, context)
             return Complete(Runtime.SetMainBarFollowClient(value))
         end})
     followingRow.kind, followingRow.control = "check", following
-    local followingHelp = UI.CreateComponentLabel(frame,
+    local followingHelp = UI.CreateComponentLabel(content,
         "Fallback when no custom rule matches: follow the game's pages, Stealth and forms. Turn off to use Main Action Bar slots 1-12.", "white")
     followingHelp:SetJustifyH("LEFT"); followingHelp:SetJustifyV("TOP")
     view.followingRow, view.followingCheckbox, view.followingHelp = followingRow, following, followingHelp
@@ -223,13 +233,23 @@ function BehaviorSettings.Create(parent, context)
         if destination then return Complete(Runtime.MoveBarBehavior(id, index, destination, token)) end
         return Complete(Runtime.RemoveBarBehavior(id, index, token))
     end
+    local tableHead = UI.CreateContainer(nil, content); tableHead:SetHeight(22)
+    local headers = {
+        UI.Table.CreateHeader(tableHead, {}, "Condition", 0, 0, 140, "condition", false),
+        UI.Table.CreateHeader(tableHead, {}, "Change to", 140, 0, 140, "action", false),
+        UI.Table.CreateHeader(tableHead, {}, "Actions", 280, 0, 160, "controls", false),
+    }
     local function Row(index)
-        local row = UI.CreateContainer(nil, frame)
+        local row = UI.CreateControl(nil, content)
+        UI.ApplyDropdownChoiceSurface(row); UI.ApplyRowBackground(row, index, false)
         row.label = UI.CreateComponentLabel(row, "", "white"); row.label:SetJustifyH("LEFT"); row.label:SetJustifyV("TOP")
+        row.sourceLabel = UI.CreateComponentLabel(row, "", "white"); row.sourceLabel:SetJustifyH("LEFT"); row.sourceLabel:SetJustifyV("TOP")
         row.actions = UI.CreateContainer(nil, row); row.buttons = {}
-        for _, definition in ipairs({{"Edit", 44}, {"Remove", 58}, {"Up", 34}, {"Down", 42}}) do
-            local button = UI.CreateButton(row.actions, nil, definition[1], definition[2], 24)
-            UI.StyleActionButton(button); button.mosFlowWidth = definition[2]; table.insert(row.buttons, button)
+        for _, definition in ipairs({{"Edit", 44}, {"Remove", 58}, {"up", 20}, {"down", 20}}) do
+            local arrow = definition[1] == "up" or definition[1] == "down"
+            local button = arrow and UI.CreateArrowButton(row.actions, definition[1]) or UI.CreateButton(row.actions, nil, definition[1], definition[2], 24)
+            if not arrow then UI.StyleActionButton(button) end
+            button.mosFlowWidth = definition[2]; table.insert(row.buttons, button)
         end
         row.edit, row.remove, row.up, row.down = row.buttons[1], row.buttons[2], row.buttons[3], row.buttons[4]
         row.edit:SetScript("OnClick", function() view:Open(index) end)
@@ -267,7 +287,8 @@ function BehaviorSettings.Create(parent, context)
         for index = 1, math.min(MAX_RULES, count) do
             local row = self.rows[index] or Row(index)
             local source = self.rules[index].sourceBar
-            row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog) .. " -> " .. Config.Name(source))
+            row.label:SetText(index .. ". " .. Condition(self.rules[index], self.catalog))
+            row.sourceLabel:SetText(Config.Name(source))
             row:Show()
             UI.SetButtonEnabled(row.edit, Available()); UI.SetButtonEnabled(row.remove, Available())
             UI.SetButtonEnabled(row.up, Available() and index > 1)
@@ -279,36 +300,50 @@ function BehaviorSettings.Create(parent, context)
     end
     function view:Measure(width)
         heading:ClearAllPoints(); heading:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0); heading:SetWidth(width); heading:SetHeight(24)
-        help:ClearAllPoints(); help:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -26)
+        if not self.expanded then content:Hide(); frame:SetHeight(24); return 24 end
+        content:Show(); content:ClearAllPoints(); content:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -24); content:SetWidth(width)
+        help:ClearAllPoints(); help:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
         help:SetWidth(width); help:SetHeight(UI.MeasureTextHeight(help, width))
-        local top = 26 + help:GetHeight() + 8
+        local top = help:GetHeight() + 8
         if status:IsShown() then
-            status:ClearAllPoints(); status:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top)
+            status:ClearAllPoints(); status:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
             status:SetWidth(width); status:SetHeight(UI.MeasureTextHeight(status, width)); top = top + status:GetHeight() + 8
         end
-        for _, row in ipairs(self.rows) do
-            if row:IsShown() then
-                row:ClearAllPoints(); row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top); row:SetWidth(width)
-                local inline = width >= 380
-                local actionWidth = math.min(190, width)
-                local labelWidth = inline and width - actionWidth - 8 or width
-                row.label:SetWidth(labelWidth); row.label:SetHeight(UI.MeasureTextHeight(row.label, labelWidth))
-                row.label:ClearAllPoints(); row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-                local actionHeight = UI.LayoutFlow(row.actions, row.buttons, 0, 0, actionWidth, 4)
-                row.actions:SetWidth(actionWidth); row.actions:SetHeight(actionHeight); row.actions:ClearAllPoints()
-                row.actions:SetPoint("TOPLEFT", row, "TOPLEFT", inline and width - actionWidth or 0, inline and 0 or -(row.label:GetHeight() + 4))
-                row:SetHeight((inline and math.max(row.label:GetHeight(), actionHeight) or row.label:GetHeight() + 4 + actionHeight) + 10)
-                top = top + row:GetHeight()
-            end
-        end
         if followingRow:IsShown() then
-            top = top + Bars.Modules.AppearanceSettings.LayoutRow(followingRow, frame, 0, -top, width) + 4
-            followingHelp:ClearAllPoints(); followingHelp:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top)
+            top = top + Bars.Modules.AppearanceSettings.LayoutRow(followingRow, content, 0, -top, width) + 4
+            followingHelp:ClearAllPoints(); followingHelp:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top)
             followingHelp:SetWidth(width); followingHelp:SetHeight(UI.MeasureTextHeight(followingHelp, width))
             top = top + followingHelp:GetHeight() + 8
         end
-        add:ClearAllPoints(); add:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top); add:SetWidth(math.min(72, width))
-        frame:SetHeight(top + add:GetHeight() + 10); return frame:GetHeight()
+        add:ClearAllPoints(); add:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); add:SetWidth(math.min(72, width))
+        top = top + add:GetHeight() + 8
+        local inline = width >= 380
+        local actionWidth, textWidth = 158, inline and width - 166 or width
+        local columnWidth = math.max(1, (textWidth - 8) / 2)
+        tableHead:ClearAllPoints(); tableHead:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); tableHead:SetWidth(width)
+        for index, header in ipairs(headers) do
+            header:ClearAllPoints(); header:SetPoint("TOPLEFT", tableHead, "TOPLEFT", index == 1 and 0 or index == 2 and columnWidth + 8 or textWidth + 8, 0)
+            header:SetWidth(index == 3 and actionWidth or columnWidth)
+            if index == 3 and not inline then header:Hide() else header:Show() end
+        end
+        top = top + 26
+        for _, row in ipairs(self.rows) do
+            if row:IsShown() then
+                row:ClearAllPoints(); row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); row:SetWidth(width)
+                local labelWidth = columnWidth
+                row.label:SetWidth(labelWidth); row.label:SetHeight(UI.MeasureTextHeight(row.label, labelWidth))
+                row.label:ClearAllPoints(); row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+                row.sourceLabel:SetWidth(labelWidth); row.sourceLabel:SetHeight(UI.MeasureTextHeight(row.sourceLabel, labelWidth))
+                row.sourceLabel:ClearAllPoints(); row.sourceLabel:SetPoint("TOPLEFT", row, "TOPLEFT", columnWidth + 8, 0)
+                local actionHeight = UI.LayoutFlow(row.actions, row.buttons, 0, 0, actionWidth, 4)
+                row.actions:SetWidth(actionWidth); row.actions:SetHeight(actionHeight); row.actions:ClearAllPoints()
+                row.actions:SetPoint("TOPLEFT", row, "TOPLEFT", inline and width - actionWidth or 0, inline and 0 or -(math.max(row.label:GetHeight(), row.sourceLabel:GetHeight()) + 4))
+                row:SetHeight((inline and math.max(row.label:GetHeight(), row.sourceLabel:GetHeight(), actionHeight)
+                    or math.max(row.label:GetHeight(), row.sourceLabel:GetHeight()) + 4 + actionHeight) + 10)
+                top = top + row:GetHeight()
+            end
+        end
+        content:SetHeight(top + 10); frame:SetHeight(top + 34); return frame:GetHeight()
     end
     frame:SetScript("OnHide", function() local ok, failure = view:Close(); if not ok then error(failure) end end)
     frame:Hide(); return view

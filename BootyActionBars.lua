@@ -14,6 +14,13 @@ function Bars.GetProfilingTargets()
     local targets = {{kind = "function", owner = Engine, key = "HandleEvent",
         name = "Action bar events", parameters = 2, results = 0}}
     local initialized = false
+    local configured, specialConfigured = state.customConfiguredCount or 0, 0
+    local store = BootyActionBarsDB
+    if type(store) == "table" then
+        configured = 0
+        for _, id in ipairs(Bars.Services.BarConfig.CustomIDs) do if Bars.Services.BarMerging.Shown(store, id) then configured = configured + 1 end end
+        for _, id in ipairs({7, 8}) do if Bars.Services.BarMerging.Shown(store, id) then specialConfigured = specialConfigured + 1 end end
+    end
     for _, barId in ipairs(Bars.Services.BarConfig.OrdinaryIDs) do
         local view = state.views and state.views[barId]
         if barId == 1 and not view then view = state.view end
@@ -33,10 +40,9 @@ function Bars.GetProfilingTargets()
         active = state.active == true, requested = state.requested == true,
         subscribed = state.subscribed == true, framesInitialized = initialized,
         customRevision = state.customRevision or 0,
-        customConfiguredCount = state.customConfiguredCount or 0,
+        customConfiguredCount = configured,
         customActiveCount = state.customActiveCount or 0,
-        specialConfiguredCount = type(BootyActionBarsDB) == "table" and type(BootyActionBarsDB.specialBars) == "table" and
-            ((BootyActionBarsDB.specialBars.pet and 1 or 0) + (BootyActionBarsDB.specialBars.stance and 1 or 0)) or 0,
+        specialConfiguredCount = specialConfigured,
         runtimeStopped = Runtime.GetState().stopped == true,
         settingsEnabled = type(BootyActionBarsDB) == "table" and BootyActionBarsDB.trialBarEnabled == true,
         targets = targets}

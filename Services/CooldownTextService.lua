@@ -39,14 +39,15 @@ function Service.EffectUV(bucket)
 end
 function Service.FlashPhase(remaining, duration)
     if not Service.Finite(remaining) or not Service.Finite(duration) then return false end
-    -- Global cooldowns do not flash. A four-phase clock gives two flashes per
-    -- second during the final three seconds of a real ability cooldown.
+    -- A complete on/off cycle lasts one second. Global cooldowns do not flash.
     return duration >= Service.MIN_DURATION and remaining > 0 and remaining <= 3
-        and floor(remaining * 4) - floor(remaining * 4 / 2) * 2 == 1
+        and floor(remaining * 2) - floor(remaining) * 2 == 1
 end
-function Service.Bucket(remaining)
+function Service.Bucket(remaining, fullSeconds)
     if not Service.Finite(remaining) then return nil, "Invalid cooldown time." end
     if remaining <= 0 then return 0, 0 end
+    if fullSeconds == true then return 2, ceil(remaining) end
+    if fullSeconds == false then return 1, math.max(1, ceil(remaining * 10)) end
     if remaining >= 86400 then return 5, ceil(remaining / 86400) end
     if remaining >= 3600 then return 4, ceil(remaining / 3600) end
     if remaining >= 60 then return 3, ceil(remaining / 60) end

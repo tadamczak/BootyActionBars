@@ -77,7 +77,15 @@ local function Ensure(record, flash)
     if flash then region = record.flashEffect else region = record.effect end
     if region then return region end
     if not record.button.icon then error("The cooldown icon is unavailable.", 0) end
-    region = UI.CreateTexture(record.button, nil, "ARTWORK")
+    local parent = record.button
+    if flash then
+        local holder = record.flashHolder or UI.CreateContainer(nil, record.button)
+        record.flashHolder = holder
+        holder:SetAllPoints(record.button.icon); holder:SetFrameLevel(record.button:GetFrameLevel() + 3)
+        holder:EnableMouse(false)
+        parent = holder
+    end
+    region = UI.CreateTexture(parent, nil, flash and "OVERLAY" or "ARTWORK")
     if not region then error("The cooldown effect texture is unavailable.", 0) end
     if flash then record.flashEffect, record.button.cooldownFlashEffect, record.flashShown = region, region, true
     else record.effect, record.button.cooldownEffect, record.effectShown = region, region, true end

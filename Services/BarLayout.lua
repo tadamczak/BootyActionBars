@@ -14,11 +14,14 @@ function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or Config.SLOT_
 -- Colors stay scalar so picker inputs and saved snapshots never share tables.
 local fields, colorKeys = {}, {}
 Layout.Fields, Layout.GlobalKeys = fields, {}
-Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "border", "cooldown", "cooldownEffect", "cooldownFlash"}
+Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverShadow", "hoverOutline", "border", "cooldown", "cooldownUnder10", "cooldownUnder5", "cooldownEffect", "cooldownFlash"}
 -- These values have legacy fallbacks; explicit false/default values must not
 -- disappear from sparse saves and reactivate an older preference.
 Layout.ExplicitKeys = {nativeSlotArtwork = true, nativeBackground = true, nativeBorder = true,
-    nativeButtonScalePct = true, hoverBackgroundShadow = true, hoverBorderShadow = true, hoverBorder = true}
+    nativeButtonScalePct = true, nativeBorderScalePct = true, hoverBackgroundShadow = true, hoverBorderShadow = true, hoverBorder = true}
+for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
+    for _, suffix in ipairs({"Size", "Radius", "R", "G", "B", "A"}) do Layout.ExplicitKeys[prefix .. suffix] = true end
+end
 local function Define(key, kind, value, minimum, maximum, version, geometry, choices)
     fields[key] = {kind = kind, default = value, minimum = minimum, maximum = maximum,
         version = version, geometry = geometry, choices = choices}
@@ -43,11 +46,20 @@ Define("hoverBorderShadow", "boolean", true, nil, nil, 2)
 Define("hoverBorder", "boolean", false, nil, nil, 2)
 Define("hoverBorderSize", "integer", 2, 1, 10, 2)
 Define("hoverRadius", "integer", 0, 0, 10, 2)
+for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
+    Define(prefix .. "Size", "integer", 2, 1, 10, 2)
+    Define(prefix .. "Radius", "integer", 0, 0, 10, 2)
+end
+local fontChoices = {default = true, friz = true, arial = true, morpheus = true, skurri = true}
+for _, prefix in ipairs({"title", "hotkey", "count", "macro", "cooldown"}) do
+    Define(prefix .. "Font", "enum", "default", nil, nil, 2, true, fontChoices)
+end
 Define("showButtonBorder", "boolean", true, nil, nil, 2)
 Define("borderSize", "integer", 2, 1, 6, 2)
 Define("buttonBackground", "boolean", true, nil, nil, 2)
 Define("cooldownFontSize", "integer", 14, 8, 32, 2)
 Define("showCooldownText", "boolean", true, nil, nil, 2)
+Define("cooldownFullSeconds", "boolean", true, nil, nil, 2)
 Define("cooldownEffectMode", "enum", "circle", nil, nil, 2, nil, {circle = true, vertical = true})
 Define("cooldownFlash", "boolean", false, nil, nil, 2)
 Define("nativeTexture", "boolean", false, nil, nil, 2)
@@ -56,11 +68,14 @@ Define("nativeSlotArtwork", "boolean", false, nil, nil, 2)
 Define("nativeBackground", "boolean", false, nil, nil, 2)
 Define("nativeBorder", "boolean", false, nil, nil, 2)
 Define("nativeTextureScalePct", "integer", 100, 50, 200, 2)
+Define("nativeBorderScalePct", "integer", 100, 50, 200, 2)
 Define("nativeButtonScalePct", "integer", 100, 50, 200, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
 Define("gryphonScalePct", "integer", 100, 50, 200, 2)
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,0.2,0.2,1}, hover = {1,1,1,0.6},
-    border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownEffect = {0,0,0,0.6}, cooldownFlash = {1,0.2,0.2,0.65}}
+    hoverBackground = {1,1,1,0.6}, hoverShadow = {1,1,1,0.6}, hoverOutline = {1,1,1,0.6},
+    border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownUnder10 = {1,0.8,0.2,1}, cooldownUnder5 = {1,0.2,0.2,1},
+    cooldownEffect = {0,0,0,0.6}, cooldownFlash = {1,0.2,0.2,0.65}}
 local channels = {"R", "G", "B", "A"}
 for _, group in ipairs(Layout.ColorGroups) do
     colorKeys[group] = {}
@@ -144,11 +159,19 @@ local function NativeSlots(record)
     return record ~= nil and record.nativeTexture == true and record.nativeTextureBackground ~= false
 end
 local function LegacyValues(result, record)
+    for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
+        for _, channel in ipairs({"R", "G", "B", "A"}) do
+            if not record or record[prefix .. channel] == nil then result[prefix .. channel] = result["hover" .. channel] end
+        end
+        if not record or record[prefix .. "Size"] == nil then result[prefix .. "Size"] = result.hoverSize end
+        if not record or record[prefix .. "Radius"] == nil then result[prefix .. "Radius"] = result.hoverRadius end
+    end
     result.nativeSlotArtwork = NativeSlots(record)
     for _, key in ipairs({"nativeBackground", "nativeBorder"}) do
         if not record or record[key] == nil then result[key] = record ~= nil and record.nativeTexture == true end
     end
     if not record or record.nativeButtonScalePct == nil then result.nativeButtonScalePct = result.nativeTextureScalePct end
+    if not record or record.nativeBorderScalePct == nil then result.nativeBorderScalePct = result.nativeTextureScalePct end
     local mode = record and record.hoverMode or "default"
     if not record or record.hoverBackgroundShadow == nil then result.hoverBackgroundShadow = mode == "shadow" end
     if not record or record.hoverBorderShadow == nil then result.hoverBorderShadow = mode == "default" end
@@ -228,6 +251,26 @@ function Layout.Read(layouts, id, global, slots)
         end
         LegacyValues(result, global)
     end
+    result.columns = math.min(result.columns, slots or Layout.SlotCount(id))
+    return result
+end
+function Layout.ReadEffective(store, id, slots)
+    local result, failure = Layout.Read(store.barLayouts, id, store.globalLayout, slots)
+    if not result then return nil, failure end
+    local owner = BootyActionBars.Services.BarMerging.StyleOwner(store, id)
+    if owner == id then return result end
+    local donor
+    if type(owner) == "number" then donor, failure = Layout.Read(store.barLayouts, owner, store.globalLayout, slots)
+    else
+        donor, failure = Layout.ReadGlobal(store.globalLayout)
+        if donor then
+            local utility; utility, failure = BootyActionBars.Services.UtilityLayout.Read(store.utilityLayouts, owner)
+            if not utility then return nil, failure end
+            for key, value in pairs(utility) do if fields[key] then donor[key] = value end end
+        end
+    end
+    if not donor then return nil, failure end
+    for _, key in ipairs(Layout.GlobalKeys) do result[key] = donor[key] end
     result.columns = math.min(result.columns, slots or Layout.SlotCount(id))
     return result
 end

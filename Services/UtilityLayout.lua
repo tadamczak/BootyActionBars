@@ -6,21 +6,25 @@ local definitions = {
     keyring = {label = "Keyring", names = {"KeyRingButton"}, count = 1, width = 18, height = 39, columns = 1},
     latency = {label = "Latency", names = {"MainMenuBarPerformanceBarFrame"}, count = 1, width = 20, height = 66, columns = 1},
     bags = {label = "Bags", names = {"MainMenuBarBackpackButton", "CharacterBag0Slot", "CharacterBag1Slot", "CharacterBag2Slot", "CharacterBag3Slot"}, count = 5, width = 37, height = 37, columns = 5},
-    micro = {label = "Micro Menu", names = {"CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton"}, count = 8, width = 29, height = 58, columns = 8},
+    micro = {label = "Micro Menu", names = {"CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton"}, count = 8, width = 29, height = 58, visualHeight = 58 * 41 / 64, offsetY = 58 * 23 / 64, columns = 8},
 }
 local fields = {shown = true, x = true, y = true, scalePct = true, columns = true, spacing = true, nativeTexture = true}
-local artworkIds = {keyring = true, latency = true, bags = true, micro = true}
+Utility.StyleKeys = {"nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct"}
+for _, key in ipairs(Utility.StyleKeys) do fields[key] = true end
 -- Separate starting rows keep newly enabled groups usable before their first drag.
 local positions = {experience = {0, -180}, keyring = {-290, -120}, latency = {-250, -120}, bags = {-110, -120}, micro = {150, -120}}
 local function Finite(value) return type(value) == "number" and value == value and math.abs(value) <= 1000000 end
 function Utility.Definition(id) return definitions[id] end
 function Utility.Name(id) return definitions[id] and definitions[id].label end
 function Utility.ValidID(id) return definitions[id] ~= nil end
-function Utility.SupportsNativeTexture(id) return artworkIds[id] == true end
+function Utility.SupportsNativeTexture(id) return definitions[id] ~= nil end
 function Utility.ValidValue(id, key, value)
     local definition = definitions[id]
     if not definition or not fields[key] then return false end
     if key == "nativeTexture" then return Utility.SupportsNativeTexture(id) and type(value) == "boolean" end
+    for _, styleKey in ipairs(Utility.StyleKeys) do
+        if key == styleKey then return BootyActionBars.Services.BarLayout.ValidGlobalValue(key, value) end
+    end
     if key == "shown" then return type(value) == "boolean" end
     if not Finite(value) then return false end
     if key == "x" or key == "y" then return true end
@@ -49,13 +53,37 @@ function Utility.Read(saved, id)
     local record = {shown = source.shown == true, x = source.x or positions[id][1], y = source.y or positions[id][2],
         scalePct = source.scalePct or 100, columns = source.columns or definition.columns, spacing = source.spacing or 2}
     if Utility.SupportsNativeTexture(id) then record.nativeTexture = source.nativeTexture == true end
+    for _, key in ipairs(Utility.StyleKeys) do
+        local value = source[key]
+        if value == nil then
+            if key == "nativeBackground" or key == "nativeBorder" or key == "nativeSlotArtwork" then value = source.nativeTexture == true
+            else value = BootyActionBars.Services.BarLayout.DefaultValue(key) end
+        end
+        record[key] = value
+    end
     return record
+end
+function Utility.ReadEffective(store, id, candidate)
+    local result, failure = Utility.Read(store.utilityLayouts, id)
+    if not result then return nil, failure end
+    if candidate then for key, value in pairs(candidate) do result[key] = value end end
+    local owner = BootyActionBars.Services.BarMerging.StyleOwner(store, id)
+    if owner == id then return result end
+    local donor
+    if type(owner) == "number" then donor, failure = BootyActionBars.Services.BarLayout.Read(store.barLayouts, owner, store.globalLayout)
+    else donor, failure = Utility.Read(store.utilityLayouts, owner) end
+    if not donor then return nil, failure end
+    for _, key in ipairs(Utility.StyleKeys) do result[key] = donor[key] end
+    result.scalePct, result.spacing = donor.scalePct, donor.spacing
+    result.columns = math.min(donor.columns, definitions[id].count)
+    return result
 end
 function Utility.Patch(saved, id, key, value)
     if not Utility.ValidValue(id, key, value) then return nil, "Invalid utility-bar preference." end
     local record, failure = Utility.Read(saved, id)
     if not record then return nil, failure end
     record[key] = value
+    if key == "nativeTexture" then record.nativeBackground, record.nativeBorder, record.nativeSlotArtwork = value, value, value end
     return record
 end
 function Utility.Copy(saved)
@@ -86,7 +114,8 @@ Utility.NativeTexture = "Interface\\MainMenuBar\\UI-MainMenuBar-KeyRing"
 Utility.ArtworkFields = {"id", "shown", "columns", "spacing", "width", "height", "count", "socketSize",
     "left", "top", "right", "bottom", "innerLeft", "innerTop", "innerRight", "innerBottom",
     "padLeft", "padRight", "padTop", "padBottom", "backingLeft", "backingTop", "backingWidth", "backingHeight",
-    "backingColumns", "backingRows", "backingCount", "backingRotated", "backingStepX", "backingStepY"}
+    "backingColumns", "backingRows", "backingCount", "backingRotated", "backingStepX", "backingStepY",
+    "edgeCount", "slotCount", "slotWidth", "slotHeight", "slotPadding", "cellWidth", "cellHeight", "gryphons", "gryphonSize", "gryphonOverlap", "frontCount", "regularCount"}
 function Utility.ResolveArtwork(id, record, width, height, shown, target)
     if not Utility.SupportsNativeTexture(id) or type(record) ~= "table" or type(shown) ~= "boolean"
         or not Utility.ValidValue(id, "columns", record.columns) or not Utility.ValidValue(id, "spacing", record.spacing)
@@ -96,23 +125,30 @@ function Utility.ResolveArtwork(id, record, width, height, shown, target)
     target = target or {}
     local native = BootyActionBars.Services.NativeDecorationLayout
     target.id, target.shown, target.columns, target.spacing = id, shown, record.columns, record.spacing
-    target.width, target.height, target.backingCount = width, height, 0
-    if id == "bags" then
-        target.socketSize = math.min(43, 37 + record.spacing)
-        local crop = (43 - target.socketSize) / 2
-        native.ResolveBacking(-3 + crop, -4 + crop, width + 6 - crop * 2, height + 6 - crop * 2, 100, target)
-        target.count = target.backingCount + definitions.bags.count
-    elseif id == "micro" then
-        -- Preserve the clean stock section's +8,-17 offset and five-unit right
-        -- overhang. Its centre grows with the grid; bevels remain six units.
-        target.left, target.top, target.right, target.bottom = 8, 17, width + 5, height + 2
-        target.padLeft, target.padRight, target.padTop, target.padBottom = 6, 6, 6, 6
-        target.innerLeft, target.innerTop = target.left + 6, target.top + 6
-        target.innerRight, target.innerBottom = target.right - 6, target.bottom - 6
-        native.ResolveBacking(target.innerLeft, target.innerTop, target.innerRight - target.innerLeft,
-            target.innerBottom - target.innerTop, 100, target)
-        target.count = target.backingCount + 8
-    else target.count = 1 end
+    target.width, target.height = width, height
+    target.cellWidth, target.cellHeight = definitions[id].width, definitions[id].visualHeight or definitions[id].height
+    local border = record.nativeBorder
+    if border == nil then border = record.nativeTexture == true end
+    local background = record.nativeBackground
+    if background == nil then background = record.nativeTexture == true end
+    local slots = record.nativeSlotArtwork
+    if slots == nil then slots = record.nativeTexture == true end
+    local padding = border and 6 * (record.nativeBorderScalePct or 100) / 100 or 0
+    target.innerLeft, target.innerTop, target.innerRight, target.innerBottom = 0, 0, width, height
+    target.left, target.top, target.right, target.bottom = -padding, -padding, width + padding, height + padding
+    target.padLeft, target.padRight, target.padTop, target.padBottom = padding, padding, padding, padding
+    native.ResolveBacking(0, 0, width, height, record.nativeTextureScalePct or 100, target)
+    if not background then target.backingCount = 0 end
+    target.edgeCount, target.slotCount = border and 8 or 0, slots and definitions[id].count * 9 or 0
+    local buttonScale = (record.nativeButtonScalePct or 100) / 100
+    target.slotWidth = math.min(target.cellWidth * buttonScale, target.cellWidth + record.spacing)
+    target.slotHeight = math.min(target.cellHeight * buttonScale, target.cellHeight + record.spacing)
+    target.slotPadding = math.min(6 * buttonScale, target.slotWidth / 3, target.slotHeight / 3)
+    target.gryphons = record.gryphons or "none"
+    target.gryphonSize, target.gryphonOverlap = 128 * (record.gryphonScalePct or 100) / 100, 32 * (record.gryphonScalePct or 100) / 100
+    target.frontCount = target.gryphons == "both" and 2 or target.gryphons ~= "none" and 1 or 0
+    target.regularCount = target.backingCount + target.edgeCount + target.slotCount
+    target.count = target.regularCount + target.frontCount
     if target.backingCount > native.MaxBackingPieces then return nil, "Native utility artwork exceeds its supported grid." end
     return target
 end
@@ -120,29 +156,37 @@ function Utility.ArtworkPiece(scene, index, target)
     if type(index) ~= "number" or index < 1 or index > scene.count or index ~= math.floor(index) then return end
     target = target or {}
     local native = BootyActionBars.Services.NativeDecorationLayout
-    target.rotated = false
+    target.rotated, target.foreground = false, false
     if index <= scene.backingCount then
         target.path = native.Texture
         target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom, target.rotated = native.Backing(scene, index)
-    elseif scene.id == "bags" then
-        local slot = index - scene.backingCount - 1
-        local row = math.floor(slot / scene.columns)
-        local column = slot - row * scene.columns
-        local crop = (43 - scene.socketSize) / 2
-        target.path, target.x, target.y = Utility.NativeTexture, column * (37 + scene.spacing) - 3 + crop, row * (37 + scene.spacing) - 4 + crop
-        target.width, target.height = scene.socketSize, scene.socketSize
-        -- Keep the complete native socket: a centre crop would erase its
-        -- bevel when the cell is narrower than the 43-pixel source sprite.
-        target.left, target.right, target.top, target.bottom = 43 / 256, 86 / 256, 21 / 128, 64 / 128
-    elseif scene.id == "micro" then
+    elseif index <= scene.backingCount + scene.edgeCount then
         target.path = native.Texture
         target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom = native.Edge(scene, index - scene.backingCount)
-    elseif scene.id == "latency" then
-        target.path, target.x, target.y, target.width, target.height = Utility.NativeTexture, 0, 11, 20, 43
-        target.left, target.right, target.top, target.bottom = 1 / 256, 21 / 256, 21 / 128, 64 / 128
+    elseif index <= scene.backingCount + scene.edgeCount + scene.slotCount then
+        local part = index - scene.backingCount - scene.edgeCount - 1
+        local slot, piece = math.floor(part / 9), math.mod(part, 9)
+        local row = math.floor(slot / scene.columns)
+        local column = slot - row * scene.columns
+        local x = column * (scene.cellWidth + scene.spacing) + (scene.cellWidth - scene.slotWidth) / 2
+        local y = row * (scene.cellHeight + scene.spacing) + (scene.cellHeight - scene.slotHeight) / 2
+        local cell = scene.slotScene or {}; scene.slotScene = cell
+        local padding = scene.slotPadding
+        cell.left, cell.top, cell.right, cell.bottom = x, y, x + scene.slotWidth, y + scene.slotHeight
+        cell.innerLeft, cell.innerTop, cell.innerRight, cell.innerBottom = x + padding, y + padding, cell.right - padding, cell.bottom - padding
+        cell.padLeft, cell.padRight, cell.padTop, cell.padBottom = padding, padding, padding, padding
+        target.path = native.Texture
+        if piece == 0 then
+            target.x, target.y, target.width, target.height = cell.innerLeft, cell.innerTop, cell.innerRight - cell.innerLeft, cell.innerBottom - cell.innerTop
+            target.left, target.right, target.top, target.bottom = 53 / 256, 84 / 256, 219 / 256, 250 / 256
+        else target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom = native.Edge(cell, piece) end
     else
-        target.path, target.x, target.y, target.width, target.height = Utility.NativeTexture, -2, -3, 22, 43
-        target.left, target.right, target.top, target.bottom = 20 / 256, 42 / 256, 21 / 128, 64 / 128
+        local side = scene.gryphons == "right" and "right" or index == scene.count and scene.gryphons == "both" and "right" or "left"
+        target.path, target.foreground = native.GryphonTexture, true
+        target.width, target.height = scene.gryphonSize, scene.gryphonSize
+        target.x = side == "left" and scene.left - scene.gryphonSize + scene.gryphonOverlap or scene.right - scene.gryphonOverlap
+        target.y = scene.cellHeight + scene.padBottom - scene.gryphonSize
+        target.left, target.right, target.top, target.bottom = side == "right" and 1 or 0, side == "right" and 0 or 1, 0, 1
     end
     return target
 end

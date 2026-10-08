@@ -4,6 +4,7 @@ local BarSettings = {}
 Bars.Modules.BarSettings = BarSettings
 local Utility = Bars.Services.UtilityLayout
 local Config = Bars.Services.BarConfig
+local Merging = Bars.Services.BarMerging
 local sliders = {{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, Config.MAX_SLOTS},
     {"spacing", "Spacing", 0, 20}, {"buttonSize", "Button size", 24, 64},
     {"iconInset", "Icon inset", 0, 8}, {"opacityPct", "Opacity (%)", 20, 100}, {"labelFontSize", "Label size", 8, 16}}
@@ -46,16 +47,16 @@ function BarSettings.Create(parent, host, owner)
         if type(view.selected) == "number" then return Runtime.GetBarLayout(view.selected) end
     end
     local function IsAvailable()
-        return Runtime.IsAvailable() and (type(view.selected) ~= "number" or Runtime.GetMergeOwner(view.selected) == view.selected)
+        return Runtime.IsAvailable() and (not Merging.ValidID(view.selected) or Runtime.GetMergeOwner(view.selected) == view.selected or not Runtime.GetUseGroupSettings(view.selected))
     end
     local mergeChoices = {{value = "none", text = "None"}}
-    for _, id in ipairs(Config.OrdinaryIDs) do table.insert(mergeChoices, {value = id, text = Name(id)}) end
+    for _, id in ipairs(Merging.IDs) do table.insert(mergeChoices, {value = id, text = Name(id)}) end
     local mergeLabel, mergeChoice = UI.CreateChoiceField({parent = mergeRegion, x = 0, y = -22,
         label = "Merge with Action Bar:", initialText = "None", width = 180, height = table.getn(mergeChoices) * 22 + 14, firstY = -7,
         step = 22, buttonOffset = 0, labelValue = true, choices = mergeChoices,
         getValue = function()
             local id = view.selected
-            if not Config.ValidOrdinaryID(id) then return "none" end
+            if not Merging.ValidID(id) then return "none" end
             local primary = Runtime.GetMergeOwner(id)
             return primary == id and "none" or primary
         end,
@@ -70,6 +71,11 @@ function BarSettings.Create(parent, host, owner)
         end, onChanged = function() view:Refresh() end})
     mergeLabel:ClearAllPoints(); mergeLabel:SetPoint("TOPLEFT", mergeRegion, "TOPLEFT", 0, 0); mergeLabel:SetHeight(16)
     view.mergeChoice, view.mergeRegion = mergeChoice, mergeRegion
+    local useGroup = Checkbox(mergeRegion, "Use group settings", "useGroupSettings", function() return Runtime.GetUseGroupSettings(view.selected) end,
+        function(value) return Runtime.SetUseGroupSettings(view.selected, value) end)
+    useGroup:SetPoint("TOPLEFT", mergeRegion, "TOPLEFT", 0, -54)
+    UI.AttachTooltip(useGroup, "Use group settings", "Uncheck to keep this member's own appearance. Ordinary members with independent settings keep a separate grid inside the same movable group.")
+    view.useGroup = useGroup
     local function SetPreference(key, value)
         if view.selected == "global" then return Runtime.SetGlobalLayout(key, value) end
         if type(view.selected) ~= "number" then return false, "Choose an action bar or Global Settings." end
@@ -87,14 +93,20 @@ function BarSettings.Create(parent, host, owner)
         local store = Bars.Database.Ensure(); return store and store.editorOptions.showAnchors == true
     end, function(value) return Runtime.SetEditorOption("showAnchors", value) end)
     local toolChecks = {unlock, grid, anchors}
+    local toolSection = Bars.Modules.AppearanceSettings.Section(tools, "Layout editing", {Complete = Complete})
+    for _, check in ipairs(toolChecks) do
+        local row = UI.CreateContainer(nil, tools); row:SetHeight(32)
+        check:SetParent(row); row.control, row.kind, row.babBaseHeight = check, "check", 32
+        table.insert(toolSection.rows, row)
+    end
+    view.toolSection = toolSection
     UI.AttachTooltip(unlock, "Unlock", "Drag anywhere on the normal bar. Mouse actions and icon dragging are blocked until you lock it.")
     UI.AttachTooltip(grid, "Show grid", "Show a static positioning grid while unlocked.")
     UI.AttachTooltip(anchors, "Show anchors", "Move placeholders for hidden or unavailable bars without enabling their buttons.")
     local function IsShown()
         local store, id = Bars.Database.Ensure(), view.selected
         if not store or type(id) ~= "number" then return false end
-        return id == 1 and store.mainBarShown ~= false or id == 7 and store.specialBars.pet == true
-            or id == 8 and store.specialBars.stance == true or Config.ValidID(id) and store.customBars[id] == true
+        return Merging.Shown(store, id)
     end
     local show = Checkbox(visibility, "Show Action Bar", "visible", IsShown, function(value)
         local id = view.selected
@@ -123,10 +135,8 @@ function BarSettings.Create(parent, host, owner)
         for _, row in ipairs(value.rows) do table.insert(view.rows, row) end
     end
     local function Section(caption)
-        local row = UI.CreateContainer(nil, settings); row:SetHeight(24)
-        row.control = UI.CreateHeading(row, caption, 3, "gold")
-        row.control:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3); row.control:SetHeight(16)
-        row.kind = "heading"; section = {caption = caption, heading = row, rows = {}}
+        section = Bars.Modules.AppearanceSettings.Section(settings, caption, {Complete = Complete,
+            Close = function() if view.appearance then return view.appearance:Close() end; return true end})
         AddSection(section)
     end
     for _, definition in ipairs(sliders) do
@@ -161,7 +171,7 @@ function BarSettings.Create(parent, host, owner)
     view.appearance = appearance
     local behaviors = Bars.Modules.BehaviorSettings.Create(canvas, {
         GetSelection = function() return view.selected end, Complete = Complete,
-        IsAvailable = IsAvailable,
+        IsAvailable = function() return Runtime.IsAvailable() and Runtime.GetMergeOwner(view.selected) == view.selected end,
         Prepare = function() return appearance:Close() end,
     })
     view.behaviors = behaviors
@@ -206,23 +216,20 @@ function BarSettings.Create(parent, host, owner)
         title:SetHeight(24); Place(title, usable, 8)
         description:SetHeight(UI.MeasureTextHeight(description, usable)); local top = Place(description, usable, 40) + 16
         if view.selected == "layout" then
-            local height = 0
-            for _, check in ipairs(toolChecks) do
-                check:ClearAllPoints(); check:SetPoint("TOPLEFT", tools, "TOPLEFT", 0, -height)
-                height = height + MeasureCheckbox(check, usable)
-            end
+            local height = Bars.Modules.AppearanceSettings.LayoutSection(toolSection, tools, 0, usable)
             tools:SetHeight(height); return Place(tools, usable, top) + 12
+        end
+        if mergeRegion:IsShown() then
+            mergeLabel:SetWidth(usable)
+            mergeChoice:SetWidth(math.min(220, usable)); UI.ReflowControlText(mergeChoice)
+            if useGroup:IsShown() then mergeRegion:SetHeight(54 + MeasureCheckbox(useGroup, usable)) end
+            top = Place(mergeRegion, usable, top) + 6
         end
         if IsUtility(view.selected) then
             if utility.frame:IsShown() then utility:Layout(usable); top = Place(utility.frame, usable, top) + 8 end
             return top + 12
         end
         if view.selected ~= "global" then
-            if mergeRegion:IsShown() then
-                mergeLabel:SetWidth(usable)
-                mergeChoice:SetWidth(math.min(220, usable)); UI.ReflowControlText(mergeChoice)
-                top = Place(mergeRegion, usable, top) + 6
-            end
             visibility:SetHeight(MeasureCheckbox(show, usable)); inherited:SetHeight(MeasureCheckbox(useGlobal, usable))
             top = Place(visibility, usable, top) + 6; top = Place(inherited, usable, top) + 8
         end
@@ -230,16 +237,7 @@ function BarSettings.Create(parent, host, owner)
         if settings:IsShown() then
             local content = 0
             for _, group in ipairs(view.sections) do
-                local items = group.items
-                while table.getn(items) > 0 do table.remove(items) end
-                for _, row in ipairs(group.rows) do if row:IsShown() then table.insert(items, row) end end
-                if table.getn(items) > 0 then
-                    local heading = group.heading
-                    heading:ClearAllPoints(); heading:SetPoint("TOPLEFT", settings, "TOPLEFT", 0, -content); heading:SetWidth(usable)
-                    heading.control:SetWidth(usable)
-                    content = content + heading:GetHeight()
-                    content = content + UI.Settings.LayoutGrid(settings, items, 0, -content, usable, 0)
-                end
+                content = Bars.Modules.AppearanceSettings.LayoutSection(group, settings, content, usable)
             end
             settings:SetHeight(content); top = Place(settings, usable, top) + 8
         end
@@ -279,25 +277,28 @@ function BarSettings.Create(parent, host, owner)
         if not frame:IsVisible() then return end
         local id, store = self.selected, Bars.Database.Ensure()
         local isLayout, isGlobal, isUtility = id == "layout", id == "global", IsUtility(id)
-        local merged = Config.ValidOrdinaryID(id) and Runtime.GetMergeOwner(id) ~= id
+        local merged = Merging.ValidID(id) and Runtime.GetMergeOwner(id) ~= id
         for key, button in pairs(self.buttons) do UI.StyleWarmListRow(button, key == id) end
         title:SetText(Name(id))
         description:SetText(isLayout and "Unlock to position bars. Show anchors also reveals hidden bars."
             or isGlobal and "Shared appearance for bars using Global Settings. Each bar keeps its own position."
-            or isUtility and "Position and scale these native controls separately. Their original actions keep working."
-            or merged and "Merged into " .. Name(Runtime.GetMergeOwner(id)) .. ". Its appearance and position follow that bar. Choose None to restore individual settings."
-            or id == 1 and ((Runtime.GetMainBarFollowClient() and "Actions follow the client page or form."
-                or "Actions use fixed Main slots 1-12.") .. " Custom behavior rules take priority. Hiding this bar keeps other bars active.")
-            or (id == 7 or id == 8) and "Shown when a pet or form is available. Use Layout and Show anchors to position it while absent."
+            or merged and "Part of " .. Name(Runtime.GetMergeOwner(id)) .. ". The primary bar controls movement and visibility. Uncheck Use group settings to customize this member."
+            or isUtility and "Native controls keep their original actions. Show controls visibility of this bar and its merged members."
+            or id == 1 and "Main's page and form fallback is configured in Behaviors below. Custom rules take priority. Show Main Action Bar controls visibility of Main and all its merged members."
+            or (id == 7 or id == 8) and "Available pet or form actions appear here. Show controls this bar and its merged members. Layout / Show anchors also positions an absent bar."
             or Config.ValidOrdinaryID(id) and Config.Page(id) > 6 and "These fixed slots are shared with class forms and stealth. Changing an action here also changes that form's action."
-            or "Actions use fixed slots. Hiding preserves layout, actions and keys.")
+            or "Actions use fixed slots. Show controls this bar and its merged members. Hiding preserves settings, actions and keys.")
         if isLayout then tools:Show() else tools:Hide() end
         behaviors:Refresh()
-        if Config.ValidOrdinaryID(id) then
+        if Merging.ValidID(id) then
             mergeRegion:Show()
             local primary = Runtime.GetMergeOwner(id)
             mergeChoice.label:SetText(primary == id and "None" or Name(primary))
             UI.SetButtonEnabled(mergeChoice, Runtime.IsAvailable())
+            if merged then
+                useGroup:Show(); useGroup:SetChecked(Runtime.GetUseGroupSettings(id) and 1 or nil); mergeRegion:SetHeight(90)
+            else useGroup:Hide(); mergeRegion:SetHeight(52) end
+            UI.Settings.SetCheckboxEnabled(useGroup, Runtime.IsAvailable())
             for index, option in ipairs(mergeChoice.panel.options) do
                 local value = mergeChoices[index].value
                 UI.SetButtonEnabled(option, value == "none" or value ~= id and Runtime.GetMergeOwner(value) == value)
@@ -334,8 +335,8 @@ function BarSettings.Create(parent, host, owner)
         grid:SetChecked(store and store.editorOptions.showGrid and 1 or nil); anchors:SetChecked(store and store.editorOptions.showAnchors and 1 or nil)
         UI.Settings.SetCheckboxEnabled(unlock, Runtime.IsAvailable() and Bars.Core.Engine.GetState().active == true)
         UI.Settings.SetCheckboxEnabled(grid, store ~= nil); UI.Settings.SetCheckboxEnabled(anchors, store ~= nil)
-        UI.Settings.SetCheckboxEnabled(show, IsAvailable()); UI.Settings.SetCheckboxEnabled(useGlobal, IsAvailable())
-        UI.SetButtonEnabled(reset, IsAvailable())
+        UI.Settings.SetCheckboxEnabled(show, IsAvailable() and not merged); UI.Settings.SetCheckboxEnabled(useGlobal, IsAvailable())
+        UI.SetButtonEnabled(reset, IsAvailable() and not merged)
         owner:OnResize()
     end
     function view:Show() frame:Show(); self:Refresh(); return true end
@@ -361,6 +362,7 @@ function BarSettings.Create(parent, host, owner)
     owner.appearanceSliders, owner.resetLayoutButton = view.sliders, reset
     owner.visualSliders, owner.visualCheckboxes = appearance.sliders, appearance.checks
     owner.mergeChoice = mergeChoice
+    owner.useGroupCheckbox = useGroup
     owner.colorControls, owner.visualChoices = appearance.colors, appearance.choices
     view.visibility, view.inherited, view.settings, view.description = visibility, inherited, settings, description
     frame:Hide(); return view

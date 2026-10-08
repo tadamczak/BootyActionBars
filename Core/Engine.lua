@@ -34,8 +34,21 @@ local function ValidBar(barId)
 end
 local function MergeOwner(id) return state.mergeOwners[id] or id end
 local function RequestedBar(id)
+    if state.groupVisibility and state.groupVisibility[id] ~= nil then return state.groupVisibility[id] end
     local owner = MergeOwner(id)
     return owner == 1 and state.mainShown or owner ~= 1 and state.customBars[owner] == true
+end
+function Engine.ConfigureGroupVisibility(values)
+    if values ~= nil and type(values) ~= "table" then return false, "Invalid group visibility." end
+    for id, value in pairs(values or {}) do if not ValidBar(id) or type(value) ~= "boolean" then return false, "Invalid group visibility member." end end
+    local changed = false
+    for _, id in ipairs(Config.OrdinaryIDs) do
+        if (state.groupVisibility and state.groupVisibility[id]) ~= (values and values[id]) then changed = true; break end
+    end
+    if not changed then return true end
+    state.groupVisibility = values
+    state.customRevision = state.customRevision + 1
+    return true
 end
 function Engine.GetMergeOwner(id)
     if not ValidBar(id) then return nil, "Only ordinary action bars can be merged." end
@@ -53,7 +66,7 @@ function Engine.GetMergeMembers(id, target)
     for index = 2, table.getn(target) do target[index] = nil end
     return target
 end
-function Engine.ConfigureMerges(groups)
+function Engine.ConfigureMerges(groups, overrides)
     local factory = Bars.Services.BarMerging
     if not factory then
         if groups == nil or type(groups) == "table" and next(groups) == nil then return true end
@@ -61,6 +74,8 @@ function Engine.ConfigureMerges(groups)
     end
     local valid, failure = factory.Validate(groups)
     if not valid then return false, failure end
+    groups, failure = factory.OrdinaryGroups(groups, overrides)
+    if not groups then return false, failure end
     if factory.Equal(state.merges, groups) then return true end
     local copy; copy, failure = factory.Copy(groups)
     if not copy then return false, failure end
