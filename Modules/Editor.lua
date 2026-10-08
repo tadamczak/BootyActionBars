@@ -10,7 +10,7 @@ local function MergeOwner(id)
     if not Config.ValidOrdinaryID(id) or not Bars.Services.BarMerging then return id, Layout.SlotCount(id) end
     local store = state.store or {}
     local groups, failure = state.ordinaryGroups
-    if not groups then groups, failure = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides) end
+    if not groups then groups, failure = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides, store.mergeSides) end
     if not groups then return nil, failure end
     return Bars.Services.BarMerging.Read(groups, id)
 end
@@ -116,7 +116,7 @@ function Editor.Configure(store)
     if not ok then return false, failure end
     ok, failure = Layout.ValidateGlobal(store.globalLayout)
     if not ok then return false, failure end
-    local groups; groups, failure = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides)
+    local groups; groups, failure = Bars.Services.BarMerging.OrdinaryGroups(store.barMerges, store.mergeStyleOverrides, store.mergeSides)
     if not groups then return false, failure end
     state.ordinaryGroups = groups
     state.store = store
@@ -750,12 +750,12 @@ function Editor.GetGroupAnchor(id)
     if not ok then return nil, reason end
     return view
 end
-function Editor.SetGroupExtent(id, width, height)
+function Editor.SetGroupExtent(id, width, height, left, top)
     local handle = state.handles[id]
     if not handle then return true end
     local view = LiveView(id) or state.anchors[id]
     if not view then return true end
-    if handle:ClearAllPoints() == false or handle:SetPoint("TOPLEFT", view.frame, "TOPLEFT", 0, 0) == false
+    if handle:ClearAllPoints() == false or handle:SetPoint("TOPLEFT", view.frame, "TOPLEFT", left or 0, -(top or 0)) == false
         or handle:SetWidth(width) == false or handle:SetHeight(height) == false then
         return false, "Merged layout handle sizing was declined."
     end

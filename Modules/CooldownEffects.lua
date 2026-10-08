@@ -62,11 +62,12 @@ local function Visibility(record, region, shown, flash)
 end
 function Effects.Hide(record)
     local failure
-    for index = 1, 2 do
+    for index = 1, 3 do
         local region
-        if index == 1 then region = record.effect else region = record.flashEffect end
+        if index == 1 then region = record.effect elseif index == 2 then region = record.flashEffect
+        elseif record.blend then region = record.blend.effect end
         if region then
-            local ran, reason = pcall(Visibility, record, region, false, index == 2)
+            local ran, reason = pcall(Visibility, index == 3 and record.blend or record, region, false, index == 2)
             if not ran then failure = failure and failure .. " " .. tostring(reason) or tostring(reason) end
         end
     end
@@ -102,9 +103,9 @@ local function Color(record, region, r, g, b, a, flash)
         paint.r, paint.g, paint.b, paint.a = r, g, b, a
     end
 end
-local function Geometry(record, region, progress)
+local function Geometry(record, region, progress, selectedBucket)
     local owner, size = record.owner, record.owner.effectSize
-    local mode, bucket = owner.effectMode, Service.EffectBucket(progress)
+    local mode, bucket = owner.effectMode, selectedBucket or Service.EffectBucket(progress)
     if record.effectMode ~= mode or record.effectSize ~= size then
         record.effectMode, record.effectSize, record.effectBucket = nil, nil, nil
         Call(record, region, "SetTexture", mode == "circle" and circle or "Interface\\Buttons\\WHITE8X8")
@@ -135,10 +136,34 @@ function Effects.Paint(record, now)
     if progress == nil then error(failure, 0) end
     if owner.effectA > 0 and progress > 0 then
         local region = Ensure(record, false)
-        Geometry(record, region, progress)
-        Color(record, region, owner.effectR, owner.effectG, owner.effectB, owner.effectA, false)
+        local alpha = owner.effectA
+        if owner.effectMode == "circle" then
+            local position = progress * Service.EFFECT_STEPS
+            local lower, fraction = math.floor(position), position - math.floor(position)
+            Geometry(record, region, progress, lower)
+            if fraction > 0 then
+                local blend = record.blend
+                if not blend then blend = {owner = owner, button = record.button}; record.blend = blend end
+                local upper = Ensure(blend, false)
+                record.button.cooldownEffect = region
+                -- Nested masks: compensate the lower opacity so their shared
+                -- pixels retain the configured opacity instead of pulsing.
+                local upperAlpha = alpha * fraction
+                alpha = upperAlpha == 1 and 0 or (alpha - upperAlpha) / (1 - upperAlpha)
+                Geometry(blend, upper, progress, lower + 1)
+                Color(blend, upper, owner.effectR, owner.effectG, owner.effectB, upperAlpha, false)
+                if record.revision == revision and record.activeIndex and not record.suspended then Visibility(blend, upper, true, false) end
+            elseif record.blend then Visibility(record.blend, record.blend.effect, false, false) end
+        else
+            if record.blend then Visibility(record.blend, record.blend.effect, false, false) end
+            Geometry(record, region, progress)
+        end
+        Color(record, region, owner.effectR, owner.effectG, owner.effectB, alpha, false)
         if record.revision == revision and record.activeIndex and not record.suspended then Visibility(record, region, true, false) end
-    elseif record.effect then Visibility(record, record.effect, false, false) end
+    elseif record.effect then
+        Visibility(record, record.effect, false, false)
+        if record.blend then Visibility(record.blend, record.blend.effect, false, false) end
+    end
     if record.revision ~= revision or not record.activeIndex or record.suspended then return end
     local remaining = record.start + record.duration - now
     if owner.flash and owner.flashA > 0 and Service.FlashPhase(remaining, record.duration) then

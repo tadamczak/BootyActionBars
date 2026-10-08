@@ -27,14 +27,14 @@ local function Restore(record)
         if frame:SetWidth(record.width) == false or frame:SetHeight(record.height) == false then error("Group handle restoration was declined.") end
     end
 end
-local function Extent(id, view, width, height)
+local function Extent(id, view, width, height, left, top)
     if type(id) == "string" then
         if view.handle then
-            if view.handle:ClearAllPoints() == false or view.handle:SetPoint("TOPLEFT", view.frame, "TOPLEFT", 0, 0) == false
+            if view.handle:ClearAllPoints() == false or view.handle:SetPoint("TOPLEFT", view.frame, "TOPLEFT", left or 0, -(top or 0)) == false
                 or view.handle:SetWidth(width) == false or view.handle:SetHeight(height) == false then error("Merged utility handle sizing was declined.") end
         end
     else
-        local ok, failure = Bars.Modules.Editor.SetGroupExtent(id, width, height)
+        local ok, failure = Bars.Modules.Editor.SetGroupExtent(id, width, height, left, top)
         if ok == false then error(failure) end
     end
 end
@@ -42,6 +42,8 @@ function Groups.Configure(store)
     local ok, failure = Merging.Validate(store and store.barMerges)
     if not ok then return false, failure end
     ok, failure = Merging.ValidateOverrides(store and store.mergeStyleOverrides)
+    if not ok then return false, failure end
+    ok, failure = Merging.ValidateSides(store and store.mergeSides)
     if not ok then return false, failure end
     state.store = store; return true
 end
@@ -78,6 +80,7 @@ local function Refresh()
                 local frame, members = primary.frame, Merging.Members(state.store.barMerges, id)
                 local scale = frame:GetScale()
                 local width, height = frame:GetWidth() * scale, frame:GetHeight() * scale
+                local left, top, right, bottom = 0, 0, width, height
                 local gap = (primary.layoutDrawing and primary.layoutDrawing.spacing or primary.preferences and primary.preferences.spacing or 4) * scale
                 seen[frame] = true
                 for index = 2, table.getn(members) do
@@ -85,12 +88,18 @@ local function Refresh()
                     if child and not seen[child.frame] and child.frame:IsVisible() then
                         seen[child.frame] = true
                         local childScale = child.frame:GetScale()
-                        plans[table.getn(plans) + 1] = {frame = child.frame, primary = frame, top = height + gap, scale = childScale}
-                        width = math.max(width, child.frame:GetWidth() * childScale)
-                        height = height + gap + child.frame:GetHeight() * childScale
+                        local childWidth, childHeight = child.frame:GetWidth() * childScale, child.frame:GetHeight() * childScale
+                        local side = state.store.mergeSides and state.store.mergeSides[members[index]] or "bottom"
+                        local x, y = 0, bottom + gap
+                        if side == "top" then y = top - gap - childHeight
+                        elseif side == "left" then x, y = left - gap - childWidth, 0
+                        elseif side == "right" then x, y = right + gap, 0 end
+                        plans[table.getn(plans) + 1] = {frame = child.frame, primary = frame, left = x, top = y, scale = childScale}
+                        left, top = math.min(left, x), math.min(top, y)
+                        right, bottom = math.max(right, x + childWidth), math.max(bottom, y + childHeight)
                     end
                 end
-                extents[id] = {view = primary, width = width / scale, height = height / scale}
+                extents[id] = {view = primary, width = (right - left) / scale, height = (bottom - top) / scale, left = left / scale, top = top / scale}
             end
         end
     end
@@ -113,14 +122,14 @@ local function Refresh()
         for frame, record in pairs(state.links) do if not linked[frame] then Restore(record) end end
         for _, plan in ipairs(plans) do
             local frame = plan.frame
-            if frame:ClearAllPoints() == false or frame:SetPoint("TOPLEFT", plan.primary, "TOPLEFT", 0, -plan.top / plan.scale) == false then error("Merged bar positioning was declined.") end
+            if frame:ClearAllPoints() == false or frame:SetPoint("TOPLEFT", plan.primary, "TOPLEFT", plan.left / plan.scale, -plan.top / plan.scale) == false then error("Merged bar positioning was declined.") end
             local point, relative, anchor, x, y = frame:GetPoint(1)
-            if point ~= "TOPLEFT" or relative ~= plan.primary or anchor ~= "TOPLEFT" or x ~= 0 or math.abs(y + plan.top / plan.scale) > 0.001 then error("Merged bar positioning did not apply.") end
+            if point ~= "TOPLEFT" or relative ~= plan.primary or anchor ~= "TOPLEFT" or math.abs(x - plan.left / plan.scale) > 0.001 or math.abs(y + plan.top / plan.scale) > 0.001 then error("Merged bar positioning did not apply.") end
         end
         for id, previous in pairs(state.extents) do
             if not extents[id] then Extent(id, previous, previous.frame:GetWidth(), previous.frame:GetHeight()) end
         end
-        for id, value in pairs(extents) do Extent(id, value.view, value.width, value.height) end
+        for id, value in pairs(extents) do Extent(id, value.view, value.width, value.height, value.left, value.top) end
     end)
     if not ok then
         local restoration

@@ -25,6 +25,19 @@ local function SelectListedBar()
     if not ok then view.Complete(ok, failure, true) end
     return ok, failure
 end
+function BarSettings.ConfigureColumnSlider(slider, apply, read)
+    slider:SetScript("OnMouseDown", function() this.babDragging = true end)
+    slider:SetScript("OnMouseUp", function()
+        local value = this.babPending
+        this.babDragging, this.babPending = nil, nil
+        if value then apply(value) end
+    end)
+    slider:SetScript("OnHide", function()
+        this.babDragging, this.babPending = nil, nil
+        local value = read()
+        if value then UI.Settings.SynchronizeSlider(this, value) end
+    end)
+end
 function BarSettings.Create(parent, host, owner)
     local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
     local left, right = UI.CreateContainer(nil, frame), UI.CreateContainer(nil, frame)
@@ -71,9 +84,19 @@ function BarSettings.Create(parent, host, owner)
         end, onChanged = function() view:Refresh() end})
     mergeLabel:ClearAllPoints(); mergeLabel:SetPoint("TOPLEFT", mergeRegion, "TOPLEFT", 0, 0); mergeLabel:SetHeight(16)
     view.mergeChoice, view.mergeRegion = mergeChoice, mergeRegion
+    local sideLabel, sideChoice = UI.CreateChoiceField({parent = mergeRegion, x = 0, y = -76,
+        label = "Merge side:", initialText = "Same grid", width = 180, height = 124, firstY = -7,
+        step = 22, buttonOffset = 0, labelValue = true,
+        choices = {{value = "grid", text = "Same grid"}, {value = "top", text = "Top"},
+            {value = "bottom", text = "Bottom"}, {value = "left", text = "Left"}, {value = "right", text = "Right"}},
+        getValue = function() return Runtime.GetMergeSide(view.selected) or (Config.ValidOrdinaryID(view.selected) and "grid" or "bottom") end,
+        onSelect = function(value) return Complete(Runtime.SetMergeSide(view.selected, value ~= "grid" and value or nil)) end,
+        onChanged = function() view:Refresh() end})
+    sideLabel:ClearAllPoints(); sideLabel:SetPoint("TOPLEFT", mergeRegion, "TOPLEFT", 0, -54); sideLabel:SetHeight(16)
+    view.sideChoice, view.sideLabel = sideChoice, sideLabel
     local useGroup = Checkbox(mergeRegion, "Use group settings", "useGroupSettings", function() return Runtime.GetUseGroupSettings(view.selected) end,
         function(value) return Runtime.SetUseGroupSettings(view.selected, value) end)
-    useGroup:SetPoint("TOPLEFT", mergeRegion, "TOPLEFT", 0, -54)
+    useGroup:SetPoint("TOPLEFT", mergeRegion, "TOPLEFT", 0, -108)
     UI.AttachTooltip(useGroup, "Use group settings", "Uncheck to keep this member's own appearance. Ordinary members with independent settings keep a separate grid inside the same movable group.")
     view.useGroup = useGroup
     local function SetPreference(key, value)
@@ -148,9 +171,19 @@ function BarSettings.Create(parent, host, owner)
         local row = UI.CreateContainer(nil, settings); row:SetHeight(44)
         local slider = UI.Settings.CreateSlider(row, "BootyActionBarsLayout" .. key, 0, -15, caption, key, minimum, maximum, nil,
             {ensure = function() end, get = function() local layout = GetLayout(); return layout and layout[key] or minimum end,
-                set = function(_, value) Complete(SetPreference(key, value)) end})
+                set = function(_, value)
+                    local control = view.sliders[key]
+                    if key == "columns" and control and control.babDragging then control.babPending = value
+                    else Complete(SetPreference(key, value)) end
+                end})
         row.control, row.key, row.kind, row.babBaseHeight = slider, key, "slider", 44
         table.insert(section.rows, row); table.insert(view.rows, row); view.sliders[key] = slider
+        if key == "columns" then
+            BarSettings.ConfigureColumnSlider(slider, function(value)
+                local ok, failure = SetPreference(key, value); Complete(ok, failure, ok == true)
+            end,
+                function() local layout = GetLayout(); return layout and layout[key] end)
+        end
     end
     local appearance = Bars.Modules.AppearanceSettings.Create(settings, {
         GetLayout = GetLayout, GetSelection = function() return view.selected end,
@@ -225,7 +258,8 @@ function BarSettings.Create(parent, host, owner)
         if mergeRegion:IsShown() then
             mergeLabel:SetWidth(usable)
             mergeChoice:SetWidth(math.min(220, usable)); UI.ReflowControlText(mergeChoice)
-            if useGroup:IsShown() then mergeRegion:SetHeight(54 + MeasureCheckbox(useGroup, usable)) end
+            sideLabel:SetWidth(usable); sideChoice:SetWidth(math.min(220, usable)); UI.ReflowControlText(sideChoice)
+            if useGroup:IsShown() then mergeRegion:SetHeight(108 + MeasureCheckbox(useGroup, usable)) end
             top = Place(mergeRegion, usable, top) + 6
         end
         if IsUtility(view.selected) then
@@ -272,11 +306,11 @@ function BarSettings.Create(parent, host, owner)
         if not self.buttons[id] then return false, "Choose a listed bar or Layout/Global." end
         local closed, failure = appearance:Close(); if not closed then return false, failure end
         closed, failure = behaviors:Close(); if not closed then return false, failure end
-        mergeChoice.panel:Hide()
+        mergeChoice.panel:Hide(); sideChoice.panel:Hide()
         self.selected = id; if type(id) == "number" then owner.selectedBar = id end
         self:Refresh(); return true
     end
-    function view:Refresh()
+    function view:Refresh(skipLayout)
         if not frame:IsVisible() then return end
         local id, store = self.selected, Bars.Database.Ensure()
         local isLayout, isGlobal, isUtility = id == "layout", id == "global", IsUtility(id)
@@ -299,14 +333,19 @@ function BarSettings.Create(parent, host, owner)
             mergeChoice.label:SetText(primary == id and "None" or Name(primary))
             UI.SetButtonEnabled(mergeChoice, Runtime.IsAvailable())
             if merged then
-                useGroup:Show(); useGroup:SetChecked(Runtime.GetUseGroupSettings(id) and 1 or nil); mergeRegion:SetHeight(90)
-            else useGroup:Hide(); mergeRegion:SetHeight(52) end
+                self.sideChoice:Show(); self.sideLabel:Show()
+                local selectedSide = Runtime.GetMergeSide(id) or (Config.ValidOrdinaryID(id) and "grid" or "bottom")
+                self.sideChoice.label:SetText(selectedSide == "grid" and "Same grid" or selectedSide == "top" and "Top" or selectedSide == "left" and "Left" or selectedSide == "right" and "Right" or "Bottom")
+                UI.SetButtonEnabled(self.sideChoice, Runtime.IsAvailable())
+                UI.SetButtonEnabled(self.sideChoice.panel.options[1], Config.ValidOrdinaryID(id))
+                useGroup:Show(); useGroup:SetChecked(Runtime.GetUseGroupSettings(id) and 1 or nil); mergeRegion:SetHeight(144)
+            else useGroup:Hide(); self.sideChoice:Hide(); self.sideLabel:Hide(); self.sideChoice.panel:Hide(); mergeRegion:SetHeight(52) end
             UI.Settings.SetCheckboxEnabled(useGroup, Runtime.IsAvailable())
             for index, option in ipairs(mergeChoice.panel.options) do
                 local value = mergeChoices[index].value
                 UI.SetButtonEnabled(option, value == "none" or value ~= id and Runtime.GetMergeOwner(value) == value)
             end
-        else mergeRegion:Hide(); mergeChoice.panel:Hide() end
+        else mergeRegion:Hide(); mergeChoice.panel:Hide(); self.sideChoice.panel:Hide() end
         if not isLayout and not isGlobal and not isUtility then visibility:Show(); inherited:Show(); reset:Show()
         else visibility:Hide(); inherited:Hide(); reset:Hide() end
         if utility then if isUtility then utility:Refresh() else utility:Hide() end end
@@ -340,18 +379,18 @@ function BarSettings.Create(parent, host, owner)
         UI.Settings.SetCheckboxEnabled(grid, store ~= nil); UI.Settings.SetCheckboxEnabled(anchors, store ~= nil)
         UI.Settings.SetCheckboxEnabled(show, IsAvailable() and not merged); UI.Settings.SetCheckboxEnabled(useGlobal, IsAvailable())
         UI.SetButtonEnabled(reset, IsAvailable() and not merged)
-        owner:OnResize()
+        if not skipLayout then owner:OnResize() end
     end
     function view:Show() frame:Show(); self:Refresh(); return true end
     function view:Hide()
-        mergeChoice.panel:Hide()
+        mergeChoice.panel:Hide(); sideChoice.panel:Hide()
         local ok, failure = appearance:Close()
         local closed, reason = behaviors:Close()
         if not closed then ok, failure = false, failure and failure .. "; " .. tostring(reason) or reason end
         frame:Hide(); return ok, failure
     end
     frame:SetScript("OnHide", function()
-        mergeChoice.panel:Hide()
+        mergeChoice.panel:Hide(); sideChoice.panel:Hide()
         local ok, failure = appearance:Close()
         local closed, reason = behaviors:Close()
         if not closed then ok, failure = false, failure and failure .. "; " .. tostring(reason) or reason end
