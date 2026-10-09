@@ -32,11 +32,12 @@ function BarSettings.ConfigureColumnSlider(slider, apply, read)
         this.babDragging, this.babPending = nil, nil
         if value then apply(value) end
     end)
-    slider:SetScript("OnHide", function()
-        this.babDragging, this.babPending = nil, nil
+    slider.babCancelPending = function()
+        slider.babDragging, slider.babPending = nil, nil
         local value = read()
-        if value then UI.Settings.SynchronizeSlider(this, value) end
-    end)
+        if value then UI.Settings.SynchronizeSlider(slider, value) end
+    end
+    slider:SetScript("OnHide", function() this.babCancelPending() end)
 end
 function BarSettings.Create(parent, host, owner)
     local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
@@ -63,7 +64,7 @@ function BarSettings.Create(parent, host, owner)
         return Runtime.IsAvailable() and (not Merging.ValidID(view.selected) or Runtime.GetMergeOwner(view.selected) == view.selected or not Runtime.GetUseGroupSettings(view.selected))
     end
     local mergeChoices = {{value = "none", text = "None"}}
-    for _, id in ipairs(Merging.IDs) do table.insert(mergeChoices, {value = id, text = Name(id)}) end
+    for index = 3, table.getn(identities) do local id = identities[index]; table.insert(mergeChoices, {value = id, text = Name(id)}) end
     local mergeLabel, mergeChoice = UI.CreateChoiceField({parent = mergeRegion, x = 0, y = -22,
         label = "Merge with Action Bar:", initialText = "None", width = 180, height = table.getn(mergeChoices) * 22 + 14, firstY = -7,
         step = 22, buttonOffset = 0, labelValue = true, choices = mergeChoices,
@@ -192,12 +193,12 @@ function BarSettings.Create(parent, host, owner)
             {ensure = function() end, get = function() local layout = GetLayout(); return layout and layout[key] or minimum end,
                 set = function(_, value)
                     local control = view.sliders[key]
-                    if key == "columns" and control and control.babDragging then control.babPending = value
+                    if control and control.babDragging then control.babPending = value
                     else Complete(SetPreference(key, value)) end
                 end})
         row.control, row.key, row.kind, row.babBaseHeight = slider, key, "slider", 44
         table.insert(section.rows, row); table.insert(view.rows, row); view.sliders[key] = slider
-        if key == "columns" then
+        do
             BarSettings.ConfigureColumnSlider(slider, function(value)
                 local ok, failure = SetPreference(key, value); Complete(ok, failure, ok == true)
             end,
@@ -316,6 +317,8 @@ function BarSettings.Create(parent, host, owner)
     end
     function view:Select(id)
         if not self.buttons[id] then return false, "Choose a listed bar or Layout/Global." end
+        for _, control in pairs(self.sliders) do control.babCancelPending() end
+        if utility then utility:CancelPending() end
         local closed, failure = appearance:Close(); if not closed then return false, failure end
         closed, failure = behaviors:Close(); if not closed then return false, failure end
         mergeChoice.panel:Hide(); sideChoice.panel:Hide()

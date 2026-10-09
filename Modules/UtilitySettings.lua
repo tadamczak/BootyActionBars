@@ -15,7 +15,7 @@ function Settings.Create(parent, context)
         local id = context.GetSelection()
         if not Utility.ValidID(id) then return Complete(false, "Choose a listed utility bar.") end
         local ok, failure = Runtime.SetUtilityPreference(id, key, value)
-        return Complete(ok, failure, key == "columns" and ok == true)
+        return Complete(ok, failure, ok == true)
     end
     local geometry = Bars.Modules.AppearanceSettings.Section(frame, "Geometry", {Complete = Complete})
     view.geometry = geometry
@@ -35,12 +35,12 @@ function Settings.Create(parent, context)
                 get = function() return view.layout and view.layout[key] or minimum end,
                 set = function(_, value)
                     local control = view.sliders[key]
-                    if key == "columns" and control and control.babDragging then control.babPending = value
+                    if control and control.babDragging then control.babPending = value
                     else return Update(key, value) end
                 end})
         item.control, item.key, item.kind, item.babBaseHeight = slider, key, "slider", 44
         view.sliders[key] = slider
-        if key == "columns" then
+        do
             Bars.Modules.BarSettings.ConfigureColumnSlider(slider, function(value) Update(key, value) end,
                 function() return view.layout and view.layout[key] end)
         end
@@ -95,6 +95,10 @@ function Settings.Create(parent, context)
         end
         frame:SetWidth(width); frame:SetHeight(top); return top
     end
-    function view:Hide() appearance:Close(); frame:Hide() end
+    function view:CancelPending()
+        for _, control in pairs(self.sliders) do control.babCancelPending() end
+        return appearance:Close()
+    end
+    function view:Hide() self:CancelPending(); frame:Hide() end
     frame:Hide(); return view
 end

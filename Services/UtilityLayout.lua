@@ -4,9 +4,9 @@ Utility.Keys = {"experience", "keyring", "latency", "bags", "micro"}
 local definitions = {
     experience = {label = "Experience / Reputation", names = {"MainMenuExpBar", "ReputationWatchBar", "ExhaustionTick"}, count = 1, width = 1024, height = 26, columns = 1},
     keyring = {label = "Keyring", names = {"KeyRingButton"}, count = 1, width = 18, height = 39, columns = 1},
-    latency = {label = "Latency", names = {"MainMenuBarPerformanceBarFrame"}, count = 1, width = 20, height = 66, columns = 1},
+    latency = {label = "Latency", names = {"MainMenuBarPerformanceBarFrame"}, count = 1, width = 7 * 20 / 16, height = 38 * 66 / 64, offsetX = -1, offsetY = 13 * 66 / 64, columns = 1},
     bags = {label = "Bags", names = {"MainMenuBarBackpackButton", "CharacterBag0Slot", "CharacterBag1Slot", "CharacterBag2Slot", "CharacterBag3Slot"}, count = 5, width = 37, height = 37, columns = 5},
-    micro = {label = "Micro Menu", names = {"CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton"}, count = 8, width = 29, height = 58, visualHeight = 58 * 41 / 64, offsetY = 58 * 23 / 64, columns = 8},
+    micro = {label = "Micro Menu", names = {"CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton"}, count = 8, width = 29, height = 58, visualWidth = 26, visualHeight = 58 * 41 / 64 - 3, offsetX = -1.5, offsetY = 58 * 23 / 64 + 1.5, columns = 8},
 }
 local fields = {shown = true, x = true, y = true, scalePct = true, columns = true, spacing = true, nativeTexture = true}
 Utility.StyleKeys = {"nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct"}
@@ -126,7 +126,7 @@ function Utility.ResolveArtwork(id, record, width, height, shown, target)
     local native = BootyActionBars.Services.NativeDecorationLayout
     target.id, target.shown, target.columns, target.spacing = id, shown, record.columns, record.spacing
     target.width, target.height = width, height
-    target.cellWidth, target.cellHeight = definitions[id].width, definitions[id].visualHeight or definitions[id].height
+    target.cellWidth, target.cellHeight = (definitions[id].visualWidth or definitions[id].width), definitions[id].visualHeight or definitions[id].height
     local border = record.nativeBorder
     if border == nil then border = record.nativeTexture == true end
     local background = record.nativeBackground

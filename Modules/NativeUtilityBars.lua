@@ -397,7 +397,7 @@ local function Geometry(group, preferences)
     local definition = Layout.Definition(group.id)
     local columns = math.min(preferences.columns, definition.count)
     local rows = math.ceil(definition.count / columns)
-    local width = columns * definition.width + math.max(0, columns - 1) * preferences.spacing
+    local width = columns * (definition.visualWidth or definition.width) + math.max(0, columns - 1) * preferences.spacing
     local height = rows * (definition.visualHeight or definition.height) + math.max(0, rows - 1) * preferences.spacing
     local screenWidth, screenHeight = UI.GetFrameSpan(UIParent)
     local drawing, failure = Layout.Resolve(preferences, width, height, screenWidth, screenHeight)
@@ -467,11 +467,11 @@ local function Position(group)
         if record.anchored then
             local x, y = 0, 0
             if group.id == "experience" then y = index == 2 and -13 or 0
-            elseif group.id == "latency" then x = 4
+            elseif group.id == "latency" then x, y = definition.offsetX, definition.offsetY
             else
                 local row = math.floor((index - 1) / preferences.columns)
                 local column = index - 1 - row * preferences.columns
-                x, y = column * (definition.width + preferences.spacing), -row * ((definition.visualHeight or definition.height) + preferences.spacing) + (definition.offsetY or 0)
+                x, y = column * ((definition.visualWidth or definition.width) + preferences.spacing) + (definition.offsetX or 0), -row * ((definition.visualHeight or definition.height) + preferences.spacing) + (definition.offsetY or 0)
             end
             record.clear(record.frame); record.setPoint(record.frame, "TOPLEFT", group.frame, "TOPLEFT", x, y)
         end

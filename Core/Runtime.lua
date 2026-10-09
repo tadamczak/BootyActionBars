@@ -488,6 +488,7 @@ function Runtime.RestoreLayoutUnlock()
         local options = state.store and state.store.editorOptions or {}
         ok, failure = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, true, options.showAnchors == true)
     end
+    if ok then ok, failure = RefreshGroups() end
     state.restoringUnlock = nil
     if not ok then
         local ended, reason = CallLifecycle(Bars.Modules.Editor.End)
@@ -515,6 +516,7 @@ function Runtime.SetEditEnabled(enabled)
         local editing = ok and enabled == true
         local anchors = state.store and state.store.editorOptions and state.store.editorOptions.showAnchors == true
         local applied, reason = CallLifecycle(utilities.SetEditing, editing, anchors == true)
+        if applied then applied, reason = RefreshGroups() end
         if not applied then
             local ended, detail = CallLifecycle(Bars.Modules.Editor.End)
             ok, failure = false, reason
@@ -619,12 +621,15 @@ function Runtime.SetEditorOption(key, value)
     end
     if ok and key == "showAnchors" and Bars.Modules.NativeUtilityBars then
         ok, reason = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, Runtime.IsEditing(), value)
+        if ok then ok, reason = RefreshGroups() end
         if not ok then
             store.editorOptions[key] = previous
             local restored, detail = CallLifecycle(setter, previous == true)
             if not restored then reason = tostring(reason) .. " Restoration: " .. tostring(detail) end
             restored, detail = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, Runtime.IsEditing(), previous == true)
             if not restored then reason = tostring(reason) .. " Utility restoration: " .. tostring(detail) end
+            restored, detail = RefreshGroups()
+            if not restored then reason = tostring(reason) .. " Merge restoration: " .. tostring(detail) end
         end
     end
     RefreshView()

@@ -173,9 +173,18 @@ function Appearance.Create(parent, context)
         local control = UI.Settings.CreateSlider(row, (context.ControlPrefix or "BootyActionBarsAppearance") .. key, 0, -15,
             caption, key, low, high, nil, {ensure = function() end,
                 get = getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end,
-                set = function(_, value) Complete((setter or function(item) return context.SetPreference(key, item) end)(value)) end})
+                set = function(_, value)
+                    local control = view.sliders[key]
+                    if control and control.babDragging then control.babPending = value
+                    else Complete((setter or function(item) return context.SetPreference(key, item) end)(value)) end
+                end})
         row.kind, row.control, row.key = "slider", control, key
-        view.sliders[key] = control; return control
+        view.sliders[key] = control
+        Bars.Modules.BarSettings.ConfigureColumnSlider(control, function(value)
+            local ok, failure = (setter or function(item) return context.SetPreference(key, item) end)(value)
+            Complete(ok, failure, ok == true)
+        end, getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end)
+        return control
     end
     local function Checkbox(key, caption)
         local row = Row(32)
@@ -213,6 +222,7 @@ function Appearance.Create(parent, context)
         return ok, failure
     end
     function view:Close()
+        for _, control in pairs(self.sliders) do control.babCancelPending() end
         local entry, ok, failure = self.picker, true, nil
         if entry and Owns(entry) and ColorPickerFrame:IsShown() then
             ok, failure = Run(entry.cancel); ColorPickerFrame:Hide()
