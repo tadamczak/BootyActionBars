@@ -4,7 +4,7 @@ local Settings = {}
 Bars.Modules.UtilitySettings = Settings
 
 function Settings.Create(parent, context)
-    local frame = UI.CreateContainer(nil, parent); frame.mosTextSizeDelta = -2
+    local frame = UI.CreateContainer(nil, parent); frame.bootyTextSizeDelta = -2
     local view = {frame = frame, rows = {}, sliders = {}}
     local function Complete(ok, failure, skipRefresh) return context.Complete(ok, failure, skipRefresh) end
     local function Available()
@@ -72,8 +72,8 @@ function Settings.Create(parent, context)
             if layout then
                 if item.key == "columns" then
                     local maximum = Utility.Definition(id).count
-                    local syncing = item.control.mosSynchronizing; item.control.mosSynchronizing = true
-                    item.control:SetMinMaxValues(1, maximum); item.control.mosSynchronizing = syncing
+                    local syncing = item.control.bootySynchronizing; item.control.bootySynchronizing = true
+                    item.control:SetMinMaxValues(1, maximum); item.control.bootySynchronizing = syncing
                     getglobal(item.control:GetName() .. "High"):SetText(tostring(maximum))
                 end
                 UI.Settings.SynchronizeSlider(item.control, layout[item.key])

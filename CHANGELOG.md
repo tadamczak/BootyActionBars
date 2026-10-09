@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-dev.33 — 2026-10-09
+
+- Use current Booty names for shared controls and documentation assets.
+
 ## 0.1.0-dev.32
 
 - Smooth circular cooldown transitions with the existing atlas and one adaptive shared clock.

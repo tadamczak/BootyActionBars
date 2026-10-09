@@ -5,7 +5,7 @@ Bars.Modules.GeneralSettings = General
 
 function General.Create(parent, host, ownerView)
     local frame = UI.CreateContainer(nil, parent)
-    frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
+    frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
     local page = UI.CreateResponsiveCanvas(frame, "BootyActionBarsGeneralScroll")
     local view = {frame = frame, canvas = page, confirmationRevision = 0}
     local function Complete(ok, failure)
@@ -71,7 +71,7 @@ function General.Create(parent, host, ownerView)
     profileName:SetScript("OnEscapePressed", function() this:ClearFocus() end)
     local function Action(text, width)
         local button = UI.CreateButton(profileBody, nil, text, width, 24)
-        UI.StyleActionButton(button); button.mosFlowWidth = width
+        UI.StyleActionButton(button); button.bootyFlowWidth = width
         return button
     end
     local profileSave, profileLoad = Action("Save layout", 100), Action("Load", 64)

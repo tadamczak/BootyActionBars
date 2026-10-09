@@ -6,7 +6,7 @@ Bars.Modules.KeybindingSettings = Keybindings
 
 function Keybindings.Create(parent, host, ownerView)
     local frame = UI.CreateContainer(nil, parent)
-    frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
+    frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
     local page = UI.CreateResponsiveCanvas(frame, "BootyActionBarsKeybindingsScroll")
     local view = {frame = frame, canvas = page}
     ownerView.bindingSelectedBar = ownerView.bindingSelectedBar or ownerView.selectedBar or 2
@@ -56,7 +56,7 @@ function Keybindings.Create(parent, host, ownerView)
     index:SetWidth(180)
     local function Action(text, width)
         local button = UI.CreateButton(page, nil, text, width, 24)
-        UI.StyleActionButton(button); button.mosFlowWidth = width
+        UI.StyleActionButton(button); button.bootyFlowWidth = width
         return button
     end
     local bind, save = Action("Assign keys", 104), Action("Save keys", 88)
@@ -119,8 +119,8 @@ function Keybindings.Create(parent, host, ownerView)
         end
         local maximum = Config.SlotCount(ownerView.bindingSelectedBar)
         ownerView.bindingIndex = math.min(ownerView.bindingIndex, maximum)
-        local synchronizing = index.mosSynchronizing
-        index.mosSynchronizing = true; index:SetMinMaxValues(1, maximum); index.mosSynchronizing = synchronizing
+        local synchronizing = index.bootySynchronizing
+        index.bootySynchronizing = true; index:SetMinMaxValues(1, maximum); index.bootySynchronizing = synchronizing
         getglobal("BootyActionBarsBindingIndexHigh"):SetText(tostring(maximum))
         UI.Settings.SynchronizeSlider(index, ownerView.bindingIndex)
         choice.label:SetText(choices[ownerView.bindingSelectedBar].text)

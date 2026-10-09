@@ -4,7 +4,7 @@ local Overview = {}
 Bars.Modules.Overview = Overview
 local tabs = {{"general", "General"}, {"bars", "Action Bars"}, {"keybindings", "Keybindings"}}
 function Overview.Create(parent, host)
-    local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
+    local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
     local body = UI.CreateContainer(nil, frame)
     local view = {frame = frame, panels = {}, tabs = {}, tabRow = {}, activeTab = "general", selectedBar = 2, bindingIndex = 1}
     function view.Complete(ok, failure, skipRefresh)
