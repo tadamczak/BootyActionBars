@@ -74,10 +74,10 @@ local function Border(button, repair)
     if not repair and button.appearanceBorderReady and button.appearanceBorderRevision == style.borderRevision
         and button.appearanceBorderHovered == hover then return end
     button.appearanceBorderReady = false
-    if visible or button.mosProjectOutline then
+    if visible or button.bootyProjectOutline then
         local minimum = math.max(button:GetFrameLevel(), button.cooldown and button.cooldown:GetFrameLevel() or 0) + 1
         UI.SetProjectButtonOutline(button, visible, size, color, nil, minimum, hover and style.hoverOutlineRadius or nil)
-        local outline = button.mosProjectOutline
+        local outline = button.bootyProjectOutline
         if hover then
             local expansion = style.hoverOutlineSize - 1
             outline:ClearAllPoints(); outline:SetPoint("TOPLEFT", button, "TOPLEFT", -expansion, expansion)
@@ -102,14 +102,14 @@ local function Feedback(button, repair)
     end
     local failure
     if background then
-        if repair and background.mosRoundedHover then background.mosRoundedHover.ready = false end
+        if repair and background.bootyRoundedHover then background.bootyRoundedHover.ready = false end
         local ok, reason = pcall(UI.SetRoundedHoverSurface, button, background, backgroundShown, "background",
             style.buttonSize * style.hoverBackgroundSize / 5, style.hoverBackgroundRadius,
             style.hoverBackgroundR, style.hoverBackgroundG, style.hoverBackgroundB, style.hoverBackgroundA)
         if not ok then failure = tostring(reason) end
     end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
-    if repair and feedback.mosRoundedHover then feedback.mosRoundedHover.ready = false end
+    if repair and feedback.bootyRoundedHover then feedback.bootyRoundedHover.ready = false end
     local ok, reason = pcall(UI.SetRoundedHoverSurface, button, feedback, shown, "shadow",
         style.buttonSize + 2 * (style.hoverShadowSize - 1), style.hoverShadowRadius,
         style.hoverShadowR, style.hoverShadowG, style.hoverShadowB, style.hoverShadowA)

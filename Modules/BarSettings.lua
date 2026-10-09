@@ -39,7 +39,7 @@ function BarSettings.ConfigureColumnSlider(slider, apply, read)
     end)
 end
 function BarSettings.Create(parent, host, owner)
-    local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.mosTextSizeDelta = -2
+    local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
     local left, right = UI.CreateContainer(nil, frame), UI.CreateContainer(nil, frame)
     local list = UI.CreateResponsiveCanvas(left, "BootyActionBarsBarListScroll")
     local canvas = UI.CreateResponsiveCanvas(right, "BootyActionBarsBarSettingsScroll")
@@ -166,16 +166,16 @@ function BarSettings.Create(parent, host, owner)
     view.mergeRows = {Row(mergeChoice, "choice", mergeLabel), Row(sideChoice, "choice", sideLabel)}
     visibility, inherited = Row(show, "check"), Row(useGlobal, "check")
     view.checkRows = {visibility, inherited, Row(useGroup, "check")}
-    copy.mosFlowWidth, reset.mosFlowWidth = 160, 136
+    copy.bootyFlowWidth, reset.bootyFlowWidth = 160, 136
     view.actions, view.copyButton = {copy, reset}, copy
     for _, rows in ipairs({view.mergeRows, view.checkRows}) do
-        rows.mosMaxColumns = table.getn(rows)
-        rows.mosMeasureItem, rows.mosLayoutItem = Bars.Modules.AppearanceSettings.MeasureRow, Bars.Modules.AppearanceSettings.LayoutRow
+        rows.bootyMaxColumns = table.getn(rows)
+        rows.bootyMeasureItem, rows.bootyLayoutItem = Bars.Modules.AppearanceSettings.MeasureRow, Bars.Modules.AppearanceSettings.LayoutRow
     end
     local section
     local function AddSection(value)
-        value.items = {mosMaxColumns = 3, mosMeasureItem = Bars.Modules.AppearanceSettings.MeasureRow,
-            mosLayoutItem = Bars.Modules.AppearanceSettings.LayoutRow}
+        value.items = {bootyMaxColumns = 3, bootyMeasureItem = Bars.Modules.AppearanceSettings.MeasureRow,
+            bootyLayoutItem = Bars.Modules.AppearanceSettings.LayoutRow}
         table.insert(view.sections, value); table.insert(view.rows, value.heading)
         for _, row in ipairs(value.rows) do table.insert(view.rows, row) end
     end
@@ -367,8 +367,8 @@ function BarSettings.Create(parent, host, owner)
             for key, slider in pairs(self.sliders) do
                 if key == "columns" then
                     local maximum = isGlobal and Config.MAX_SLOTS or Runtime.GetMergeCount(id)
-                    local syncing = slider.mosSynchronizing; slider.mosSynchronizing = true
-                    slider:SetMinMaxValues(1, maximum); slider.mosSynchronizing = syncing
+                    local syncing = slider.bootySynchronizing; slider.bootySynchronizing = true
+                    slider:SetMinMaxValues(1, maximum); slider.bootySynchronizing = syncing
                     getglobal(slider:GetName() .. "High"):SetText(tostring(maximum))
                 end
                 UI.Settings.SynchronizeSlider(slider, layout[key]); UI.Settings.SetSliderEnabled(slider, IsAvailable())
