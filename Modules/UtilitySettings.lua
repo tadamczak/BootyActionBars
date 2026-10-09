@@ -15,7 +15,7 @@ function Settings.Create(parent, context)
         local id = context.GetSelection()
         if not Utility.ValidID(id) then return Complete(false, "Choose a listed utility bar.") end
         local ok, failure = Runtime.SetUtilityPreference(id, key, value)
-        return Complete(ok, failure, key == "columns" and ok == true)
+        return Complete(ok, failure, ok == true)
     end
     local geometry = Bars.Modules.AppearanceSettings.Section(frame, "Geometry", {Complete = Complete})
     view.geometry = geometry
@@ -95,6 +95,10 @@ function Settings.Create(parent, context)
         end
         frame:SetWidth(width); frame:SetHeight(top); return top
     end
-    function view:Hide() appearance:Close(); frame:Hide() end
+    function view:CancelPending()
+        for _, control in pairs(self.sliders) do control.babCancelPending() end
+        return appearance:Close()
+    end
+    function view:Hide() self:CancelPending(); frame:Hide() end
     frame:Hide(); return view
 end

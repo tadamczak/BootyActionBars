@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.37 — 2026-10-09
+
+- List every numbered action bar before pet/forms and utility bars in merge choices.
+- Keep merged utilities attached when toggling anchors or layout editing.
+- Align Latency to its visible texture and remove native Micro Menu shadow spacing.
+- Apply all slider drags once on release; hiding or switching selection cancels pending changes.
+
 ## 0.1.0-dev.36 — 2026-10-09
 
 - Use the current Booty shared-control names while retaining all dev.35 layout and unlock fixes.

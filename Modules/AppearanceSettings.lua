@@ -181,7 +181,8 @@ function Appearance.Create(parent, context)
         row.kind, row.control, row.key = "slider", control, key
         view.sliders[key] = control
         Bars.Modules.BarSettings.ConfigureColumnSlider(control, function(value)
-            Complete((setter or function(item) return context.SetPreference(key, item) end)(value))
+            local ok, failure = (setter or function(item) return context.SetPreference(key, item) end)(value)
+            Complete(ok, failure, ok == true)
         end, getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end)
         return control
     end
@@ -221,6 +222,7 @@ function Appearance.Create(parent, context)
         return ok, failure
     end
     function view:Close()
+        for _, control in pairs(self.sliders) do control.babCancelPending() end
         local entry, ok, failure = self.picker, true, nil
         if entry and Owns(entry) and ColorPickerFrame:IsShown() then
             ok, failure = Run(entry.cancel); ColorPickerFrame:Hide()

@@ -32,11 +32,12 @@ function BarSettings.ConfigureColumnSlider(slider, apply, read)
         this.babDragging, this.babPending = nil, nil
         if value then apply(value) end
     end)
-    slider:SetScript("OnHide", function()
-        this.babDragging, this.babPending = nil, nil
+    slider.babCancelPending = function()
+        slider.babDragging, slider.babPending = nil, nil
         local value = read()
-        if value then UI.Settings.SynchronizeSlider(this, value) end
-    end)
+        if value then UI.Settings.SynchronizeSlider(slider, value) end
+    end
+    slider:SetScript("OnHide", function() this.babCancelPending() end)
 end
 function BarSettings.Create(parent, host, owner)
     local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
@@ -316,6 +317,8 @@ function BarSettings.Create(parent, host, owner)
     end
     function view:Select(id)
         if not self.buttons[id] then return false, "Choose a listed bar or Layout/Global." end
+        for _, control in pairs(self.sliders) do control.babCancelPending() end
+        if utility then utility:CancelPending() end
         local closed, failure = appearance:Close(); if not closed then return false, failure end
         closed, failure = behaviors:Close(); if not closed then return false, failure end
         mergeChoice.panel:Hide(); sideChoice.panel:Hide()
