@@ -51,7 +51,7 @@ end
 
 function BehaviorSettings.Create(parent, context)
     local function Available() return Runtime.IsAvailable() and (not context.IsAvailable or context.IsAvailable()) end
-    local frame = UI.CreateContainer(nil, parent); frame.mosTextSizeDelta = -2
+    local frame = UI.CreateContainer(nil, parent); frame.bootyTextSizeDelta = -2
     local view = {frame = frame, rows = {}, rules = {}, catalog = {}}
     local heading = UI.Settings.CreateSectionAccordion(frame, "Behaviors", 0, 0, 3, "list")
     local content = UI.CreateContainer(nil, frame)
@@ -132,7 +132,7 @@ function BehaviorSettings.Create(parent, context)
     local function CreateModal()
         if view.modal then return end
         local modal = UI.Window.CreateProjectConfirmation("BootyActionBarsBehaviorConfirmation", "Bar behavior", "Save", "link")
-        modal.mosTextSizeDelta = -2
+        modal.bootyTextSizeDelta = -2
         view.modal = modal
         local placeholders = {}
         for index = 1, MAX_CHOICES do placeholders[index] = {value = index, text = ""} end
@@ -249,7 +249,7 @@ function BehaviorSettings.Create(parent, context)
             local arrow = definition[1] == "up" or definition[1] == "down"
             local button = arrow and UI.CreateArrowButton(row.actions, definition[1]) or UI.CreateButton(row.actions, nil, definition[1], definition[2], 24)
             if not arrow then UI.StyleActionButton(button) end
-            button.mosFlowWidth = definition[2]; table.insert(row.buttons, button)
+            button.bootyFlowWidth = definition[2]; table.insert(row.buttons, button)
         end
         row.edit, row.remove, row.up, row.down = row.buttons[1], row.buttons[2], row.buttons[3], row.buttons[4]
         row.edit:SetScript("OnClick", function() view:Open(index) end)

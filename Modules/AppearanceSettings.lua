@@ -129,7 +129,7 @@ function Appearance.LayoutSection(group, parent, top, width)
     body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -top); body:SetWidth(width)
     local offset, lastBlock, rows = 0, nil, group.scratch
     local blockRows = group.blockRows or {}; group.blockRows = blockRows
-    rows.mosMaxColumns = 3; rows.mosMeasureItem, rows.mosLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
+    rows.bootyMaxColumns = 3; rows.bootyMeasureItem, rows.bootyLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
     while table.getn(rows) > 0 do table.remove(rows) end
     while table.getn(blockRows) > 0 do table.remove(blockRows) end
     local function Flush()
@@ -158,7 +158,7 @@ function Appearance.Create(parent, context)
         local row = UI.CreateContainer(nil, parent); row:SetHeight(height)
         row.babBaseHeight = height
         row.babBlock = block
-        row.mosTextSizeDelta = math.min(-2, UI.GetTextSizeDelta(parent))
+        row.bootyTextSizeDelta = math.min(-2, UI.GetTextSizeDelta(parent))
         table.insert(view.rows, row)
         if section then table.insert(section.rows, row) end
         return row

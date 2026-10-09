@@ -71,7 +71,7 @@ local function Defaults(store)
     store.addonVersion = Bars.version
 end
 
--- This new product has no MOS data to import. DAB import has a separate,
+-- This new product has no legacy monolith data to import. DAB import has a separate,
 -- explicitly validated workflow; never borrow a legacy shell preference.
 BootyLib.Data.RegisterOwner("actionbars", "BootyActionBarsDB", function() return false end, Defaults)
 
