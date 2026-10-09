@@ -40,27 +40,27 @@ Define("iconInset", "integer", 4, 0, 8, 1, true)
 Define("opacityPct", "integer", 100, 20, 100, 1, true)
 Define("labelFontSize", "integer", 10, 8, 16, 1, true)
 Define("hoverMode", "enum", "default", nil, nil, 2, nil, {default = true, border = true, shadow = true})
-Define("hoverSize", "integer", 2, 1, 10, 2)
+Define("hoverSize", "integer", 1, 1, 10, 2)
 Define("hoverBackgroundShadow", "boolean", false, nil, nil, 2)
 Define("hoverBorderShadow", "boolean", true, nil, nil, 2)
 Define("hoverBorder", "boolean", false, nil, nil, 2)
 Define("hoverBorderSize", "integer", 2, 1, 10, 2)
 Define("hoverRadius", "integer", 0, 0, 10, 2)
 for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
-    Define(prefix .. "Size", "integer", 2, 1, 10, 2)
+    Define(prefix .. "Size", "integer", 1, 1, 10, 2)
     Define(prefix .. "Radius", "integer", 0, 0, 10, 2)
 end
-local fontChoices = {default = true, friz = true, arial = true, morpheus = true, skurri = true}
+local fontChoices = {native = true, default = true, friz = true, arial = true, morpheus = true, skurri = true}
 for _, prefix in ipairs({"title", "hotkey", "count", "macro", "cooldown"}) do
-    Define(prefix .. "Font", "enum", "default", nil, nil, 2, true, fontChoices)
+    Define(prefix .. "Font", "enum", prefix == "title" and "default" or "native", nil, nil, 2, true, fontChoices)
 end
-Define("showButtonBorder", "boolean", true, nil, nil, 2)
+Define("showButtonBorder", "boolean", false, nil, nil, 2)
 Define("borderSize", "integer", 2, 1, 6, 2)
-Define("buttonBackground", "boolean", true, nil, nil, 2)
+Define("buttonBackground", "boolean", false, nil, nil, 2)
 Define("cooldownFontSize", "integer", 14, 8, 32, 2)
-Define("showCooldownText", "boolean", true, nil, nil, 2)
+Define("showCooldownText", "boolean", false, nil, nil, 2)
 Define("cooldownFullSeconds", "boolean", true, nil, nil, 2)
-Define("cooldownEffectMode", "enum", "circle", nil, nil, 2, nil, {circle = true, vertical = true})
+Define("cooldownEffectMode", "enum", "native", nil, nil, 2, nil, {native = true, circle = true, vertical = true})
 Define("cooldownFlash", "boolean", false, nil, nil, 2)
 Define("nativeTexture", "boolean", false, nil, nil, 2)
 Define("nativeTextureBackground", "boolean", true, nil, nil, 2)
@@ -72,8 +72,8 @@ Define("nativeBorderScalePct", "integer", 100, 50, 200, 2)
 Define("nativeButtonScalePct", "integer", 100, 50, 200, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
 Define("gryphonScalePct", "integer", 100, 50, 200, 2)
-local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,0.2,0.2,1}, hover = {1,1,1,0.6},
-    hoverBackground = {1,1,1,0.6}, hoverShadow = {1,1,1,0.6}, hoverOutline = {1,1,1,0.6},
+local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,1,1,1}, hover = {1,1,1,1},
+    hoverBackground = {1,1,1,1}, hoverShadow = {1,1,1,1}, hoverOutline = {1,1,1,1},
     border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownUnder10 = {1,0.8,0.2,1}, cooldownUnder5 = {1,0.2,0.2,1},
     cooldownEffect = {0,0,0,0.6}, cooldownFlash = {1,0.2,0.2,0.65}}
 local channels = {"R", "G", "B", "A"}

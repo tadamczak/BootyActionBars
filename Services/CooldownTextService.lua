@@ -17,7 +17,7 @@ function Service.ValidColor(value) return Service.Finite(value) and value >= 0 a
 function Service.ValidFontSize(value)
     return Service.Finite(value) and value == floor(value) and value >= 8 and value <= 32
 end
-function Service.ValidEffectMode(value) return value == "circle" or value == "vertical" end
+function Service.ValidEffectMode(value) return value == "native" or value == "circle" or value == "vertical" end
 function Service.Progress(start, duration, now)
     if not Service.ValidCooldown(start, duration) or not Service.Finite(now) then return nil, "Invalid cooldown progress." end
     if duration == 0 then return 0 end
