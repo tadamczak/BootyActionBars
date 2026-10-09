@@ -170,6 +170,7 @@ end
 local function SyncEngineBody()
     local store, failure = Bars.Database.Ensure()
     if not store then return false, failure end
+    if state.store ~= store then state.layoutUnlocked = false end
     state.store = store
     if Bars.Modules.BarGroups then
         local ok, reason = Bars.Modules.BarGroups.Configure(store)
@@ -256,6 +257,7 @@ local function SyncEngineBody()
             return false, reason
         end
     end
+    if ok then ok, failure = Runtime.RestoreLayoutUnlock() end
     return ok, failure
 end
 
@@ -476,6 +478,24 @@ function Runtime.SetSpecialBar(kind, enabled)
 end
 
 function Runtime.IsEditing() return Bars.Modules.Editor.IsEditing() end
+function Runtime.IsLayoutUnlocked() return state.layoutUnlocked == true end
+function Runtime.RestoreLayoutUnlock()
+    if not state.layoutUnlocked or not Runtime.IsAvailable() or not Bars.Core.Engine.GetState().active
+        or Bars.Modules.BindingEditor and Bars.Modules.BindingEditor.IsEditing() or state.restoringUnlock then return true end
+    state.restoringUnlock = true
+    local ok, failure = CallLifecycle(Bars.Modules.Editor.Begin)
+    if ok and Bars.Modules.NativeUtilityBars then
+        local options = state.store and state.store.editorOptions or {}
+        ok, failure = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, true, options.showAnchors == true)
+    end
+    state.restoringUnlock = nil
+    if not ok then
+        local ended, reason = CallLifecycle(Bars.Modules.Editor.End)
+        if not ended then failure = tostring(failure) .. " Cleanup: " .. tostring(reason) end
+    end
+    return ok, failure
+end
+
 
 function Runtime.SetEditEnabled(enabled)
     if type(enabled) ~= "boolean" then return false, "Choose whether to edit the bar layout." end
@@ -501,6 +521,7 @@ function Runtime.SetEditEnabled(enabled)
             if not ended then failure = tostring(failure) .. " Editor cleanup: " .. tostring(detail) end
         end
     end
+    if ok then state.layoutUnlocked = enabled end
     RefreshView()
     return ok, failure
 end
@@ -546,6 +567,11 @@ function Runtime.SetGlobalLayout(key, value)
         if not restored then reason = tostring(reason) .. " Resynchronization: " .. tostring(restoreFailure) end
     end
     return FinishLayout(ok, reason)
+end
+function Runtime.CopyGlobalSettings(id)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is unavailable." end
+    local ok, failure = Bars.Modules.Editor.CopyGlobalSettings(id)
+    return FinishLayout(ok, failure)
 end
 function Runtime.SetUseGlobalLayout(id, value)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end

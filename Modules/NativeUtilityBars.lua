@@ -597,6 +597,10 @@ function Utility.Sync(active, nativeHidden)
     end
     return true
 end
+function Utility.CancelPending()
+    for _, group in pairs(state.groups) do CancelDrag(group) end
+    return true
+end
 function Utility.SetEditing(editing, showAnchors)
     state.failure = nil
     state.editing, state.showAnchors = editing == true, showAnchors == true
@@ -686,6 +690,7 @@ end
 Utility.Configure = Boundary(Utility.Configure)
 Utility.Sync = Boundary(Utility.Sync)
 Utility.SetEditing = Boundary(Utility.SetEditing)
+Utility.CancelPending = Boundary(Utility.CancelPending)
 Utility.SetPreference = Boundary(Utility.SetPreference)
 Utility.Reset = Boundary(Utility.Reset)
 Utility.Release = Boundary(Utility.Release)

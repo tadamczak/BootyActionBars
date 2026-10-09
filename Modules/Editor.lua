@@ -451,6 +451,30 @@ function Editor.SetUseGlobalLayout(id, enabled)
     if not ran then return false, ok end
     return ok, failure
 end
+local function CopyGlobalSettings(id)
+    if not Layout.ValidID(id) then return false, "Choose an action, pet or form bar." end
+    local independent, reason = Independent(id)
+    if not independent then return false, reason end
+    local cancelled, failure = CancelDrag(id)
+    if not cancelled then return false, failure end
+    local store; store, failure = Owner()
+    if not store then return false, failure end
+    local value = Layout.ReadLocal(store.barLayouts, id)
+    local global; global, failure = Layout.ReadGlobal(store.globalLayout)
+    if not global then return false, failure end
+    for _, key in ipairs(Layout.GlobalKeys) do value[key] = global[key] end
+    value.useGlobalLayout, value.localLayoutSaved = false, true
+    local raw = LocalRecord(id, value, store.barLayouts and store.barLayouts[id])
+    local proposed = Copy(store.barLayouts); proposed[id] = raw
+    local candidate; candidate, failure = Layout.Read(proposed, id, store.globalLayout, Slots(id))
+    if not candidate then return false, failure end
+    return Commit(id, candidate, false, nil, false, raw)
+end
+function Editor.CopyGlobalSettings(id)
+    local ran, ok, failure = Run(CopyGlobalSettings, id)
+    if not ran then return false, ok end
+    return ok, failure
+end
 local function SetGlobalPatch(patch)
     for key, value in pairs(patch) do
         if not Layout.ValidGlobalValue(key, value) then return false, "Invalid global action bar setting." end
@@ -690,6 +714,9 @@ local function Detach(id)
     end
     return firstFailure == nil, firstFailure
 end
+function Editor.CancelPending()
+    return CancelAll()
+end
 function Editor.End()
     state.editing = false
     local ok, firstFailure = CancelAll()
@@ -809,6 +836,16 @@ local function DrawGrid()
             line:SetPoint("TOPRIGHT", grid.frame, "TOPRIGHT", 0, -y); line:Show()
         end
         for index = horizontal + 1, table.getn(grid.horizontal) do grid.horizontal[index]:Hide() end
+        grid.centres = grid.centres or {}
+        local verticalCentre = GridLine(grid, grid.centres, 1, true)
+        local horizontalCentre = GridLine(grid, grid.centres, 2, false)
+        verticalCentre:SetWidth(3); horizontalCentre:SetHeight(3)
+        verticalCentre:SetAlpha(0.7); horizontalCentre:SetAlpha(0.7)
+        verticalCentre:ClearAllPoints(); verticalCentre:SetPoint("TOP", grid.frame, "TOP", 0, 0)
+        verticalCentre:SetPoint("BOTTOM", grid.frame, "BOTTOM", 0, 0)
+        horizontalCentre:ClearAllPoints(); horizontalCentre:SetPoint("LEFT", grid.frame, "LEFT", 0, 0)
+        horizontalCentre:SetPoint("RIGHT", grid.frame, "RIGHT", 0, 0)
+        verticalCentre:Show(); horizontalCentre:Show()
         grid.width, grid.height, grid.scale = width, height, context.scale
     end
     grid.frame:Show()

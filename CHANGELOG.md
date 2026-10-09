@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.35 — 2026-10-09
+
+- Keep Unlock selected across tabs, window hiding and minimization, cancelling unfinished drags.
+- Restore the selected Action Bars page when its window becomes visible.
+- Add bold centre grid axes and compact merge/checkbox/action rows with Copy Global Settings.
+- Preserve compatibility with the currently installed shared controls.
+
 ## 0.1.0-dev.32
 
 - Smooth circular cooldown transitions with the existing atlas and one adaptive shared clock.
