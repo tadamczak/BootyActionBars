@@ -13,7 +13,12 @@ function Overview.Create(parent, host)
         return ok, failure, skipRefresh
     end
     local function EndEditors()
-        local ok, failure = Bars.Core.Runtime.SetEditEnabled(false)
+        local ok, failure = Bars.Modules.Editor.CancelPending()
+        local utilities = Bars.Modules.NativeUtilityBars
+        if utilities then
+            local cancelled, reason = utilities.CancelPending()
+            if not cancelled then ok, failure = false, reason end
+        end
         if Bars.Modules.BindingEditor then
             local cancelled, reason = Bars.Modules.BindingEditor.Cancel()
             if not cancelled then ok, failure = false, failure and tostring(failure) .. " Binding cleanup: " .. tostring(reason) or reason end
@@ -77,6 +82,11 @@ function Overview.Create(parent, host)
     frame:SetScript("OnHide", function()
         EndEditors(); for _, panel in pairs(view.panels) do panel:Hide() end
     end)
-    if Bars.Modules.BindingEditor then Bars.Modules.BindingEditor.SetObserver(function() view:RefreshBindings() end) end
+    frame:SetScript("OnShow", function() view:SelectTab(view.activeTab) end)
+    if Bars.Modules.BindingEditor then Bars.Modules.BindingEditor.SetObserver(function()
+        local ok, failure = Bars.Core.Runtime.RestoreLayoutUnlock()
+        if not ok and failure then host.Print(failure) end
+        view:RefreshBindings()
+    end) end
     frame:Hide(); return view
 end
