@@ -35,12 +35,12 @@ function Settings.Create(parent, context)
                 get = function() return view.layout and view.layout[key] or minimum end,
                 set = function(_, value)
                     local control = view.sliders[key]
-                    if key == "columns" and control and control.babDragging then control.babPending = value
+                    if control and control.babDragging then control.babPending = value
                     else return Update(key, value) end
                 end})
         item.control, item.key, item.kind, item.babBaseHeight = slider, key, "slider", 44
         view.sliders[key] = slider
-        if key == "columns" then
+        do
             Bars.Modules.BarSettings.ConfigureColumnSlider(slider, function(value) Update(key, value) end,
                 function() return view.layout and view.layout[key] end)
         end

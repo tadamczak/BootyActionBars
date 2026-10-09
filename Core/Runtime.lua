@@ -488,6 +488,7 @@ function Runtime.RestoreLayoutUnlock()
         local options = state.store and state.store.editorOptions or {}
         ok, failure = CallLifecycle(Bars.Modules.NativeUtilityBars.SetEditing, true, options.showAnchors == true)
     end
+    if ok then ok, failure = RefreshGroups() end
     state.restoringUnlock = nil
     if not ok then
         local ended, reason = CallLifecycle(Bars.Modules.Editor.End)
@@ -521,6 +522,7 @@ function Runtime.SetEditEnabled(enabled)
             if not ended then failure = tostring(failure) .. " Editor cleanup: " .. tostring(detail) end
         end
     end
+    if ok then ok, failure = RefreshGroups() end
     if ok then state.layoutUnlocked = enabled end
     RefreshView()
     return ok, failure
@@ -627,6 +629,7 @@ function Runtime.SetEditorOption(key, value)
             if not restored then reason = tostring(reason) .. " Utility restoration: " .. tostring(detail) end
         end
     end
+    if ok then ok, reason = RefreshGroups() end
     RefreshView()
     return ok, reason
 end

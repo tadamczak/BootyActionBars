@@ -173,9 +173,17 @@ function Appearance.Create(parent, context)
         local control = UI.Settings.CreateSlider(row, (context.ControlPrefix or "BootyActionBarsAppearance") .. key, 0, -15,
             caption, key, low, high, nil, {ensure = function() end,
                 get = getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end,
-                set = function(_, value) Complete((setter or function(item) return context.SetPreference(key, item) end)(value)) end})
+                set = function(_, value)
+                    local control = view.sliders[key]
+                    if control and control.babDragging then control.babPending = value
+                    else Complete((setter or function(item) return context.SetPreference(key, item) end)(value)) end
+                end})
         row.kind, row.control, row.key = "slider", control, key
-        view.sliders[key] = control; return control
+        view.sliders[key] = control
+        Bars.Modules.BarSettings.ConfigureColumnSlider(control, function(value)
+            Complete((setter or function(item) return context.SetPreference(key, item) end)(value))
+        end, getter or function() local layout = context.GetLayout(); return layout and layout[key] or low end)
+        return control
     end
     local function Checkbox(key, caption)
         local row = Row(32)
