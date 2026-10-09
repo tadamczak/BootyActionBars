@@ -262,6 +262,11 @@ function Appearance.Create(parent, context)
             onChanged = function() view:Refresh(context.GetLayout()) end})
         row.kind, row.control, row.key, row.label = "choice", control, key, label
         view.choices[key] = {control = control, options = options}
+        if key == "cooldownEffectMode" then
+            UI.AttachTooltip(control, "Cooldown indicator", "Game default uses the client animation. Circle and Top to bottom use the configured indicator color.")
+        elseif key == "hotkeyFont" or key == "countFont" or key == "macroFont" then
+            UI.AttachTooltip(control, caption, "Game default keeps this label's native font and size. Other choices use Label size.")
+        end
     end
     local function LayoutFor(id)
         if id == "global" then return Bars.Core.Runtime.GetGlobalLayout() end
@@ -394,7 +399,7 @@ function Appearance.Create(parent, context)
     Choice("cooldownFont", "Cooldown font", Bars.Services.TextStyle.Options)
     Slider("cooldownFontSize", "Font size", 8, 32)
     block = "indicator"
-    Choice("cooldownEffectMode", "Cooldown indicator", {{value = "circle", text = "Circle"}, {value = "vertical", text = "Top to bottom"}})
+    Choice("cooldownEffectMode", "Cooldown indicator", {{value = "native", text = "Game default"}, {value = "circle", text = "Circle"}, {value = "vertical", text = "Top to bottom"}})
     Color("cooldownEffect", "Indicator color")
     block = "blink"
     Checkbox("cooldownFlash", "Blink in last 3 seconds")

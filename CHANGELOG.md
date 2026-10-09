@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-dev.39 — 2026-10-10
+
+- Use the game's skill-button hover, checked feedback, fonts and native cooldown animation by default, without extra countdown text or project fill/outline.
+- Match native unavailable/range feedback and retain authored bar geometry, merges, decorations and explicit style overrides.
+
 ## 0.1.0-dev.38 — 2026-10-09
 
 - Add the project header and tab separators; keep bar accordions collapsed after reload.

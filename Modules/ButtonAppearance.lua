@@ -110,9 +110,27 @@ local function Feedback(button, repair)
     end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     if repair and feedback.bootyRoundedHover then feedback.bootyRoundedHover.ready = false end
-    local ok, reason = pcall(UI.SetRoundedHoverSurface, button, feedback, shown, "shadow",
-        style.buttonSize + 2 * (style.hoverShadowSize - 1), style.hoverShadowRadius,
-        style.hoverShadowR, style.hoverShadowG, style.hoverShadowB, style.hoverShadowA)
+    local native = style.hoverShadowSize == 1 and style.hoverShadowRadius == 0
+    local ok, reason
+    if native then
+        ok, reason = pcall(UI.SetRoundedHoverSurface, button, feedback, false, "shadow", 0, 0, 1, 1, 1, 1)
+        if ok then
+            if feedback:SetTexture(defaultHover) == false then error("Native hover texture was declined.") end
+            if feedback:SetTexCoord(0, 1, 0, 1) == false then error("Native hover coordinates were declined.") end
+            feedback:SetBlendMode("ADD")
+            feedback:ClearAllPoints(); feedback:SetAllPoints(button.icon)
+            feedback:SetVertexColor(style.hoverShadowR, style.hoverShadowG, style.hoverShadowB, style.hoverShadowA)
+            local accepted
+            if shown then accepted = feedback:Show() else accepted = feedback:Hide() end
+            local actual = feedback:IsShown()
+            if accepted == false or (actual ~= nil and actual ~= false and actual ~= 0) ~= shown then error("Native hover visibility was declined.") end
+            if feedback.bootyRoundedHover then feedback.bootyRoundedHover.ready = false end
+        end
+    else
+        ok, reason = pcall(UI.SetRoundedHoverSurface, button, feedback, shown, "shadow",
+            style.buttonSize + 2 * (style.hoverShadowSize - 1), style.hoverShadowRadius,
+            style.hoverShadowR, style.hoverShadowG, style.hoverShadowB, style.hoverShadowA)
+    end
     if not ok then failure = failure or tostring(reason) end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     if failure then error(failure) end
@@ -127,7 +145,7 @@ function Appearance.ApplyColor(button, data, repair)
     if state == 1 then red, green, blue, alpha = style.rangeInR, style.rangeInG, style.rangeInB, style.rangeInA
     elseif state == 2 then red, green, blue, alpha = style.rangeOutR, style.rangeOutG, style.rangeOutB, style.rangeOutA
     elseif state == 3 then red, green, blue, alpha = 0.5, 0.5, 1, 1
-    else red, green, blue, alpha = 0.3, 0.3, 0.3, 1 end
+    else red, green, blue, alpha = 0.4, 0.4, 0.4, 1 end
     if repair or not button.appearanceTintReady or button.appearanceR ~= red or button.appearanceG ~= green
         or button.appearanceB ~= blue or button.appearanceA ~= alpha then
         -- A setter can mutate the widget before throwing. A failed write must
@@ -136,6 +154,11 @@ function Appearance.ApplyColor(button, data, repair)
         button.icon:SetVertexColor(red, green, blue, alpha)
         button.appearanceR, button.appearanceG, button.appearanceB, button.appearanceA = red, green, blue, alpha
         button.appearanceTintReady = true
+    end
+    local outOfRange = data.inRange == 0
+    if button.hotkey and (repair or button.appearanceOutOfRange ~= outOfRange) then
+        button.hotkey:SetTextColor(outOfRange and 1 or 0.6, outOfRange and 0.1 or 0.6, outOfRange and 0.1 or 0.6)
+        button.appearanceOutOfRange = outOfRange
     end
     button.appearanceHasState = true
     button.rendered.color = state
@@ -152,6 +175,9 @@ function Appearance.InitializeButton(button)
     if not button.bar.buttonAppearance then Style(button.bar) end
     UI.ApplyDropdownChoiceSurface(button)
     button:SetBackdropBorderColor(0, 0, 0, 0)
+    local checked = UI.CreateTexture(button, nil, "OVERLAY")
+    checked:SetTexture("Interface\\Buttons\\CheckButtonHilight"); checked:SetBlendMode("ADD")
+    checked:SetAllPoints(button.icon); button:SetCheckedTexture(checked)
     button.hoverFeedback = UI.CreateTexture(button, nil, "OVERLAY")
     button.hoverFeedback:SetTexture(defaultHover); button.hoverFeedback:SetBlendMode("ADD")
     button.hoverFeedback:SetAllPoints(button.icon)
@@ -354,7 +380,7 @@ function Appearance.ApplyFont(label, choice, size)
     end
     local face, failure = Bars.Services.TextStyle.Font(choice, label.babOriginalFont)
     if not face then error(failure or "The button font is unavailable.") end
-    size = size or label.babOriginalSize
+    size = choice == "native" and label.babOriginalSize or size or label.babOriginalSize
     if label.babAppliedFont ~= face or label.babAppliedSize ~= size then
         label.babAppliedFont, label.babAppliedSize = nil, nil
         local ok = label:SetFont(face, size, label.babOriginalFlags)

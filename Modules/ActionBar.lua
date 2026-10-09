@@ -84,10 +84,6 @@ local function ComposeFrame(view, host)
         if not ok then error(failure) end
     end
 end
-local function LabelFont(label, size)
-    local face, oldSize, flags = label:GetFont()
-    if face and oldSize ~= size then label:SetFont(face, size, flags) end
-end
 
 local function UpdateCaption(view)
     if not view.showTitle then return end
@@ -329,7 +325,6 @@ function ActionBar.Create(callbacks, barId)
         button.bindingCommand = Bars.Services and Bars.Services.BindingService and Bars.Services.BindingService.Command(barId, index)
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
-        button:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
         button.icon = UI.CreateTexture(button, name .. "Icon", "ARTWORK")
         button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", 4, -4)
         button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
@@ -341,14 +336,14 @@ function ActionBar.Create(callbacks, barId)
         button.cooldown = UI.CreateModel(name .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.count = UI.CreateLabel(button, name .. "Count", "OVERLAY", "NumberFontNormalSmall")
-        button.count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -5, 5)
-        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmall")
-        button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -4, -4)
+        button.count = UI.CreateLabel(button, name .. "Count", "OVERLAY", "NumberFontNormal")
+        button.count:SetPoint("BOTTOMRIGHT", button.icon, "BOTTOMRIGHT", -2, 2)
+        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
+        button.hotkey:SetPoint("TOPRIGHT", button.icon, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         -- SuperMacro uses these conventional globals during wrapped reads.
-        button.nameLabel = UI.CreateLabel(button, name .. "Name", "OVERLAY", "GameFontNormalSmall")
-        button.nameLabel:SetPoint("BOTTOM", button, "BOTTOM", 0, 4)
+        button.nameLabel = UI.CreateLabel(button, name .. "Name", "OVERLAY", "GameFontHighlightSmallOutline")
+        button.nameLabel:SetPoint("BOTTOM", button.icon, "BOTTOM", 0, 2)
         button.nameLabel:SetWidth(32); button.nameLabel:SetHeight(12); button.nameLabel:Hide()
         button.rendered, button.read, button.pressed, button.mousePressed = {}, {}, false, false
         button.mouseHeld = false
@@ -437,7 +432,6 @@ function ActionBar.Create(callbacks, barId)
             button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
             button.hotkey:SetWidth(math.max(1, size - 8))
             button.nameLabel:SetWidth(math.max(1, size - 8)); button.nameLabel:SetHeight(fontSize + 2)
-            LabelFont(button.hotkey, fontSize); LabelFont(button.count, fontSize); LabelFont(button.nameLabel, fontSize)
         end
         self.gridWidth = value.barWidth
         title:SetWidth(value.barWidth); title:SetHeight(20)

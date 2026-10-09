@@ -35,10 +35,7 @@ local function LayoutMode()
     return editor and editor.IsEditing and editor.IsEditing() or false
 end
 local UpdateEmpty
-local function LabelFont(label, size)
-    local face, previous, flags = label:GetFont()
-    if face and previous ~= size then label:SetFont(face, size, flags) end
-end
+
 local function Run(callback, first, second, third, fourth)
     local previousThis, previousEvent, previousArg = this, event, arg1
     local ran, result, failure = pcall(callback, first, second, third, fourth)
@@ -327,7 +324,6 @@ local function Create(owner)
         button.bindingCommand = Bars.Services.BindingService and Bars.Services.BindingService.Command(view.id, index)
         button:SetID(index); button:SetWidth(40); button:SetHeight(40)
         button:SetPoint("LEFT", frame, "LEFT", (index - 1) * 44, 0)
-        button:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
         button.icon = UI.CreateTexture(button, buttonName .. "Icon", "ARTWORK")
         button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", 4, -4)
         button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
@@ -342,7 +338,7 @@ local function Create(owner)
         button.cooldown = UI.CreateModel(buttonName .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmall")
+        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -4, -4)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         button.read, button.rendered = {}, {}; button.keyHeld, button.mouseHeld, button.mousePressed = false, false, false
@@ -404,7 +400,7 @@ local function Create(owner)
             button.icon:ClearAllPoints()
             button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", inset, -inset)
             button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
-            button.hotkey:SetWidth(math.max(1, size - 8)); LabelFont(button.hotkey, font)
+            button.hotkey:SetWidth(math.max(1, size - 8))
         end
         self.title:SetWidth(value.barWidth); return true
     end

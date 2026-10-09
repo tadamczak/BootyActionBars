@@ -62,13 +62,14 @@ local function Eligible(record)
         and (TextEligible(record) or Effects.Demand(record))
 end
 local function UpdateCadence(record, remaining)
-    local fast = record.owner.effectA > 0 and (record.duration <= 10 or remaining and remaining <= 10) or false
+    local fast = record.owner.effectMode ~= "native" and record.owner.effectA > 0 and (record.duration <= 10 or remaining and remaining <= 10) or false
     if fast ~= (record.fast == true) then
         state.fastCount = state.fastCount + (fast and 1 or -1)
         record.fast = fast and true or nil
     end
 end
 local function Sync(record)
+    Effects.SyncNative(record)
     if Eligible(record) then
         if not TextEligible(record) and record.shown then Call(record, "Hide"); record.shown = false end
         if not record.activeIndex then
@@ -194,14 +195,15 @@ local function Update(button, start, duration, enabled)
     local record = Record(button)
     if not record or record.creationFailure then return false, record and record.creationFailure or "The cooldown text is not attached." end
     if not Service.ValidCooldown(start, duration) then return false, "Invalid cooldown timer." end
-    -- The stock Model owns animation scripts, but its projected indicator can
-    -- exceed the icon and has no verified 1.12 RGBA adapter. Our pooled regions
-    -- draw both styles inside the icon; hiding stops its native animation too.
-    Effects.HideNative(record)
     local changed = record.start ~= start or record.duration ~= duration
     local activeTimer = enabled ~= nil and enabled ~= false and enabled ~= 0
     if changed or record.enabled ~= activeTimer or record.suspended then record.revision = (record.revision or 0) + 1 end
     record.start, record.duration, record.enabled = start, duration, activeTimer
+    -- Both renderers apply the client timer before this notification. Adopt
+    -- that write; configuration/show transitions alone need to restore it.
+    if record.owner.effectMode == "native" then
+        record.nativeActive, record.nativeStart, record.nativeDuration = activeTimer, start, duration
+    end
     record.suspended = false
     if changed then
         record.expired, record.kind, record.value, record.remaining = nil, nil, nil, nil
@@ -216,7 +218,7 @@ local function SuspendView(view)
     local firstFailure
     for _, record in pairs(owner.records) do
         record.suspended = true
-        local ok, failure = pcall(Remove, record)
+        local ok, failure = pcall(Sync, record)
         if not ok and not firstFailure then firstFailure = tostring(failure) end
     end
     return firstFailure == nil, firstFailure

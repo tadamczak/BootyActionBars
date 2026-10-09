@@ -43,9 +43,40 @@ function Effects.Configure(owner, drawing)
 end
 function Effects.Demand(record)
     local owner = record.owner
-    return owner.effectA > 0 or owner.flash and owner.flashA > 0 and record.duration >= Service.MIN_DURATION
+    return owner.effectMode ~= "native" and owner.effectA > 0 or owner.flash and owner.flashA > 0 and record.duration >= Service.MIN_DURATION
 end
-function Effects.HideNative(record) Call(record, record.button.cooldown, "Hide") end
+function Effects.HideNative(record)
+    record.nativeActive = false
+    Call(record, record.button.cooldown, "Hide")
+end
+-- Stock FrameXML owns the model animation. Normalize its 36px/.75 geometry
+-- to the retained icon rectangle instead of scaling the button or bar.
+function Effects.SyncNative(record)
+    local owner, button = record.owner, record.button
+    local count = owner.view.count or table.getn(owner.view.buttons)
+    local shown = owner.effectMode == "native" and owner.visible and not record.suspended and not record.expired
+        and button.index <= count and not button.emptyHidden and record.enabled and record.start > 0 and record.duration > 0
+    if not shown then Effects.HideNative(record); return end
+    local model = button.cooldown
+    if record.nativeSize ~= owner.effectSize then
+        record.nativeSize = nil
+        Call(record, model, "ClearAllPoints")
+        Call(record, model, "SetPoint", "CENTER", button.icon, "CENTER", 0, -1)
+        Call(record, model, "SetWidth", 36); Call(record, model, "SetHeight", 36)
+        Call(record, model, "SetScale", 0.75 * owner.effectSize / 36)
+        record.nativeSize = owner.effectSize
+    end
+    if not record.nativeActive or record.nativeStart ~= record.start or record.nativeDuration ~= record.duration then
+        record.nativeActive = false
+        local savedThis, savedEvent, a1,a2,a3,a4,a5,a6,a7,a8,a9 = this,event,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9
+        this = button
+        local ok, reason = pcall(CooldownFrame_SetTimer, model, record.start, record.duration, 1)
+        this,event,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9 = savedThis,savedEvent,a1,a2,a3,a4,a5,a6,a7,a8,a9
+        if not ok then error(reason, 0) end
+        if reason == false then error("Native cooldown timer was declined.", 0) end
+        record.nativeActive, record.nativeStart, record.nativeDuration = true, record.start, record.duration
+    end
+end
 local function Visibility(record, region, shown, flash)
     local key = flash and "flashShown" or "effectShown"
     if record[key] == shown then return end
@@ -134,7 +165,7 @@ function Effects.Paint(record, now)
     local owner, revision = record.owner, record.revision
     local progress, failure = Service.Progress(record.start, record.duration, now)
     if progress == nil then error(failure, 0) end
-    if owner.effectA > 0 and progress > 0 then
+    if owner.effectMode ~= "native" and owner.effectA > 0 and progress > 0 then
         local region = Ensure(record, false)
         local alpha = owner.effectA
         if owner.effectMode == "circle" then
