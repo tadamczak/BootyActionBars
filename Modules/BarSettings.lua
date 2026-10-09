@@ -117,7 +117,7 @@ function BarSettings.Create(parent, host, owner)
         local store = Bars.Database.Ensure(); return store and store.editorOptions.showAnchors == true
     end, function(value) return Runtime.SetEditorOption("showAnchors", value) end)
     local toolChecks = {unlock, grid, anchors}
-    local toolSection = Bars.Modules.AppearanceSettings.Section(tools, "Layout editing", {Complete = Complete})
+    local toolSection = Bars.Modules.AppearanceSettings.Section(tools, "Layout editing", {Complete = Complete, Expanded = true})
     for _, check in ipairs(toolChecks) do
         local row = UI.CreateContainer(nil, tools); row:SetHeight(32)
         check:SetParent(row)
@@ -269,7 +269,7 @@ function BarSettings.Create(parent, host, owner)
     end
     local function Measure(width)
         local usable = math.max(1, width - 24)
-        title:SetHeight(24); Place(title, usable, 8)
+        title:SetHeight(24); title:SetJustifyH("LEFT"); Place(title, usable, 8)
         description:SetWidth(usable)
         description:SetHeight(UI.MeasureTextHeight(description, usable)); local top = Place(description, usable, 40) + 16
         if view.selected == "layout" then
