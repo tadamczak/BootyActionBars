@@ -5,8 +5,12 @@ Bars.Modules.Overview = Overview
 local tabs = {{"general", "General"}, {"bars", "Action Bars"}, {"keybindings", "Keybindings"}}
 function Overview.Create(parent, host)
     local frame = UI.CreateContainer(nil, parent); frame:SetAllPoints(parent); frame.bootyTextSizeDelta = -2
+    local header = UI.CreateToolbarSurface(frame, false, true)
+    local heading = UI.CreateHeading(header, "BootyActionBars", 2, "gold", "groups")
+    heading:SetJustifyH("LEFT"); heading:SetPoint("LEFT", header, "LEFT", 12, 0); heading:SetHeight(24)
+    local navigation = UI.CreateToolbarSurface(frame, false, true)
     local body = UI.CreateContainer(nil, frame)
-    local view = {frame = frame, panels = {}, tabs = {}, tabRow = {}, activeTab = "general", selectedBar = 2, bindingIndex = 1}
+    local view = {frame = frame, panels = {}, tabs = {}, tabRow = {}, activeTab = "general", selectedBar = 2, bindingIndex = 1, header = header, heading = heading, navigation = navigation}
     function view.Complete(ok, failure, skipRefresh)
         if not ok and failure then host.Print(failure) end
         if not skipRefresh then view:Refresh() end
@@ -46,7 +50,7 @@ function Overview.Create(parent, host)
     end
     for _, item in ipairs(tabs) do
         local id, label = item[1], item[2]
-        local button = UI.CreateSelectionButton(frame, nil, label, id == "general" and 82 or 104, 26)
+        local button = UI.CreateSelectionButton(navigation, nil, label, id == "general" and 82 or 104, 26)
         button:SetScript("OnClick", function() view:SelectTab(id) end); view.tabs[id] = button
         table.insert(view.tabRow, button)
     end
@@ -58,7 +62,12 @@ function Overview.Create(parent, host)
             local tab = self.tabs[item[1]]
             tab:SetWidth(math.min(item[1] == "general" and 82 or 104, math.max(1, width - 16)))
         end
-        local top = UI.LayoutFlow(frame, self.tabRow, 8, 8, math.max(1, width - 16), 6) + 10
+        header:ClearAllPoints(); header:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0); header:SetWidth(width); header:SetHeight(36)
+        heading:SetWidth(math.max(1, width - 24))
+        navigation:ClearAllPoints(); navigation:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -36); navigation:SetWidth(width)
+        local navigationHeight = UI.LayoutFlow(navigation, self.tabRow, 8, 8, math.max(1, width - 16), 6) + 8
+        navigation:SetHeight(navigationHeight)
+        local top = 36 + navigationHeight + 8
         body:ClearAllPoints(); body:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -top)
         body:SetWidth(width); body:SetHeight(math.max(1, height - top))
         local panel = self.panels[self.activeTab]; if panel then panel:Layout(width, math.max(1, height - top)) end

@@ -106,12 +106,60 @@ end
 local sectionIcons = {Geometry = "settings", Appearance = "settings", Decoration = "groups", ["Labels and slots"] = "list",
     ["Range colors"] = "health", Hover = "settings", ["Button border"] = "settings", Cooldown = "analyze", Behaviors = "list", ["Text fonts"] = "list"}
 local controlKinds = {"check", "choice", "color", "slider"}
+function Appearance.StyleAccordion(control)
+    -- Preserve the project ornament at its native vertical resolution: halving
+    -- the16px asset mixes its gold stroke with the neighbouring dark shadow.
+    local refresh = control.RefreshRule
+    control.RefreshRule = function(self)
+        if refresh then refresh(self) end
+        self.rule:SetHeight(16); self.rule:SetAlpha(1); self.rule:SetVertexColor(1,1,1,1)
+        if self.ruleCap then self.ruleCap:SetAlpha(1); self.ruleCap:SetVertexColor(1,1,1,1) end
+    end
+    control:RefreshRule()
+end
+local function MeasureBlock(block)
+    local width = 1
+    for _, row in ipairs(block.rows) do if row:IsShown() then width = math.max(width,Appearance.MeasureRow(row)) end end
+    return width
+end
+local function LayoutBlock(block,parent,x,y,width)
+    block:ClearAllPoints(); block:SetPoint("TOPLEFT",parent,"TOPLEFT",x,y); block:SetWidth(width)
+    local top = 0
+    for _,row in ipairs(block.rows) do
+        if row:IsShown() then
+            if row:GetParent() ~= block then row:SetParent(block) end
+            top = top + Appearance.LayoutRow(row,block,0,-top,width) + 4
+        end
+    end
+    block:SetHeight(top+8); return top+8
+end
+local function LayoutBlocks(group,body,width)
+    group.blocks = group.blocks or {}
+    local items = group.blockItems or {}; group.blockItems = items; group.scratch = items
+    while table.getn(items)>0 do table.remove(items) end
+    for _, block in pairs(group.blocks) do while table.getn(block.rows)>0 do table.remove(block.rows) end; block.babUsed=nil end
+    local previous
+    for _,row in ipairs(group.rows) do
+        if row:IsShown() then
+            local key = row.babBlock or "main"
+            local block = group.blocks[key]
+            if not block then block=UI.CreateContainer(nil,body); block.rows={}; group.blocks[key]=block end
+            block.babUsed=true; block:Show(); table.insert(block.rows,row)
+            if previous ~= key then table.insert(items,block); previous=key end
+        end
+    end
+    for _,block in pairs(group.blocks) do if not block.babUsed then block:Hide() end end
+    items.bootyMaxColumns=3; items.bootyMeasureItem,items.bootyLayoutItem=MeasureBlock,LayoutBlock
+    return UI.Settings.LayoutGrid(body,items,0,0,width,0)
+end
 function Appearance.Section(parent, caption, context)
     local row = UI.CreateContainer(nil, parent); row:SetHeight(24)
     row.kind = "heading"
     row.control = UI.Settings.CreateSectionAccordion(row, caption, 0, 0, 3, sectionIcons[caption] or "settings")
-    row.control:SetExpanded(true); row.control.label:SetText("-  " .. caption)
-    local group = {caption = caption, heading = row, rows = {}, expanded = true, content = UI.CreateContainer(nil, parent), scratch = {}}
+    local expanded = context.Expanded == true
+    Appearance.StyleAccordion(row.control)
+    row.control:SetExpanded(expanded); row.control.label:SetText((expanded and "-  " or "+  ") .. caption)
+    local group = {caption = caption, heading = row, rows = {}, expanded = expanded, content = UI.CreateContainer(nil, parent), scratch = {}}
     row.control:SetScript("OnClick", function()
         if context.Close then local ok, reason = context.Close(); if ok == false then return context.Complete(false, reason) end end
         group.expanded = not group.expanded
@@ -126,10 +174,15 @@ function Appearance.LayoutSection(group, parent, top, width)
     heading.control:SetWidth(width)
     top = top + heading:GetHeight()
     if not group.expanded then body:Hide(); return top + 6 end
-    body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -top); body:SetWidth(width)
+    top = top + 16
+    width = math.max(1,width-12)
+    body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, -top); body:SetWidth(width)
+    if group.caption == "Decoration" or group.caption == "Hover" then
+        local height=LayoutBlocks(group,body,width); body:SetHeight(height); return top+height+8
+    end
     local offset, lastBlock, rows = 0, nil, group.scratch
     local blockRows = group.blockRows or {}; group.blockRows = blockRows
-    rows.bootyMaxColumns = 3; rows.bootyMeasureItem, rows.bootyLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
+    rows.bootyMaxColumns = group.caption == "Text fonts" and 4 or 3; rows.bootyMeasureItem, rows.bootyLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
     while table.getn(rows) > 0 do table.remove(rows) end
     while table.getn(blockRows) > 0 do table.remove(blockRows) end
     local function Flush()
@@ -152,19 +205,19 @@ function Appearance.LayoutSection(group, parent, top, width)
 end
 function Appearance.Create(parent, context)
     local view = {rows = {}, sections = {}, sliders = {}, checks = {}, choices = {}, colors = {}}
-    local section, block
+    local section, block, dependency
     local function Complete(ok, failure) return context.Complete(ok, failure) end
     local function Row(height)
         local row = UI.CreateContainer(nil, parent); row:SetHeight(height)
         row.babBaseHeight = height
-        row.babBlock = block
+        row.babBlock, row.babVisibleWhen = block, dependency
         row.bootyTextSizeDelta = math.min(-2, UI.GetTextSizeDelta(parent))
         table.insert(view.rows, row)
         if section then table.insert(section.rows, row) end
         return row
     end
     local function Section(text)
-        block = nil
+        block, dependency = nil, nil
         section = Appearance.Section(parent, text, {Complete = Complete, Close = function() return view:Close() end})
         table.insert(view.sections, section)
     end
@@ -190,7 +243,11 @@ function Appearance.Create(parent, context)
         local row = Row(32)
         local control = UI.Settings.CreateCheckbox(row, 0, 0, caption, key, nil,
             {ensure = function() end, get = function() local layout = context.GetLayout(); return layout and layout[key] == true end,
-                set = function(_, value) Complete(context.SetPreference(key, value)) end})
+                set = function(_, value)
+                    local closed, failure = view:Close()
+                    if not closed then return Complete(false,failure) end
+                    Complete(context.SetPreference(key, value))
+                end})
         row.kind, row.control, row.key = "check", control, key; view.checks[key] = control
         return control
     end
@@ -318,14 +375,16 @@ function Appearance.Create(parent, context)
     for _, effect in ipairs({{"hoverBackgroundShadow", "hoverBackground", "Background shadow"},
         {"hoverBorderShadow", "hoverShadow", "Border shadow"}, {"hoverBorder", "hoverOutline", "Border"}}) do
         block = effect[2]
-        Checkbox(effect[1], effect[3]); Color(effect[2], effect[3] .. " color")
+        dependency=nil; Checkbox(effect[1], effect[3]); dependency=effect[1]
+        Color(effect[2], effect[3] .. " color")
         Slider(effect[2] .. "Size", "Effect size", 1, 10)
         Slider(effect[2] .. "Radius", "Corner radius", 0, 10)
         if effect[2] == "hoverOutline" then Slider("hoverBorderSize", "Border thickness", 1, 10) end
     end
     Section("Button border")
-    Checkbox("showButtonBorder", "Show button border"); Color("border", "Border color")
-    Slider("borderSize", "Border size", 1, 6); Checkbox("buttonBackground", "Button background")
+    Checkbox("showButtonBorder", "Show button border"); dependency="showButtonBorder"
+    Color("border", "Border color"); Slider("borderSize", "Border size", 1, 6)
+    dependency=nil; block="background"; Checkbox("buttonBackground", "Button background")
     Section("Cooldown")
     block = "numbers"
     Checkbox("showCooldownText", "Cooldown numbers"); Color("cooldown", "Text color")
@@ -347,6 +406,9 @@ function Appearance.Create(parent, context)
     end
     function view:Refresh(layout)
         if not layout then return end
+        for _,row in ipairs(self.rows) do
+            if not row.babVisibleWhen or layout[row.babVisibleWhen] == true then row:Show() else row:Hide() end
+        end
         for key, slider in pairs(self.sliders) do
             local value = layout[key]
             if string.sub(key, -1) == "A" then value = math.floor(value * 100 + 0.5) end

@@ -56,15 +56,16 @@ function BehaviorSettings.Create(parent, context)
     local heading = UI.Settings.CreateSectionAccordion(frame, "Behaviors", 0, 0, 3, "list")
     local content = UI.CreateContainer(nil, frame)
     view.heading, view.content = heading, content
-    view.expanded, view.content = true, content
-    heading:SetExpanded(true); heading.label:SetText("-  Behaviors")
+    view.expanded, view.content = false, content
+    Bars.Modules.AppearanceSettings.StyleAccordion(heading)
+    heading:SetExpanded(false); heading.label:SetText("+  Behaviors")
     heading:SetScript("OnClick", function()
         local ok, failure = view:Close(); if not ok then return context.Complete(false, failure) end
         view.expanded = not view.expanded
         heading:SetExpanded(view.expanded); heading.label:SetText((view.expanded and "-  " or "+  ") .. "Behaviors")
         return context.Complete(true)
     end)
-    local help = UI.CreateComponentLabel(content, "First matching rule wins. Rules choose the actions shown on this bar.", "white")
+    local help = UI.CreateComponentLabel(content, "When a condition matches, show actions from the chosen bar. Rules are checked from top to bottom.", "white")
     help:SetJustifyH("LEFT"); help:SetJustifyV("TOP")
     local status = UI.CreateComponentLabel(content, "No rules. The bar uses its normal actions.", "white")
     status:SetJustifyH("LEFT"); status:SetJustifyV("TOP")
@@ -72,7 +73,7 @@ function BehaviorSettings.Create(parent, context)
     view.add, view.help, view.status = add, help, status
     local function Complete(ok, failure, skipRefresh) return context.Complete(ok, failure, skipRefresh) end
     local followingRow = UI.CreateContainer(nil, content); followingRow.babBaseHeight = 32
-    local following = UI.Settings.CreateCheckbox(followingRow, 0, 0, "Follow client pages and forms", "mainBarFollowClient", nil,
+    local following = UI.Settings.CreateCheckbox(followingRow, 0, 0, "Switch Main Bar with paging, Stealth and forms", "mainBarFollowClient", nil,
         {ensure = function() end, get = Runtime.GetMainBarFollowClient, set = function(_, value)
             if context.GetSelection() ~= 1 or not frame:IsVisible() or not Available() then
                 return Complete(false, "Choose the independent Main Action Bar.", true)
@@ -88,7 +89,7 @@ function BehaviorSettings.Create(parent, context)
         end})
     followingRow.kind, followingRow.control = "check", following
     local followingHelp = UI.CreateComponentLabel(content,
-        "Fallback when no custom rule matches: follow the game's pages, Stealth and forms. Turn off to use Main Action Bar slots 1-12.", "white")
+        "When no custom rule matches, show the game's current page or form bar. Uncheck to keep slots 1-12.", "white")
     followingHelp:SetJustifyH("LEFT"); followingHelp:SetJustifyV("TOP")
     view.followingRow, view.followingCheckbox, view.followingHelp = followingRow, following, followingHelp
     local function Current(session)
@@ -242,8 +243,8 @@ function BehaviorSettings.Create(parent, context)
     local function Row(index)
         local row = UI.CreateControl(nil, content)
         UI.ApplyDropdownChoiceSurface(row); UI.ApplyRowBackground(row, index, false)
-        row.label = UI.CreateComponentLabel(row, "", "white"); row.label:SetJustifyH("LEFT"); row.label:SetJustifyV("TOP")
-        row.sourceLabel = UI.CreateComponentLabel(row, "", "white"); row.sourceLabel:SetJustifyH("LEFT"); row.sourceLabel:SetJustifyV("TOP")
+        row.label = UI.CreateComponentLabel(row, "", "white"); row.label:SetJustifyH("LEFT"); row.label:SetJustifyV("MIDDLE")
+        row.sourceLabel = UI.CreateComponentLabel(row, "", "white"); row.sourceLabel:SetJustifyH("LEFT"); row.sourceLabel:SetJustifyV("MIDDLE")
         row.actions = UI.CreateContainer(nil, row); row.buttons = {}
         for _, definition in ipairs({{"Edit", 44}, {"Remove", 58}, {"up", 20}, {"down", 20}}) do
             local arrow = definition[1] == "up" or definition[1] == "down"
@@ -267,7 +268,7 @@ function BehaviorSettings.Create(parent, context)
             followingRow:Show(); followingHelp:Show()
             following:SetChecked(Runtime.GetMainBarFollowClient() and 1 or nil)
             UI.Settings.SetCheckboxEnabled(following, Available())
-            help:SetText("First matching custom rule wins. If none matches, the built-in fallback below chooses the actions.")
+            help:SetText("Rules are checked from top to bottom. When none matches, Main uses the setting below.")
         else
             followingRow:Hide(); followingHelp:Hide()
             help:SetText("First matching rule wins. If none matches, this bar uses its fixed action slots.")
@@ -301,7 +302,7 @@ function BehaviorSettings.Create(parent, context)
     function view:Measure(width)
         heading:ClearAllPoints(); heading:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0); heading:SetWidth(width); heading:SetHeight(24)
         if not self.expanded then content:Hide(); frame:SetHeight(24); return 24 end
-        content:Show(); content:ClearAllPoints(); content:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -24); content:SetWidth(width)
+        content:Show(); content:ClearAllPoints(); content:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -40); width=math.max(1,width-12); content:SetWidth(width)
         help:ClearAllPoints(); help:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
         help:SetWidth(width); help:SetHeight(UI.MeasureTextHeight(help, width))
         local top = help:GetHeight() + 8
@@ -318,7 +319,7 @@ function BehaviorSettings.Create(parent, context)
         add:ClearAllPoints(); add:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); add:SetWidth(math.min(72, width))
         top = top + add:GetHeight() + 8
         local inline = width >= 380
-        local actionWidth, textWidth = 158, inline and width - 166 or width
+        local actionWidth, textWidth = math.min(158,width), inline and width - 166 or width
         local columnWidth = math.max(1, (textWidth - 8) / 2)
         tableHead:ClearAllPoints(); tableHead:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -top); tableHead:SetWidth(width)
         for index, header in ipairs(headers) do
@@ -340,10 +341,16 @@ function BehaviorSettings.Create(parent, context)
                 row.actions:SetPoint("TOPLEFT", row, "TOPLEFT", inline and width - actionWidth or 0, inline and 0 or -(math.max(row.label:GetHeight(), row.sourceLabel:GetHeight()) + 4))
                 row:SetHeight((inline and math.max(row.label:GetHeight(), row.sourceLabel:GetHeight(), actionHeight)
                     or math.max(row.label:GetHeight(), row.sourceLabel:GetHeight()) + 4 + actionHeight) + 10)
+                if inline then
+                    local cellHeight = row:GetHeight()-10
+                    row.label:SetHeight(cellHeight); row.sourceLabel:SetHeight(cellHeight)
+                    row.label:SetPoint("TOPLEFT",row,"TOPLEFT",0,-5); row.sourceLabel:SetPoint("TOPLEFT",row,"TOPLEFT",columnWidth+8,-5)
+                    row.actions:SetPoint("TOPLEFT",row,"TOPLEFT",width-actionWidth,-5-(cellHeight-actionHeight)/2)
+                end
                 top = top + row:GetHeight()
             end
         end
-        content:SetHeight(top + 10); frame:SetHeight(top + 34); return frame:GetHeight()
+        content:SetHeight(top + 10); frame:SetHeight(top + 50); return frame:GetHeight()
     end
     frame:SetScript("OnHide", function() local ok, failure = view:Close(); if not ok then error(failure) end end)
     frame:Hide(); return view

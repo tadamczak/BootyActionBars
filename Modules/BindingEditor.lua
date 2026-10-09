@@ -39,8 +39,8 @@ Notify = function()
     if not ok then return Failure(failure) end
     if capture and capture.label then
         local label = state.command and ((Bars.Services.BarConfig.Name(state.barId))
-            .. ", button " .. state.index) or "Click a button or choose it in the panel"
-        capture.label:SetText("Keybindings: " .. label .. ". Press a key; Escape clears. Save / Cancel in /bab.")
+            .. ", button " .. state.index) or "Click an action button"
+        capture.label:SetText(state.command and (label .. " â€” press a key. Escape clears this binding.") or "Click an action button to assign a key.")
     end
     if observer then
         ok, failure = Run(observer, state)
@@ -156,7 +156,7 @@ end
 local function KeyDownBody()
     local key = arg1
     if not state.editing or state.confirming then return end
-    if key == "ESCAPE" then BindingEditor.ClearSelection(); return end
+    if key == "ESCAPE" then if state.command then BindingEditor.ClearSelection() end; return end
     if type(key) ~= "string" or key == "UNKNOWN" or key == "SHIFT" or key == "CTRL" or key == "ALT"
         or key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL" or key == "LALT" or key == "RALT" then return end
     -- Match the canonical stock 1.12 modifier prefix order.
@@ -177,9 +177,13 @@ local function CreateCapture()
     if not capture then capture = UI.CreateContainer("BootyActionBarsBindingCapture", UIParent) end
     capture:SetAllPoints(UIParent); capture:SetFrameStrata("FULLSCREEN_DIALOG")
     capture:EnableMouse(false); capture:EnableKeyboard(false)
-    if not capture.label then capture.label = UI.CreateComponentLabel(capture, "", "white") end
-    capture.label:SetPoint("TOP", UIParent, "TOP", 0, -36)
-    capture.label:SetWidth(760); capture.label:SetHeight(36)
+    if not capture.banner then capture.banner = UI.CreateToolbarSurface(capture, true, true) end
+    if not capture.label then capture.label = UI.CreateComponentLabel(capture.banner, "", "white") end
+    local screenWidth = UI.GetFrameSpan(UIParent)
+    local width = math.max(1, math.min(760, screenWidth - 32))
+    capture.banner:SetPoint("TOP", UIParent, "TOP", 0, -36); capture.banner:SetWidth(width); capture.banner:SetHeight(48)
+    capture.label:ClearAllPoints(); capture.label:SetPoint("CENTER", capture.banner, "CENTER", 0, 0)
+    capture.label:SetWidth(math.max(1,width-24)); capture.label:SetHeight(40); capture.label:SetJustifyH("CENTER"); capture.label:SetJustifyV("MIDDLE")
     capture:Hide()
     capture.ready = true
     return true
@@ -221,7 +225,7 @@ function BindingEditor.Begin(owner)
     ok, failure = BindingEditor.RefreshDraft(false)
     if not ok then BindingEditor.Cancel(); return Failure(failure) end
     state.lastCommand, state.armed = nil, false
-    state.message = "Click a button or select its bar/index, then press a key. Save applies staged bindings."
+    state.message = "Click an action button, then press a key."
     ok, failure = Run(Notify)
     if not ok then BindingEditor.Cancel(); return Failure(failure) end
     return true
@@ -236,7 +240,12 @@ function BindingEditor.SetSelection(barId, index)
 end
 function BindingEditor.SelectButton(button, barId, index)
     if not state.editing or state.confirming then return false end
-    if selectedButton == button and state.barId == barId and state.index == index then return true end
+    if selectedButton == button and state.barId == barId and state.index == index then
+        local ok, failure = Deselect()
+        if not ok then return Failure(failure) end
+        state.failure, state.message = nil, "Selection cleared. Click another action button."
+        return Notify()
+    end
     return Choose(barId, index, button)
 end
 function BindingEditor.StageKey(key)

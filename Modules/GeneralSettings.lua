@@ -14,7 +14,6 @@ function General.Create(parent, host, ownerView)
         view:Refresh()
         return ok, failure
     end
-    local title = UI.CreateHeading(page, "General", 2, "gold")
     local visibilityHeading = UI.Settings.CreateSectionAccordion(page, "Show bars", 0, 0, 3, "groups")
     local visibilityBody = UI.CreateContainer(nil, page); visibilityBody:SetAllPoints(page)
     view.visibilityExpanded = true; visibilityHeading:SetExpanded(true); visibilityHeading.label:SetText("-  Show bars")
@@ -138,6 +137,8 @@ function General.Create(parent, host, ownerView)
         profileHeading:SetExpanded(view.profileExpanded); profileHeading.label:SetText((view.profileExpanded and "-  " or "+  ") .. "Layout profiles")
         Complete(true)
     end)
+    Bars.Modules.AppearanceSettings.StyleAccordion(visibilityHeading)
+    Bars.Modules.AppearanceSettings.StyleAccordion(profileHeading)
     view.visibilityAccordion, view.profileAccordion = visibilityHeading, profileHeading
     local function Position(control, top, width, height)
         control:ClearAllPoints(); control:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -top)
@@ -145,6 +146,7 @@ function General.Create(parent, host, ownerView)
         return top + height
     end
     local function Text(control, top, width)
+        control:SetWidth(width)
         return Position(control, top, width, UI.MeasureTextHeight(control, width))
     end
     local function Checkbox(owner, control, top, width)
@@ -166,7 +168,7 @@ function General.Create(parent, host, ownerView)
     end
     local function Measure(available)
         local width = math.max(1, available - 32)
-        local top = Position(title, 16, width, 24) + 20
+        local top = 12
         top = Position(visibilityHeading, top, width, 24) + 8
         if view.visibilityExpanded then
         visibilityBody:Show()

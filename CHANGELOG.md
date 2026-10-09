@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.38 — 2026-10-09
+
+- Add the project header and tab separators; keep bar accordions collapsed after reload.
+- Group Decoration columns and font choices, indent section bodies and show effect details only when enabled.
+- Use one Assign keys / Save keys button, clear guidance and click-to-deselect binding targets.
+- Clarify Main page/form following and align behavior table cells.
+
 ## 0.1.0-dev.37 — 2026-10-09
 
 - List every numbered action bar before pet/forms and utility bars in merge choices.
