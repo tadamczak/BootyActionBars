@@ -1,48 +1,48 @@
 # Changelog
 
-## 0.1.0-dev.41 — 2026-10-10
+## 0.1.0-dev.42 — 2026-10-10
 
 - Combine geometry into Appearance; wrap complete label rows and group Button appearance controls.
 - Add per-text colors, native empty sockets and circular button/border/hover radii.
 - Match the supplied cooldown reference with outlined Friz24 above the animation; count defaults to17. Native opacity and custom indicator tint now work, and larger text has explicit geometry.
 
-## 0.1.0-dev.40 â€” 2026-10-10
+## 0.1.0-dev.40 — 2026-10-10
 
-- Expand every scale control to 25â€“500%, including wide Experience/Reputation bars.
+- Expand every scale control to 25–500%, including wide Experience/Reputation bars.
 - Add independent keybinding, count and macro font sizes; restore exact stock fonts, offsets, hover and cooldown geometry with Game default buttons.
 - Show long cooldowns as minutes in either seconds-precision mode; preserve geometry, merge groups and decorations when resetting skill style.
 
-## 0.1.0-dev.39 â€” 2026-10-10
+## 0.1.0-dev.39 — 2026-10-10
 
 - Use the game's skill-button hover, checked feedback, fonts and native cooldown animation by default, without extra countdown text or project fill/outline.
 - Match native unavailable/range feedback and retain authored bar geometry, merges, decorations and explicit style overrides.
 
-## 0.1.0-dev.38 â€” 2026-10-09
+## 0.1.0-dev.38 — 2026-10-09
 
 - Add the project header and tab separators; keep bar accordions collapsed after reload.
 - Group Decoration columns and font choices, indent section bodies and show effect details only when enabled.
 - Use one Assign keys / Save keys button, clear guidance and click-to-deselect binding targets.
 - Clarify Main page/form following and align behavior table cells.
 
-## 0.1.0-dev.37 â€” 2026-10-09
+## 0.1.0-dev.37 — 2026-10-09
 
 - List every numbered action bar before pet/forms and utility bars in merge choices.
 - Keep merged utilities attached when toggling anchors or layout editing.
 - Align Latency to its visible texture and remove native Micro Menu shadow spacing.
 - Apply all slider drags once on release; hiding or switching selection cancels pending changes.
 
-## 0.1.0-dev.36 â€” 2026-10-09
+## 0.1.0-dev.36 — 2026-10-09
 
 - Use the current Booty shared-control names while retaining all dev.35 layout and unlock fixes.
 
-## 0.1.0-dev.35 â€” 2026-10-09
+## 0.1.0-dev.35 — 2026-10-09
 
 - Keep Unlock selected across tabs, window hiding and minimization, cancelling unfinished drags.
 - Restore the selected Action Bars page when its window becomes visible.
 - Add bold centre grid axes and compact merge/checkbox/action rows with Copy Global Settings.
 - Preserve compatibility with the currently installed shared controls.
 
-## 0.1.0-dev.33 â€” 2026-10-09
+## 0.1.0-dev.33 — 2026-10-09
 
 - Use current Booty names for shared controls and documentation assets.
 
@@ -53,11 +53,11 @@
 - Add Top, Bottom, Left and Right merge sides for ordinary, pet, form and utility bars, saved in layout profiles.
 
 
-## 0.1.0-dev.31 â€” 2026-10-08
+## 0.1.0-dev.31 — 2026-10-08
 
 - Fix overlapping Layout editing controls by moving their anchors into the accordion rows after reparenting.
 
-## 0.1.0-dev.30 â€” 2026-10-08
+## 0.1.0-dev.30 — 2026-10-08
 
 - Give each hover effect its own color, size and rounding, and each button text its own font.
 - Add cooldown colors below ten/five seconds, full seconds or one decimal, and one-second blinking above toggle icons.
@@ -65,38 +65,38 @@
 - Merge pet, form and native utility bars with other bars, with optional independent member appearance and clear group visibility.
 - Add independently scaled native backgrounds, borders, button artwork and gryphons to special/utility bars; align Micro Menu spacing with its visible icons.
 
-## 0.1.0-dev.29 â€” 2026-10-08
+## 0.1.0-dev.29 — 2026-10-08
 
 - Expose Main Action Bar's default page/form following in Behaviours, with an option to keep its normal slots fixed.
-- Add Action Bars7â€“10 for all120 native slots, including their layouts, behaviors, merges, keybindings and profiles.
+- Add Action Bars7–10 for all120 native slots, including their layouts, behaviors, merges, keybindings and profiles.
 - Fix the cooldown texture error caused by forwarding an extra argument to the native SetTexCoord API.
 
-## 0.1.0-dev.28 â€” 2026-10-08
+## 0.1.0-dev.28 — 2026-10-08
 
 - Remove an unused cooldown state copy while preserving the existing cooldown-number ownership flag.
 
-## 0.1.0-dev.27 â€” 2026-10-07
+## 0.1.0-dev.27 — 2026-10-07
 
 - Merge ordinary bars under one layout while retaining their actions, keybindings and individual settings for later separation.
 - Separate native stone, frame and button artwork, including independent bar and button texture scales.
 - Combine Background shadow, Border shadow and Border hover effects with separate area, thickness and corner radius.
 - Keep colored circular or top-to-bottom cooldown indicators inside icons, with optional colored blinking in the last three seconds.
 
-## 0.1.0-dev.26 â€” 2026-10-07
+## 0.1.0-dev.26 — 2026-10-07
 
 - Fit complete native sockets into their own cells and draw them above button fills, preserving icon visibility.
 - Use complete native socket/frame crops and tiled stone without stretched decorative strips.
 - Separate Native bar background and Native button background, preserving older layout profiles.
 - Add optional matching native backgrounds to Bags, Micro Menu, Latency and Keyring.
 
-## 0.1.0-dev.25 â€” 2026-10-07
+## 0.1.0-dev.25 — 2026-10-07
 
 - Align individual native socket artwork with each button in every row and fill the gaps between slots.
 - Scale native artwork independently from button size and inset.
 - Anchor gryphons at the top row above buttons and add a separate Gryphon scale option.
 - Arrange bar controls in up to three columns with Decoration immediately after Appearance and compact choice menus.
 
-## 0.1.0-dev.24 â€” 2026-10-07
+## 0.1.0-dev.24 — 2026-10-07
 
 - Configure and move Experience/Reputation, Keyring, Latency, Bags and Micro Menu using their existing game controls.
 - Make native-bar visibility independent of BootyActionBars, including both hidden.
@@ -105,7 +105,7 @@
 - Offer Native slot artwork independently from empty buttons; reveal empty drop targets during action dragging.
 - Include utility positions and visibility in layout profiles, preserving older profiles.
 
-## 0.1.0-dev.23 â€” 2026-10-07
+## 0.1.0-dev.23 — 2026-10-07
 
 - Restore action bar list selection on the native client.
 - Keep the positioning grid above the game background while unlocked.
@@ -136,100 +136,100 @@
 - Add Global Layout inheritance, preserved individual overrides and complete layout profiles compatible with older profiles.
 - Show or hide Action Bar 1 independently while other bars remain active; configure hidden bars without enabling them.
 
-## 0.1.0-dev.18 â€” 2026-10-07
+## 0.1.0-dev.18 — 2026-10-07
 
 - Place the button rectangle flush against screen edges without a reserved title gap.
 - Click a button before assigning a key, show both draft keys on its icon, then release its selection; Save commits and Cancel restores labels.
 - Move visible bars through transparent whole-bar Unlock surfaces, with optional static grid and inert anchors for hidden bars.
 
-## 0.1.0-dev.17 â€” 2026-10-07
+## 0.1.0-dev.17 — 2026-10-07
 
 - Show macro names by default with a separate per-bar toggle; keep labels cached during partial updates.
 - Customize button size, icon inset, opacity and label size; hide empty slots while retaining edit previews.
 - Stage action/pet/form key assignments with Save, Cancel and explicit conflict confirmation.
 - Save, load, replace and delete complete layout profiles, with Undo load and transactional restoration.
 
-## 0.1.0-dev.16 â€” 2026-10-07
+## 0.1.0-dev.16 — 2026-10-07
 
 - Refresh SuperMacro/CleveRoids macro icons, item counts, cooldowns and tooltips, including delayed conditional changes.
 - Show target range with cached action colors; stop distance checks without a target or active ranged buttons.
 - Preserve action input through pages/forms and include shared gameplay updates in scoped profiling.
 
-## 0.1.0-dev.15 â€” 2026-10-06
+## 0.1.0-dev.15 — 2026-10-06
 
 - Keep native main and bonus action buttons hidden through stealth, forms, page changes and native exit animations.
 - Refresh form icons when their active state changes.
 - Preserve native keyboard dispatch and restore both button sets when native hiding ends.
 
-## 0.1.0-dev.14 â€” 2026-10-06
+## 0.1.0-dev.14 — 2026-10-06
 
 - Use Show / Hide for bars while retaining layouts, actions and assigned keys.
 - Add separate pet and form/stance bindings under BootyActionBars with pressed-key feedback.
 - Hide matching native pet/form bars while BAB bars are visible; retain the hide choice across pages and stealth.
 
-## 0.1.0-dev.13 â€” 2026-10-06
+## 0.1.0-dev.13 — 2026-10-06
 
 - Position configured pet and form bars in Edit layout even when no pet or forms are available.
 - Hide these layout previews when editing ends and reuse their positions when the pet or forms return.
 
-## 0.1.0-dev.12 â€” 2026-10-06
+## 0.1.0-dev.12 — 2026-10-06
 
 - Add optional pet and form/stance bars with native keys, tooltips, cooldowns and pet autocast controls.
 - Move, scale and arrange these bars using the existing layout editor; unavailable bars hide automatically.
 - Keep native pet/form buttons available and mark scoped profiler coverage as partial when these bars are configured.
 
-## 0.1.0-dev.11 â€” 2026-10-06
+## 0.1.0-dev.11 — 2026-10-06
 
 - Show or hide each bar's title, key labels and item/charge counts independently.
 - Keep hidden labels current without formatting or rewriting them until they are shown.
 - Keep all bar settings reachable in shorter windows through the shared scrolling panel.
 
-## 0.1.0-dev.10 â€” 2026-10-06
+## 0.1.0-dev.10 — 2026-10-06
 
-- Arrange each bar in 1â€“12 columns with adjustable spacing, including vertical bars and multiple rows.
+- Arrange each bar in 1–12 columns with adjustable spacing, including vertical bars and multiple rows.
 - Preserve existing actions, bindings and saved layouts while reusing the same buttons and cooldowns.
 - Reset the selected bar's position, scale, columns and spacing together.
 
-## 0.1.0-dev.9 â€” 2026-10-06
+## 0.1.0-dev.9 — 2026-10-06
 
 - Restore left/right mouse action clicks by keeping visual press feedback independent of native click dispatch.
 - Keep pending mouse releases cancelled across page changes, editing and bar suspension.
 
-## 0.1.0-dev.8 â€” 2026-10-06
+## 0.1.0-dev.8 — 2026-10-06
 
 - Fix the native frame error when enabling action bars and when scaling, resetting or restoring a locked layout.
 - Keep locked bars stationary through hidden, detached editing handles while retaining the client's required position capability.
 
-## 0.1.0-dev.7 â€” 2026-10-06
+## 0.1.0-dev.7 — 2026-10-06
 
 - Move and scale every bar using pooled gold drag handles and selected-bar controls; save completed layouts and cancel unfinished edits on close or stop.
 - Keep bar centers stable when scaling and retain user layouts while fitting changed screen/UI scale.
 
-## 0.1.0-dev.6 â€” 2026-10-06
+## 0.1.0-dev.6 — 2026-10-06
 
 - Add five optional fixed action bars with separate bindings, pooled add/remove controls and complete cooldown profiling.
 
-## 0.1.0-dev.5 â€” 2026-10-06
+## 0.1.0-dev.5 — 2026-10-06
 
 - Show hover and mouse/key press feedback even when an action cannot be used; cancel presses during dragging/page changes and clear feedback when disabling.
 
-## 0.1.0-dev.4 â€” 2026-10-06
+## 0.1.0-dev.4 — 2026-10-06
 
 - Add optional reversible replacement of the twelve native main action buttons with `/bab native on|off` and a panel control.
 - Restore native callbacks when disabled, hidden or stopped; reject competing bar addons, unsupported pages/forms and changed ownership.
 - Follow client pages and bonus form actions for icons, cooldowns, keys, tooltips and dragging; cancel held inputs on page changes.
 
-## 0.1.0-dev.3 â€” 2026-10-06
+## 0.1.0-dev.3 — 2026-10-06
 
 - Support the optional targeted Action Bars profile in BootyProfiler without enabling measurements during ordinary play.
 
-## 0.1.0-dev.2 â€” 2026-10-05
+## 0.1.0-dev.2 — 2026-10-05
 
-- Add an optional slots1â€“12 test bar with actions, Shift dragging, native cooldowns and explicit keybindings.
+- Add an optional slots1–12 test bar with actions, Shift dragging, native cooldowns and explicit keybindings.
 - Add panel, Settings and `/bab test on|off` activation; reuse buttons and stop event work while disabled or hidden.
 - Preserve existing bar frames and key assignments; dragged actions share the client's slots with other bars.
 
-## 0.1.0-dev.1 â€” 2026-10-05
+## 0.1.0-dev.1 — 2026-10-05
 
 - Add independent preferences, named settings profiles, a window opened on demand and optional Booty Suite integration.
 - Add `/bab` and `/bootyactionbars`; preserve existing action bars and keybindings during this early development build.
