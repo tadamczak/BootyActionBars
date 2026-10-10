@@ -62,7 +62,7 @@ local function Eligible(record)
         and (TextEligible(record) or Effects.Demand(record))
 end
 local function UpdateCadence(record, remaining)
-    local fast = record.owner.effectMode ~= "native" and record.owner.effectA > 0 and (record.duration <= 10 or remaining and remaining <= 10) or false
+    local fast = not Effects.UsesNative(record.owner) and record.owner.effectA > 0 and (record.duration <= 10 or remaining and remaining <= 10) or false
     if fast ~= (record.fast == true) then
         state.fastCount = state.fastCount + (fast and 1 or -1)
         record.fast = fast and true or nil
@@ -85,7 +85,7 @@ end
 local function Owner(view)
     local owner = views[view]
     if not owner then
-        owner = {view = view, visible = false, enabled = true, size = 14, r = 1, g = 1, b = 1, a = 1, records = {}}
+        owner = {view = view, visible = false, enabled = true, size = 24, r = 1, g = 1, b = 1, a = 1, records = {}}
         local ok, failure = Effects.Configure(owner, {})
         if not ok then error(failure, 0) end
         views[view] = owner
@@ -102,7 +102,9 @@ local function Style(record)
     local face = Bars.Services.TextStyle.Font(owner.font, record.face, "cooldown")
     if record.fontSize ~= owner.size or record.fontFace ~= face then
         record.fontSize, record.fontFace = nil, nil
-        Call(record, "SetFont", face, owner.size, "OUTLINE"); record.fontSize, record.fontFace = owner.size, face
+        Call(record, "SetFont", face, owner.size, "OUTLINE")
+        Call(record,"SetWidth",0);Call(record,"SetHeight",math.ceil(owner.size*1.4))
+        record.fontSize, record.fontFace = owner.size, face
     end
     local band = ColorBand(record.remaining)
     local r, g, b, a = owner.r, owner.g, owner.b, owner.a
@@ -135,7 +137,10 @@ local function Attach(button)
     -- addons honor this flag before allocating their per-button text workers.
     button.cooldown.noCooldownCount = true
     record.creationFailure = "Cooldown text construction did not finish."
-    record.label = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormal")
+    local holder = UI.CreateContainer(nil,button)
+    holder:SetAllPoints(button);holder:SetFrameLevel(button:GetFrameLevel()+2);holder:EnableMouse(false)
+    record.holder,button.cooldownTextHolder=holder,holder
+    record.label = UI.CreateLabel(holder, nil, "OVERLAY", "GameFontNormalLarge")
     if not record.label then return false, "The cooldown label is unavailable." end
     record.shown = true
     button.cooldownLabel = record.label
@@ -152,7 +157,7 @@ end
 local function ConfigureView(view, drawing)
     if type(view) ~= "table" or type(drawing) ~= "table" then return false, "Invalid cooldown appearance." end
     local enabled = drawing.showCooldownText ~= false
-    local size, r, g, b, a = drawing.cooldownFontSize or 14, drawing.cooldownR or 1,
+    local size, r, g, b, a = drawing.cooldownFontSize or 24, drawing.cooldownR or 1,
         drawing.cooldownG or 1, drawing.cooldownB or 1, drawing.cooldownA or 1
     if drawing.showCooldownText ~= nil and type(drawing.showCooldownText) ~= "boolean"
         or not Service.ValidFontSize(size) or not Service.ValidColor(r) or not Service.ValidColor(g)
@@ -201,7 +206,7 @@ local function Update(button, start, duration, enabled)
     record.start, record.duration, record.enabled = start, duration, activeTimer
     -- Both renderers apply the client timer before this notification. Adopt
     -- that write; configuration/show transitions alone need to restore it.
-    if record.owner.effectMode == "native" then
+    if Effects.UsesNative(record.owner) then
         record.nativeActive, record.nativeStart, record.nativeDuration = activeTimer, start, duration
     end
     record.suspended = false

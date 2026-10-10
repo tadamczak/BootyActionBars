@@ -100,7 +100,7 @@ local function Settled(callback, first, second)
     return ok, failure
 end
 local function Press(button)
-    if button.bindingSelected or button.keyHeld or button.mousePressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
+    Appearance.SetPressed(button,button.bindingSelected or button.keyHeld or button.mousePressed)
 end
 local function ClearTooltip(button)
     if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then GameTooltip:Hide() end
@@ -141,14 +141,14 @@ local function Use(button, mouseButton)
 end
 local function Click()
     if BindingMode() then
-        this:SetChecked(this.rendered.current and 1 or 0)
+        Appearance.SetChecked(this,this.rendered.current)
         this.mousePressed, this.mouseHeld = false, false
         Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index)
         return
     end
-    if LayoutMode() then this:SetChecked(this.rendered.current and 1 or 0); Cancel(this); return end
+    if LayoutMode() then Appearance.SetChecked(this,this.rendered.current); Cancel(this); return end
     local button, mouseButton = this, arg1
-    button:SetChecked(button.rendered.current and 1 or 0)
+    Appearance.SetChecked(button,button.rendered.current)
     button.mousePressed, button.mouseHeld = false, false; Press(button)
     local skipped = button.skipClick; button.skipClick = nil
     if skipped then return end
@@ -248,10 +248,10 @@ local function Render(button, data, force)
     local availabilityChanged = button.hasAction ~= data.hasAction
     button.hasAction = data.hasAction
     if force or availabilityChanged then UpdateEmpty(button) end
-    if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
+    if force or old.texture ~= data.texture then Appearance.SetIcon(button,data.texture); old.texture = data.texture end
     Appearance.ApplyColor(button, data)
     old.usable, old.noMana = data.usable, data.noMana
-    if force or old.current ~= data.current then button:SetChecked(data.current and 1 or 0); old.current = data.current end
+    if force or old.current ~= data.current then Appearance.SetChecked(button,data.current); old.current = data.current end
     if force or old.autocastEnabled ~= data.autocastEnabled then
         if data.autocastEnabled then button.autocast:Show() else button.autocast:Hide() end
         old.autocastEnabled = data.autocastEnabled
@@ -338,7 +338,7 @@ local function Create(owner)
         button.cooldown = UI.CreateModel(buttonName .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.hotkey = UI.CreateLabel(button, nil, "ARTWORK", "NumberFontNormalSmallGray")
+        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         button.read, button.rendered = {}, {}; button.keyHeld, button.mouseHeld, button.mousePressed = false, false, false

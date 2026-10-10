@@ -153,7 +153,7 @@ local function UpdatePressed(button)
     local pressed = button.bindingSelected or button.pressed or button.mousePressed
     -- MouseUp runs before the client's pressed-state check for OnClick. The
     -- client owns that state; our overlay also supplies keyboard feedback.
-    if pressed then button.pressFeedback:Show() else button.pressFeedback:Hide() end
+    Appearance.SetPressed(button,pressed)
 end
 local function CancelPressed(button)
     -- A remap or suspension cancels the action even if the client later
@@ -164,14 +164,14 @@ local function CancelPressed(button)
 end
 local function Click()
     if BindingMode() then
-        this:SetChecked(this.rendered.checked and 1 or 0)
+        Appearance.SetChecked(this,this.rendered.checked)
         this.mousePressed, this.mouseHeld = false, false
         Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index)
         return
     end
-    if LayoutMode() then this:SetChecked(this.rendered.checked and 1 or 0); CancelPressed(this); return end
+    if LayoutMode() then Appearance.SetChecked(this,this.rendered.checked); CancelPressed(this); return end
     -- Native CheckButton clicks toggle checked before invoking this script.
-    this:SetChecked(this.rendered.checked and 1 or 0)
+    Appearance.SetChecked(this,this.rendered.checked)
     this.mousePressed, this.mouseHeld = false, false; UpdatePressed(this)
     if this.bar.id == 1 then this.bar.callbacks.Click(this.index, arg1, this.skipClick)
     else this.bar.callbacks.Click(this.index, arg1, this.skipClick, this.bar.id) end
@@ -259,7 +259,7 @@ local function SuspendButton(button, preserveHover)
     local firstFailure
     local ok, failure = pcall(CancelPressed, button)
     if not ok then firstFailure = tostring(failure) end
-    ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
+    ok, failure = pcall(Appearance.SetPressed, button, false)
     if not ok and not firstFailure then firstFailure = tostring(failure) end
     ok, failure = pcall(button.cooldown.Hide, button.cooldown)
     if not ok and not firstFailure then firstFailure = tostring(failure) end
@@ -276,6 +276,7 @@ UpdateEmpty = function(button)
     local shown = view.showEmptyButtons or view.cursorGrid or view.editing or BindingMode() or button.hasAction
     local wasHidden = button.emptyHidden
     button.emptyHidden = not shown
+    Appearance.Empty(button,shown and not button.hasAction)
     if shown then button:Show()
     else
         -- Cancel the old gesture before a later action can occupy this slot.
@@ -336,9 +337,9 @@ function ActionBar.Create(callbacks, barId)
         button.cooldown = UI.CreateModel(name .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.count = UI.CreateLabel(button, name .. "Count", "ARTWORK", "NumberFontNormal")
+        button.count = UI.CreateLabel(button, name .. "Count", "OVERLAY", "NumberFontNormal")
         button.count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
-        button.hotkey = UI.CreateLabel(button, nil, "ARTWORK", "NumberFontNormalSmallGray")
+        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         -- SuperMacro uses these conventional globals during wrapped reads.
@@ -546,7 +547,7 @@ function ActionBar.Create(callbacks, barId)
         for _, button in ipairs(self.mergeHost == self and self.layoutButtons or self.buttons) do
             local ok, failure = pcall(CancelPressed, button)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
-            ok, failure = pcall(button.pressFeedback.Hide, button.pressFeedback)
+            ok, failure = pcall(Appearance.SetPressed, button, false)
             if not ok and not firstFailure then firstFailure = tostring(failure) end
             if not preserveHover then
                 ok, failure = pcall(Appearance.Hover, button, false)
@@ -604,7 +605,7 @@ function ActionBar.Create(callbacks, barId)
             end
             old.macroName = data.macroName
         end
-        if force or old.texture ~= data.texture then button.icon:SetTexture(data.texture); old.texture = data.texture end
+        if force or old.texture ~= data.texture then Appearance.SetIcon(button,data.texture); old.texture = data.texture end
         if force or old.count ~= data.count then
             if self.showCounts then button.count:SetText(data.count > 1 and data.count or "") end
             old.count = data.count
@@ -612,7 +613,7 @@ function ActionBar.Create(callbacks, barId)
         Appearance.ApplyColor(button, data)
         old.usable, old.noMana, old.inRange = data.usable, data.noMana, data.inRange
         local checked = data.current or data.autoRepeat
-        if force or old.checked ~= checked then button:SetChecked(checked and 1 or 0); old.checked = checked end
+        if force or old.checked ~= checked then Appearance.SetChecked(button,checked); old.checked = checked end
         if force or old.start ~= data.cooldownStart or old.duration ~= data.cooldownDuration or old.enabled ~= data.cooldownEnabled then
             CooldownFrame_SetTimer(button.cooldown, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled and 1 or 0)
             Countdown("Update", button, data.cooldownStart, data.cooldownDuration, data.cooldownEnabled)

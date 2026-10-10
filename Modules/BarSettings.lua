@@ -8,8 +8,8 @@ local Merging = Bars.Services.BarMerging
 local sliders = {{"scalePct", "Scale (%)", 25, 500}, {"columns", "Columns", 1, Config.MAX_SLOTS},
     {"spacing", "Spacing", 0, 20}, {"buttonSize", "Button size", 24, 64},
     {"iconInset", "Icon inset", 0, 8}, {"opacityPct", "Opacity (%)", 20, 100}}
-local checks = {{"showTitle", "Title"}, {"showHotkeys", "Hotkeys"}, {"showCounts", "Counts"},
-    {"showMacroNames", "Macro names"}, {"showEmptyButtons", "Empty buttons"}}
+local checks = {{"showTitle", "Action bar title"}, {"showHotkeys", "Hotkeys"}, {"showCounts", "Show item count"},
+    {"showMacroNames", "Macro names"}, {"showEmptyButtons", "Show empty buttons"}}
 local identities = {"layout", "global"}
 for _, id in ipairs(Config.OrdinaryIDs) do table.insert(identities, id) end
 table.insert(identities, 7); table.insert(identities, 8)
@@ -187,7 +187,7 @@ function BarSettings.Create(parent, host, owner)
     end
     for _, definition in ipairs(sliders) do
         local key, caption, minimum, maximum = definition[1], definition[2], definition[3], definition[4]
-        if key == "scalePct" then Section("Geometry") elseif key == "buttonSize" then Section("Appearance") end
+        if key == "scalePct" then Section("Appearance") end
         local row = UI.CreateContainer(nil, settings); row:SetHeight(44)
         local slider = UI.Settings.CreateSlider(row, "BootyActionBarsLayout" .. key, 0, -15, caption, key, minimum, maximum, nil,
             {ensure = function() end, get = function() local layout = GetLayout(); return layout and layout[key] or minimum end,

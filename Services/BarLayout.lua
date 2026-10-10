@@ -14,7 +14,7 @@ function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or Config.SLOT_
 -- Colors stay scalar so picker inputs and saved snapshots never share tables.
 local fields, colorKeys = {}, {}
 Layout.Fields, Layout.GlobalKeys = fields, {}
-Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverShadow", "hoverOutline", "border", "cooldown", "cooldownUnder10", "cooldownUnder5", "cooldownEffect", "cooldownFlash"}
+Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverShadow", "hoverOutline", "border", "cooldown", "cooldownUnder10", "cooldownUnder5", "cooldownEffect", "cooldownFlash", "titleText", "hotkeyText", "countText", "macroText"}
 -- These values have legacy fallbacks; explicit false/default values must not
 -- disappear from sparse saves and reactivate an older preference.
 Layout.ExplicitKeys = {nativeSlotArtwork = true, nativeBackground = true, nativeBorder = true,
@@ -46,23 +46,25 @@ Define("hoverBackgroundShadow", "boolean", false, nil, nil, 2)
 Define("hoverBorderShadow", "boolean", true, nil, nil, 2)
 Define("hoverBorder", "boolean", false, nil, nil, 2)
 Define("hoverBorderSize", "integer", 2, 1, 10, 2)
-Define("hoverRadius", "integer", 0, 0, 10, 2)
+Define("hoverRadius", "integer", 0, 0, 50, 2)
 for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
     Define(prefix .. "Size", "integer", 1, 1, 10, 2)
-    Define(prefix .. "Radius", "integer", 0, 0, 10, 2)
+    Define(prefix .. "Radius", "integer", 0, 0, 50, 2)
 end
 local fontChoices = {native = true, default = true, friz = true, arial = true, morpheus = true, skurri = true}
 for _, prefix in ipairs({"title", "hotkey", "count", "macro", "cooldown"}) do
     Define(prefix .. "Font", "enum", prefix == "title" and "default" or "native", nil, nil, 2, true, fontChoices)
 end
-for _, item in ipairs({{"hotkey",12},{"count",14},{"macro",10}}) do
+for _, item in ipairs({{"hotkey",12},{"count",17},{"macro",10}}) do
     Define(item[1] .. "FontSize", "integer", item[2], 6, 32, 2)
 end
 Define("showButtonBorder", "boolean", false, nil, nil, 2)
 Define("borderSize", "integer", 2, 1, 6, 2)
+Define("borderRadius", "integer", 0, 0, 50, 2)
+Define("buttonRadius", "integer", 0, 0, 50, 2)
 Define("buttonBackground", "boolean", false, nil, nil, 2)
-Define("cooldownFontSize", "integer", 14, 8, 32, 2)
-Define("showCooldownText", "boolean", false, nil, nil, 2)
+Define("cooldownFontSize", "integer", 24, 8, 32, 2)
+Define("showCooldownText", "boolean", true, nil, nil, 2)
 Define("cooldownFullSeconds", "boolean", true, nil, nil, 2)
 Define("cooldownEffectMode", "enum", "native", nil, nil, 2, nil, {native = true, circle = true, vertical = true})
 Define("cooldownFlash", "boolean", false, nil, nil, 2)
@@ -79,7 +81,7 @@ Define("gryphonScalePct", "integer", 100, 25, 500, 2)
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,1,1,1}, hover = {1,1,1,1},
     hoverBackground = {1,1,1,1}, hoverShadow = {1,1,1,1}, hoverOutline = {1,1,1,1},
     border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownUnder10 = {1,0.8,0.2,1}, cooldownUnder5 = {1,0.2,0.2,1},
-    cooldownEffect = {0,0,0,0.6}, cooldownFlash = {1,0.2,0.2,0.65}}
+    cooldownEffect = {0,0,0,1}, cooldownFlash = {1,0.2,0.2,0.65}, titleText={1,1,1,1}, hotkeyText={0.6,0.6,0.6,1}, countText={1,1,1,1}, macroText={1,1,1,1}}
 local channels = {"R", "G", "B", "A"}
 for _, group in ipairs(Layout.ColorGroups) do
     colorKeys[group] = {}
@@ -90,14 +92,15 @@ for _, group in ipairs(Layout.ColorGroups) do
     end
 end
 function Layout.GameButtonDefaults()
-    local patch = {showHotkeys=true,showCounts=true,showMacroNames=true,showCooldownText=false,
+    local patch = {showHotkeys=true,showCounts=true,showMacroNames=true,showCooldownText=true,
         showButtonBorder=false,buttonBackground=false,cooldownEffectMode="native",cooldownFlash=false,
+        buttonRadius=0,borderRadius=0,cooldownEffectR=0,cooldownEffectG=0,cooldownEffectB=0,cooldownEffectA=1,
         hoverMode="default",hoverBackgroundShadow=false,hoverBorderShadow=true,hoverBorder=false}
     for _, prefix in ipairs({"hotkey","count","macro","cooldown"}) do
         patch[prefix .. "Font"]="native";patch[prefix .. "FontSize"]=fields[prefix .. "FontSize"].default
     end
     for _, key in ipairs(Layout.GlobalKeys) do
-        if string.sub(key,1,5)=="hover" or string.sub(key,1,5)=="range" then patch[key]=fields[key].default end
+        if string.sub(key,1,5)=="hover" or string.sub(key,1,5)=="range" or string.sub(key,1,10)=="hotkeyText" or string.sub(key,1,9)=="countText" or string.sub(key,1,9)=="macroText" then patch[key]=fields[key].default end
     end
     return patch
 end

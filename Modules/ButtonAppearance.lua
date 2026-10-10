@@ -4,13 +4,13 @@ local Appearance = {}
 Bars.Modules.ButtonAppearance = Appearance
 local NativeLayout = Bars.Services.NativeDecorationLayout
 local fields = {"hoverMode", "hoverSize", "hoverBackgroundShadow", "hoverBorderShadow", "hoverBorder", "hoverBorderSize", "hoverRadius",
-    "showButtonBorder", "borderSize", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
+    "showButtonBorder", "borderSize", "borderRadius", "buttonRadius", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
     "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
-for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border"}) do
+for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border", "titleText", "hotkeyText", "countText", "macroText"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
 local defaultHover = "Interface\\Buttons\\ButtonHilight-Square"
-local borderFields = {hoverMode = true, hoverBorder = true, hoverSize = true, hoverBorderSize = true, hoverRadius = true, showButtonBorder = true, borderSize = true,
+local borderFields = {hoverMode = true, hoverBorder = true, hoverSize = true, hoverBorderSize = true, hoverRadius = true, showButtonBorder = true, borderSize = true, borderRadius = true, buttonRadius = true,
     hoverR = true, hoverG = true, hoverB = true, hoverA = true, borderR = true, borderG = true, borderB = true, borderA = true}
 local hoverFields = {hoverMode = true, hoverSize = true, hoverBackgroundShadow = true, hoverBorderShadow = true,
     hoverBorder = true, hoverBorderSize = true, hoverRadius = true, hoverR = true, hoverG = true, hoverB = true, hoverA = true}
@@ -76,14 +76,15 @@ local function Border(button, repair)
     button.appearanceBorderReady = false
     if visible or button.bootyProjectOutline then
         local minimum = math.max(button:GetFrameLevel(), button.cooldown and button.cooldown:GetFrameLevel() or 0) + 1
-        UI.SetProjectButtonOutline(button, visible, size, color, nil, minimum, hover and style.hoverOutlineRadius or nil)
+        UI.SetProjectButtonOutline(button, visible, size, color, nil, minimum, hover and style.hoverOutlineRadius or style.borderRadius > 0 and style.borderRadius or nil, style.buttonSize + (hover and 2 * (style.hoverOutlineSize-1) or 0))
         local outline = button.bootyProjectOutline
         if hover then
             local expansion = style.hoverOutlineSize - 1
             outline:ClearAllPoints(); outline:SetPoint("TOPLEFT", button, "TOPLEFT", -expansion, expansion)
             outline:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", expansion, -expansion)
             outline:SetAlpha(alpha)
-        else outline:SetBackdropBorderColor(color[1], color[2], color[3], alpha) end
+        elseif style.borderRadius>0 then outline:SetAlpha(alpha);outline:SetBackdropBorderColor(0,0,0,0)
+        else outline:SetAlpha(1);outline:SetBackdropBorderColor(color[1], color[2], color[3], alpha) end
     end
     button.appearanceBorderRevision, button.appearanceBorderHovered = style.borderRevision, hover
     button.appearanceBorderReady = true
@@ -151,14 +152,16 @@ function Appearance.ApplyColor(button, data, repair)
         -- A setter can mutate the widget before throwing. A failed write must
         -- leave this cache dirty so restoring the previous style repaints it.
         button.appearanceTintReady = false
-        button.icon:SetVertexColor(red, green, blue, alpha)
+        UI.SetRoundedTextureColor(button.icon, red, green, blue, alpha)
         button.appearanceR, button.appearanceG, button.appearanceB, button.appearanceA = red, green, blue, alpha
         button.appearanceTintReady = true
     end
     local outOfRange = data.inRange == 0
-    if button.hotkey and (repair or button.appearanceOutOfRange ~= outOfRange) then
-        button.hotkey:SetTextColor(outOfRange and 1 or 0.6, outOfRange and 0.1 or 0.6, outOfRange and 0.1 or 0.6)
+    if button.hotkey and (repair or button.appearanceOutOfRange ~= outOfRange or button.hotkeyR ~= style.hotkeyTextR
+        or button.hotkeyG ~= style.hotkeyTextG or button.hotkeyB ~= style.hotkeyTextB or button.hotkeyA ~= style.hotkeyTextA) then
+        button.hotkey:SetTextColor(outOfRange and 1 or style.hotkeyTextR,outOfRange and 0.1 or style.hotkeyTextG,outOfRange and 0.1 or style.hotkeyTextB,style.hotkeyTextA)
         button.appearanceOutOfRange = outOfRange
+        button.hotkeyR,button.hotkeyG,button.hotkeyB,button.hotkeyA=style.hotkeyTextR,style.hotkeyTextG,style.hotkeyTextB,style.hotkeyTextA
     end
     button.appearanceHasState = true
     button.rendered.color = state
@@ -171,13 +174,45 @@ function Appearance.Hover(button, enabled)
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     if not ok then error(reason) elseif not painted then error(failure) end
 end
+local function Shape(button,primary,path,visible,inset,radius,layer,blend,r,g,b,a)
+    local style=button.bar.buttonAppearance
+    local options=primary.babShapeSpec or {};primary.babShapeSpec=options
+    options.owner,options.path,options.visible=button,path,visible
+    options.width,options.height=style.buttonSize-2*inset,style.buttonSize-2*inset
+    options.x,options.y,options.radius=inset,-inset,math.max(0,radius-inset)
+    options.layer,options.blend,options.r,options.g,options.b,options.a=layer,blend,r or 1,g or 1,b or 1,a or 1
+    UI.SetRoundedTexture(primary,options)
+end
+function Appearance.SetIcon(button,path)
+    local style=button.bar.buttonAppearance
+    Shape(button,button.icon,path,path~=nil,style.iconInset,style.buttonRadius,"ARTWORK","BLEND",button.appearanceR,button.appearanceG,button.appearanceB,button.appearanceA)
+end
+function Appearance.SetPressed(button,visible)
+    Shape(button,button.pressFeedback,"Interface\\Buttons\\UI-Quickslot-Depress",visible,0,button.bar.buttonAppearance.buttonRadius,"OVERLAY")
+end
+function Appearance.SetChecked(button,checked)
+    checked=checked~=nil and checked~=false and checked~=0
+    button:SetChecked(checked and 1 or 0)
+    if button.bar.buttonAppearance.buttonRadius>0 or button.checkedTexture.bootyRoundedTexture then
+        Shape(button,button.checkedTexture,"Interface\\Buttons\\CheckButtonHilight",checked,0,button.bar.buttonAppearance.buttonRadius,"OVERLAY","ADD")
+    end
+end
+function Appearance.Empty(button,visible)
+    if not button.emptyTexture and not visible then return end
+    local texture=button.emptyTexture or UI.CreateTexture(button,nil,"BACKGROUND");button.emptyTexture=texture
+    if not texture.babEmptyAnchored then texture:SetAllPoints(button);texture.babEmptyAnchored=true end
+    -- Verified37px native socket, excluding the transparent64px texture margin.
+    local options=texture.babShapeSpec or {};texture.babShapeSpec=options
+    options.left,options.right,options.top,options.bottom=13/64,50/64,13/64,50/64
+    Shape(button,texture,"Interface\\Buttons\\UI-Quickslot",visible,0,button.bar.buttonAppearance.buttonRadius,"BACKGROUND")
+end
 function Appearance.InitializeButton(button)
     if not button.bar.buttonAppearance then Style(button.bar) end
     UI.ApplyDropdownChoiceSurface(button)
     button:SetBackdropBorderColor(0, 0, 0, 0)
     local checked = UI.CreateTexture(button, nil, "OVERLAY")
     checked:SetTexture("Interface\\Buttons\\CheckButtonHilight"); checked:SetBlendMode("ADD")
-    checked:SetAllPoints(button); button:SetCheckedTexture(checked)
+    checked:SetAllPoints(button); button:SetCheckedTexture(checked);button.checkedTexture=checked
     button.hoverFeedback = UI.CreateTexture(button, nil, "OVERLAY")
     button.hoverFeedback:SetTexture(defaultHover); button.hoverFeedback:SetBlendMode("ADD")
     button.hoverFeedback:SetAllPoints(button.icon)
@@ -406,14 +441,26 @@ end
 local function ApplyView(view, drawing, repair)
     local style = Style(view, drawing)
     Appearance.ApplyFont(view.title, drawing.titleFont)
+    view.title:SetTextColor(style.titleTextR,style.titleTextG,style.titleTextB,style.titleTextA)
     for _, button in ipairs(view.buttons) do
         Appearance.ApplyFont(button.hotkey, drawing.hotkeyFont, drawing.hotkeyFontSize or drawing.labelFontSize, "hotkey")
         Appearance.ApplyFont(button.count, drawing.countFont, drawing.countFontSize or drawing.labelFontSize, "count")
         Appearance.ApplyFont(button.nameLabel, drawing.macroFont, drawing.macroFontSize or drawing.labelFontSize, "macro")
-        if repair or button.appearanceBackground ~= style.buttonBackground then
+        if button.count then button.count:SetTextColor(style.countTextR,style.countTextG,style.countTextB,style.countTextA) end
+        if button.nameLabel then button.nameLabel:SetTextColor(style.macroTextR,style.macroTextG,style.macroTextB,style.macroTextA) end
+        Appearance.SetIcon(button,button.rendered.texture)
+        if button.emptyTexture then Appearance.Empty(button,not button.hasAction and not button.emptyHidden) end
+        if style.buttonRadius>0 or button.backgroundTexture then
+            local background=button.backgroundTexture or UI.CreateTexture(button,nil,"BACKGROUND");button.backgroundTexture=background
+            background:SetAllPoints(button)
+            Shape(button,background,"Interface\\Buttons\\WHITE8X8",style.buttonBackground and style.buttonRadius>0,0,style.buttonRadius,"BACKGROUND",nil,0.08,0.08,0.08,0.95)
+        end
+        if repair or button.appearanceBackground ~= style.buttonBackground or button.appearanceButtonRadius ~= style.buttonRadius then
             button.appearanceBackground = nil
-            button:SetBackdropColor(0.08, 0.08, 0.08, style.buttonBackground and 0.95 or 0)
-            button.appearanceBackground = style.buttonBackground
+            Appearance.SetPressed(button,button.pressed or button.keyHeld or button.mousePressed or button.bindingSelected)
+            Appearance.SetChecked(button,button:GetChecked())
+            button:SetBackdropColor(0.08, 0.08, 0.08, style.buttonBackground and style.buttonRadius==0 and 0.95 or 0)
+            button.appearanceBackground = style.buttonBackground;button.appearanceButtonRadius=style.buttonRadius
         end
         Border(button, repair); Feedback(button, repair)
         if button.appearanceHasState then Appearance.ApplyColor(button, button.rendered, repair) end
