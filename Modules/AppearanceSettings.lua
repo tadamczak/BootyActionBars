@@ -107,7 +107,7 @@ function Appearance.LayoutRow(row, parent, x, y, width)
 end
 
 local sectionIcons = {Geometry = "settings", Appearance = "settings", Decoration = "groups", ["Labels and slots"] = "list",
-    ["Range colors"] = "health", Hover = "settings", ["Button border"] = "settings", Cooldown = "analyze", Behaviors = "list", ["Text fonts"] = "list"}
+    ["Range colors"] = "health", Hover = "settings", ["Button appearance"] = "settings", Cooldown = "analyze", Behaviors = "list", Text = "list"}
 local controlKinds = {"check", "choice", "color", "slider"}
 function Appearance.StyleAccordion(control)
     -- Preserve the project ornament at its native vertical resolution: halving
@@ -152,7 +152,7 @@ local function LayoutBlocks(group,body,width)
         end
     end
     for _,block in pairs(group.blocks) do if not block.babUsed then block:Hide() end end
-    items.bootyMaxColumns=group.caption == "Text fonts" and 4 or 3; items.bootyMeasureItem,items.bootyLayoutItem=MeasureBlock,LayoutBlock
+    items.bootyMaxColumns=group.caption == "Text" and 4 or 3; items.bootyMeasureItem,items.bootyLayoutItem=MeasureBlock,LayoutBlock
     return UI.Settings.LayoutGrid(body,items,0,0,width,0)
 end
 function Appearance.Section(parent, caption, context)
@@ -180,12 +180,12 @@ function Appearance.LayoutSection(group, parent, top, width)
     top = top + 16
     width = math.max(1,width-12)
     body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, -top); body:SetWidth(width)
-    if group.caption == "Decoration" or group.caption == "Hover" or group.caption == "Text fonts" then
+    if group.caption == "Decoration" or group.caption == "Hover" or group.caption == "Text" then
         local height=LayoutBlocks(group,body,width); body:SetHeight(height); return top+height+8
     end
     local offset, lastBlock, rows = 0, nil, group.scratch
     local blockRows = group.blockRows or {}; group.blockRows = blockRows
-    rows.bootyMaxColumns = group.caption == "Text fonts" and 4 or 3; rows.bootyMeasureItem, rows.bootyLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
+    rows.bootyMaxColumns = group.caption == "Labels and slots" and 5 or group.caption == "Button appearance" and 2 or 3; rows.bootyMeasureItem, rows.bootyLayoutItem = Appearance.MeasureRow, Appearance.LayoutRow
     while table.getn(rows) > 0 do table.remove(rows) end
     while table.getn(blockRows) > 0 do table.remove(blockRows) end
     local function Flush()
@@ -266,9 +266,9 @@ function Appearance.Create(parent, context)
         row.kind, row.control, row.key, row.label = "choice", control, key, label
         view.choices[key] = {control = control, options = options}
         if key == "cooldownEffectMode" then
-            UI.AttachTooltip(control, "Cooldown indicator", "Game default uses the client animation. Circle and Top to bottom use the configured indicator color.")
+            UI.AttachTooltip(control, "Cooldown indicator", "Game default uses the client animation with adjustable opacity; a custom color uses the bounded circular texture. Circle and Top to bottom also use the configured color.")
         elseif key == "hotkeyFont" or key == "countFont" or key == "macroFont" then
-            UI.AttachTooltip(control, caption, "Game default uses the original game font. The size slider below controls this label independently.")
+            UI.AttachTooltip(control, caption, "Game default uses the reference game font. Original font restores the inherited font from button creation and can look identical. The size slider controls this label independently.")
         end
     end
     local function LayoutFor(id)
@@ -386,13 +386,15 @@ function Appearance.Create(parent, context)
         dependency=nil; Checkbox(effect[1], effect[3]); dependency=effect[1]
         Color(effect[2], effect[3] .. " color")
         Slider(effect[2] .. "Size", "Effect size", 1, 10)
-        Slider(effect[2] .. "Radius", "Corner radius", 0, 10)
+        Slider(effect[2] .. "Radius", "Corner radius", 0, 50)
         if effect[2] == "hoverOutline" then Slider("hoverBorderSize", "Border thickness", 1, 10) end
     end
-    Section("Button border")
-    Checkbox("showButtonBorder", "Show button border"); dependency="showButtonBorder"
-    Color("border", "Border color"); Slider("borderSize", "Border size", 1, 6)
-    dependency=nil; block="background"; Checkbox("buttonBackground", "Button background")
+    Section("Button appearance")
+    Checkbox("showButtonBorder", "Show button border"); Checkbox("buttonBackground", "Show button background")
+    block="shape"; Slider("buttonRadius", "Button radius", 0, 50)
+    block="border";dependency="showButtonBorder"
+    Color("border", "Border color"); Slider("borderSize", "Border size", 1, 6);Slider("borderRadius", "Border radius", 0, 50)
+    dependency=nil
     Section("Cooldown")
     block = "numbers"
     Checkbox("showCooldownText", "Cooldown numbers"); Color("cooldown", "Text color")
@@ -407,13 +409,14 @@ function Appearance.Create(parent, context)
     block = "blink"
     Checkbox("cooldownFlash", "Blink in last 3 seconds")
     Color("cooldownFlash", "Blink color")
-    Section("Text fonts")
+    Section("Text")
     for _, item in ipairs({{"titleFont", "Title font"}, {"hotkeyFont", "Keybinding font"}, {"countFont", "Count font"}, {"macroFont", "Macro name font"}}) do
         block=item[1];Choice(item[1], item[2], Bars.Services.TextStyle.Options)
         if item[1] ~= "titleFont" then
             local prefix=string.sub(item[1],1,-5)
             Slider(prefix .. "FontSize", item[2] .. " size", 6, 32)
         end
+        Color(string.sub(item[1],1,-5) .. "Text", item[2] .. " color")
     end
     block="preset"
     local presetRow=Row(32);presetRow.kind="button"

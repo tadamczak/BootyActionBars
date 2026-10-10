@@ -39,11 +39,15 @@ function Effects.Configure(owner, drawing)
     owner.effectMode, owner.effectR, owner.effectG, owner.effectB, owner.effectA = mode, r, g, b, a
     owner.flash, owner.flashR, owner.flashG, owner.flashB, owner.flashA = flash, fr, fg, fb, fa
     owner.effectSize, owner.nativeSize = size - inset * 2, size
+    owner.radius=math.max(0,(drawing.buttonRadius or 0)-inset)
+    owner.iconInset=inset
+    owner.paintMode=mode == "native" and (r~=0 or g~=0 or b~=0 or owner.radius>0) and "circle" or mode
     return true, changed
 end
+function Effects.UsesNative(owner) return owner.paintMode == "native" end
 function Effects.Demand(record)
     local owner = record.owner
-    return owner.effectMode ~= "native" and owner.effectA > 0 or owner.flash and owner.flashA > 0 and record.duration >= Service.MIN_DURATION
+    return not Effects.UsesNative(owner) and owner.effectA > 0 or owner.flash and owner.flashA > 0 and record.duration >= Service.MIN_DURATION
 end
 function Effects.HideNative(record)
     record.nativeActive = false
@@ -54,17 +58,20 @@ end
 function Effects.SyncNative(record)
     local owner, button = record.owner, record.button
     local count = owner.view.count or table.getn(owner.view.buttons)
-    local shown = owner.effectMode == "native" and owner.visible and not record.suspended and not record.expired
-        and button.index <= count and not button.emptyHidden and record.enabled and record.start > 0 and record.duration > 0
+    local shown = Effects.UsesNative(owner) and owner.visible and not record.suspended and not record.expired
+        and owner.effectA>0 and button.index <= count and not button.emptyHidden and record.enabled and record.start > 0 and record.duration > 0
     if not shown then Effects.HideNative(record); return end
     local model = button.cooldown
-    if record.nativeSize ~= owner.nativeSize then
+    if record.nativeAlpha ~= owner.effectA then
+        record.nativeAlpha=nil;Call(record,model,"SetAlpha",owner.effectA);record.nativeAlpha=owner.effectA
+    end
+    if record.nativeSize ~= owner.effectSize then
         record.nativeSize = nil
         Call(record, model, "ClearAllPoints")
-        Call(record, model, "SetPoint", "CENTER", button, "CENTER", 0, -1)
-        Call(record, model, "SetWidth", owner.nativeSize); Call(record, model, "SetHeight", owner.nativeSize)
-        Call(record, model, "SetScale", 0.75)
-        record.nativeSize = owner.nativeSize
+        Call(record, model, "SetPoint", "CENTER", button.icon, "CENTER", 0, 0)
+        Call(record, model, "SetWidth", 36); Call(record, model, "SetHeight", 36)
+        Call(record, model, "SetScale", owner.effectSize/36)
+        record.nativeSize = owner.effectSize
     end
     if not record.nativeActive or record.nativeStart ~= record.start or record.nativeDuration ~= record.duration then
         record.nativeActive = false
@@ -77,15 +84,20 @@ function Effects.SyncNative(record)
         record.nativeActive, record.nativeStart, record.nativeDuration = true, record.start, record.duration
     end
 end
+local function SetVisibility(record,region,shown)
+    if region.babCooldownShape then
+        region.babCooldownShape.visible=shown;UI.SetRoundedTexture(region,region.babCooldownShape)
+    else Call(record,region,shown and "Show" or "Hide") end
+end
 local function Visibility(record, region, shown, flash)
     local key = flash and "flashShown" or "effectShown"
     if record[key] == shown then return end
     -- Mark before calling the native setter: a hook may cancel its timer and
     -- Remove must see the in-progress Show so that the later cancellation wins.
     record[key] = shown
-    local ran, failure = pcall(Call, record, region, shown and "Show" or "Hide")
+    local ran, failure = pcall(SetVisibility, record, region, shown)
     if not ran then record[key] = nil; error(failure, 0) end
-    local actual = Call(record, region, "IsShown")
+    local actual = region.babCooldownShape and UI.IsRoundedTextureShown(region) or Call(record, region, "IsShown")
     if (actual ~= nil and actual ~= false and actual ~= 0) ~= record[key] then
         record[key] = nil
         error("Cooldown effect visibility was declined.", 0)
@@ -131,12 +143,16 @@ local function Color(record, region, r, g, b, a, flash)
     if paint.r ~= r or paint.g ~= g or paint.b ~= b or paint.a ~= a then
         paint.r, paint.g, paint.b, paint.a = nil, nil, nil, nil
         Call(record, region, "SetVertexColor", r, g, b, a)
+        if region.babCooldownShape then
+            local options=region.babCooldownShape;options.r,options.g,options.b,options.a=r,g,b,a
+            UI.SetRoundedTextureColor(region,r,g,b,a)
+        end
         paint.r, paint.g, paint.b, paint.a = r, g, b, a
     end
 end
 local function Geometry(record, region, progress, selectedBucket)
     local owner, size = record.owner, record.owner.effectSize
-    local mode, bucket = owner.effectMode, selectedBucket or Service.EffectBucket(progress)
+    local mode, bucket = owner.paintMode, selectedBucket or Service.EffectBucket(progress)
     if record.effectMode ~= mode or record.effectSize ~= size then
         record.effectMode, record.effectSize, record.effectBucket = nil, nil, nil
         Call(record, region, "SetTexture", mode == "circle" and circle or "Interface\\Buttons\\WHITE8X8")
@@ -160,15 +176,25 @@ local function Geometry(record, region, progress, selectedBucket)
         Call(record, region, "SetHeight", size * progress)
         record.effectProgress, record.effectBucket = progress, bucket
     end
+    if mode=="vertical" and owner.radius>0 or region.babCooldownShape then
+        local options=region.babCooldownShape or {};region.babCooldownShape=options
+        options.owner,options.layer,options.path=record.button,"ARTWORK",mode=="circle" and circle or "Interface\\Buttons\\WHITE8X8"
+        options.width,options.height=size,mode=="circle" and size or size*progress
+        options.x,options.y,options.radius=owner.iconInset,-owner.iconInset-(mode=="vertical" and size*(1-progress) or 0),mode=="vertical" and owner.radius or 0
+        if mode=="circle" then options.left,options.right,options.top,options.bottom=Service.EffectUV(record.effectBucket)
+        else options.left,options.right,options.top,options.bottom=0,1,0,1 end
+        options.visible=record.effectShown
+        if options.height>0 then UI.SetRoundedTexture(region,options) end
+    end
 end
 function Effects.Paint(record, now)
     local owner, revision = record.owner, record.revision
     local progress, failure = Service.Progress(record.start, record.duration, now)
     if progress == nil then error(failure, 0) end
-    if owner.effectMode ~= "native" and owner.effectA > 0 and progress > 0 then
+    if not Effects.UsesNative(owner) and owner.effectA > 0 and progress > 0 then
         local region = Ensure(record, false)
         local alpha = owner.effectA
-        if owner.effectMode == "circle" then
+        if owner.paintMode == "circle" then
             local position = progress * Service.EFFECT_STEPS
             local lower, fraction = math.floor(position), position - math.floor(position)
             Geometry(record, region, progress, lower)
@@ -205,6 +231,12 @@ function Effects.Paint(record, now)
             Call(record, region, "ClearAllPoints"); Call(record, region, "SetPoint", "TOPLEFT", record.button.icon, "TOPLEFT", 0, 0)
             Call(record, region, "SetWidth", owner.effectSize); Call(record, region, "SetHeight", owner.effectSize)
             record.flashSize = owner.effectSize
+        end
+        if owner.radius>0 or region.babCooldownShape then
+            local options=region.babCooldownShape or {};region.babCooldownShape=options
+            options.owner,options.layer,options.path=record.flashHolder,"OVERLAY","Interface\\Buttons\\WHITE8X8"
+            options.width,options.height,options.radius=owner.effectSize,owner.effectSize,owner.radius
+            options.visible=record.flashShown;UI.SetRoundedTexture(region,options)
         end
         Color(record, region, owner.flashR, owner.flashG, owner.flashB, owner.flashA, true)
         if record.revision == revision and record.activeIndex and not record.suspended then Visibility(record, region, true, true) end
