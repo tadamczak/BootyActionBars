@@ -107,7 +107,7 @@ function Appearance.LayoutRow(row, parent, x, y, width)
 end
 
 local sectionIcons = {Geometry = "settings", Appearance = "settings", Decoration = "groups", ["Labels and slots"] = "list",
-    ["Range colors"] = "health", Hover = "settings", ["Button appearance"] = "settings", Cooldown = "analyze", Behaviors = "list", Text = "list"}
+    ["Range colors"] = "health", Hover = "settings", ["Button appearance"] = "settings", Click = "settings", Cooldown = "analyze", Behaviors = "list", Text = "list"}
 local controlKinds = {"check", "choice", "color", "slider"}
 function Appearance.StyleAccordion(control)
     -- Preserve the project ornament at its native vertical resolution: halving
@@ -180,7 +180,7 @@ function Appearance.LayoutSection(group, parent, top, width)
     top = top + 16
     width = math.max(1,width-12)
     body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, -top); body:SetWidth(width)
-    if group.caption == "Decoration" or group.caption == "Hover" or group.caption == "Text" then
+    if group.caption == "Decoration" or group.caption == "Hover" or group.caption == "Click" or group.caption == "Text" then
         local height=LayoutBlocks(group,body,width); body:SetHeight(height); return top+height+8
     end
     local offset, lastBlock, rows = 0, nil, group.scratch
@@ -267,8 +267,8 @@ function Appearance.Create(parent, context)
         view.choices[key] = {control = control, options = options}
         if key == "cooldownEffectMode" then
             UI.AttachTooltip(control, "Cooldown indicator", "Game default uses the client animation with adjustable opacity; a custom color uses the bounded circular texture. Circle and Top to bottom also use the configured color.")
-        elseif key == "hotkeyFont" or key == "countFont" or key == "macroFont" then
-            UI.AttachTooltip(control, caption, "Game default uses the reference game font. Original font restores the inherited font from button creation and can look identical. The size slider controls this label independently.")
+        elseif key == "titleFont" or key == "hotkeyFont" or key == "countFont" or key == "macroFont" or key == "cooldownFont" then
+            UI.AttachTooltip(control, caption, "Game default uses Arial for hotkeys/counts and Friz Quadrata for macro/cooldown text. Original font restores the inherited face. These options can use the same font file and look identical; size is controlled separately.")
         end
     end
     local function LayoutFor(id)
@@ -377,6 +377,12 @@ function Appearance.Create(parent, context)
     Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
         {value = "right", text = "Right"}, {value = "both", text = "Both"}})
     Slider("gryphonScalePct", "Gryphon scale (%)", 25, 500)
+    block = "leftGryphon"
+    Slider("gryphonLeftX", "Left gryphon horizontal", -256, 256)
+    Slider("gryphonLeftY", "Left gryphon vertical", -256, 256)
+    block = "rightGryphon"
+    Slider("gryphonRightX", "Right gryphon horizontal", -256, 256)
+    Slider("gryphonRightY", "Right gryphon vertical", -256, 256)
     if not context.OnlyDecoration then
     Section("Range colors"); Color("rangeIn", "In range"); Color("rangeOut", "Out of range")
     Section("Hover")
@@ -392,8 +398,19 @@ function Appearance.Create(parent, context)
     Section("Button appearance")
     Checkbox("showButtonBorder", "Show button border"); Checkbox("buttonBackground", "Show button background")
     block="shape"; Slider("buttonRadius", "Button radius", 0, 50)
+    Slider("iconZoomPct", "Icon zoom (%)", 100, 200)
     block="border";dependency="showButtonBorder"
     Color("border", "Border color"); Slider("borderSize", "Border size", 1, 6);Slider("borderRadius", "Border radius", 0, 50)
+    dependency=nil
+    Section("Click")
+    block="nativeClick"; Checkbox("clickNative", "Native pressed feedback")
+    for _, effect in ipairs({{"clickHighlight", "clickHighlight", "Highlight"}, {"clickBorder", "clickOutline", "Border"}}) do
+        block=effect[2]; dependency=nil; Checkbox(effect[1], effect[3]); dependency=effect[1]
+        Color(effect[2], effect[3] .. " color")
+        Slider(effect[2] .. "Size", "Effect size", 1, 10)
+        Slider(effect[2] .. "Radius", "Corner radius", 0, 50)
+        if effect[1] == "clickBorder" then Slider("clickBorderSize", "Border thickness", 1, 10) end
+    end
     dependency=nil
     Section("Cooldown")
     block = "numbers"

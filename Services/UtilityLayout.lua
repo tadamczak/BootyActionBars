@@ -9,12 +9,13 @@ local definitions = {
     micro = {label = "Micro Menu", names = {"CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton"}, count = 8, width = 29, height = 58, visualWidth = 26, visualHeight = 58 * 41 / 64 - 3, offsetX = -1.5, offsetY = 58 * 23 / 64 + 1.5, columns = 8},
 }
 local fields = {shown = true, x = true, y = true, scalePct = true, columns = true, spacing = true, nativeTexture = true}
-Utility.StyleKeys = {"nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct"}
+Utility.StyleKeys = {"nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
 for _, key in ipairs(Utility.StyleKeys) do fields[key] = true end
 -- Separate starting rows keep newly enabled groups usable before their first drag.
 local positions = {experience = {0, -180}, keyring = {-290, -120}, latency = {-250, -120}, bags = {-110, -120}, micro = {150, -120}}
 local function Finite(value) return type(value) == "number" and value == value and math.abs(value) <= 1000000 end
 function Utility.Definition(id) return definitions[id] end
+function Utility.MaxColumns(id) return (id == "bags" or id == "micro") and 120 or definitions[id] and definitions[id].count end
 function Utility.Name(id) return definitions[id] and definitions[id].label end
 function Utility.ValidID(id) return definitions[id] ~= nil end
 function Utility.SupportsNativeTexture(id) return definitions[id] ~= nil end
@@ -30,7 +31,7 @@ function Utility.ValidValue(id, key, value)
     if key == "x" or key == "y" then return true end
     if value ~= math.floor(value) then return false end
     if key == "scalePct" then return value >= 25 and value <= 500 end
-    if key == "columns" then return value >= 1 and value <= definition.count end
+    if key == "columns" then return value >= 1 and value <= Utility.MaxColumns(id) end
     return value >= 0 and value <= 20
 end
 function Utility.Validate(saved)
@@ -75,7 +76,7 @@ function Utility.ReadEffective(store, id, candidate)
     if not donor then return nil, failure end
     for _, key in ipairs(Utility.StyleKeys) do result[key] = donor[key] end
     result.scalePct, result.spacing = donor.scalePct, donor.spacing
-    result.columns = math.min(donor.columns, definitions[id].count)
+    result.columns = math.min(donor.columns, Utility.MaxColumns(id))
     return result
 end
 function Utility.Patch(saved, id, key, value)
@@ -115,7 +116,7 @@ Utility.ArtworkFields = {"id", "shown", "columns", "spacing", "width", "height",
     "left", "top", "right", "bottom", "innerLeft", "innerTop", "innerRight", "innerBottom",
     "padLeft", "padRight", "padTop", "padBottom", "backingLeft", "backingTop", "backingWidth", "backingHeight",
     "backingColumns", "backingRows", "backingCount", "backingRotated", "backingStepX", "backingStepY",
-    "edgeCount", "slotCount", "slotWidth", "slotHeight", "slotPadding", "cellWidth", "cellHeight", "gryphons", "gryphonSize", "gryphonOverlap", "frontCount", "regularCount"}
+    "edgeCount", "slotCount", "slotWidth", "slotHeight", "slotPadding", "cellWidth", "cellHeight", "gryphons", "gryphonSize", "gryphonOverlap", "frontCount", "regularCount", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
 function Utility.ResolveArtwork(id, record, width, height, shown, target)
     if not Utility.SupportsNativeTexture(id) or type(record) ~= "table" or type(shown) ~= "boolean"
         or not Utility.ValidValue(id, "columns", record.columns) or not Utility.ValidValue(id, "spacing", record.spacing)
@@ -146,6 +147,8 @@ function Utility.ResolveArtwork(id, record, width, height, shown, target)
     target.slotPadding = math.min(6 * buttonScale, target.slotWidth / 3, target.slotHeight / 3)
     target.gryphons = record.gryphons or "none"
     target.gryphonSize, target.gryphonOverlap = 128 * (record.gryphonScalePct or 100) / 100, 32 * (record.gryphonScalePct or 100) / 100
+    target.gryphonLeftX, target.gryphonLeftY = record.gryphonLeftX or 0, record.gryphonLeftY or 0
+    target.gryphonRightX, target.gryphonRightY = record.gryphonRightX or 0, record.gryphonRightY or 0
     target.frontCount = target.gryphons == "both" and 2 or target.gryphons ~= "none" and 1 or 0
     target.regularCount = target.backingCount + target.edgeCount + target.slotCount
     target.count = target.regularCount + target.frontCount
@@ -185,7 +188,8 @@ function Utility.ArtworkPiece(scene, index, target)
         target.path, target.foreground = native.GryphonTexture, true
         target.width, target.height = scene.gryphonSize, scene.gryphonSize
         target.x = side == "left" and scene.left - scene.gryphonSize + scene.gryphonOverlap or scene.right - scene.gryphonOverlap
-        target.y = scene.cellHeight + scene.padBottom - scene.gryphonSize
+        target.x = target.x + (side == "left" and scene.gryphonLeftX or scene.gryphonRightX)
+        target.y = scene.cellHeight + scene.padBottom - scene.gryphonSize - (side == "left" and scene.gryphonLeftY or scene.gryphonRightY)
         target.left, target.right, target.top, target.bottom = side == "right" and 1 or 0, side == "right" and 0 or 1, 0, 1
     end
     return target

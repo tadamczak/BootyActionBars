@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-dev.43 — 2026-10-11
+
+- Add icon zoom, independent click effects and separate left/right gryphon offsets; place Unlock beside Keybindings.
+- Draw one foreground decoration set per merge group; preserve native sockets and Latency artwork through merge changes.
+- Fix vertical cooldown visibility and keep button text above effects; support side mouse bindings and up to120 utility columns.
+- Use Appearance consistently and explain native versus inherited font choices.
+
 ## 0.1.0-dev.42 — 2026-10-10
 
 - Combine geometry into Appearance; wrap complete label rows and group Button appearance controls.

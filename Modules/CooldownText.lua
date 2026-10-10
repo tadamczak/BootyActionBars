@@ -137,8 +137,8 @@ local function Attach(button)
     -- addons honor this flag before allocating their per-button text workers.
     button.cooldown.noCooldownCount = true
     record.creationFailure = "Cooldown text construction did not finish."
-    local holder = UI.CreateContainer(nil,button)
-    holder:SetAllPoints(button);holder:SetFrameLevel(button:GetFrameLevel()+2);holder:EnableMouse(false)
+    local holder = button.cooldownTextHolder or UI.CreateContainer(nil,button)
+    holder:SetAllPoints(button);holder:SetFrameLevel(button:GetFrameLevel()+8);holder:EnableMouse(false)
     record.holder,button.cooldownTextHolder=holder,holder
     record.label = UI.CreateLabel(holder, nil, "OVERLAY", "GameFontNormalLarge")
     if not record.label then return false, "The cooldown label is unavailable." end

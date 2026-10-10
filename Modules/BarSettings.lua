@@ -109,14 +109,14 @@ function BarSettings.Create(parent, host, owner)
         if Bars.Services.BarLayout.ValidDisplayKey(key) then return Runtime.SetBarDisplay(view.selected, key, value) end
         return Runtime.SetBarAppearance(view.selected, key, value)
     end
-    local unlock = Checkbox(tools, "Unlock", "editing", Runtime.IsLayoutUnlocked, Runtime.SetEditEnabled)
+    local unlock = owner.editCheckbox
     local grid = Checkbox(tools, "Show grid", "showGrid", function()
         local store = Bars.Database.Ensure(); return store and store.editorOptions.showGrid == true
     end, function(value) return Runtime.SetEditorOption("showGrid", value) end)
     local anchors = Checkbox(tools, "Show anchors", "showAnchors", function()
         local store = Bars.Database.Ensure(); return store and store.editorOptions.showAnchors == true
     end, function(value) return Runtime.SetEditorOption("showAnchors", value) end)
-    local toolChecks = {unlock, grid, anchors}
+    local toolChecks = {grid, anchors}
     local toolSection = Bars.Modules.AppearanceSettings.Section(tools, "Layout editing", {Complete = Complete, Expanded = true})
     for _, check in ipairs(toolChecks) do
         local row = UI.CreateContainer(nil, tools); row:SetHeight(32)

@@ -27,19 +27,21 @@ function Effects.Configure(owner, drawing)
     local fr, fg, fb, fa = Default(drawing.cooldownFlashR, 1), Default(drawing.cooldownFlashG, 0.2),
         Default(drawing.cooldownFlashB, 0.2), Default(drawing.cooldownFlashA, 0.65)
     local size, inset = Default(drawing.buttonSize, 40), Default(drawing.iconInset, 4)
+    local radius=Default(drawing.buttonRadius,0)
     if not Service.ValidEffectMode(mode) or type(flash) ~= "boolean" or not Service.ValidColor(r)
         or not Service.ValidColor(g) or not Service.ValidColor(b) or not Service.ValidColor(a)
         or not Service.ValidColor(fr) or not Service.ValidColor(fg) or not Service.ValidColor(fb) or not Service.ValidColor(fa)
-        or not Service.Finite(size) or size < 24 or size > 64 or not Service.Finite(inset) or inset < 0 or inset > 8 then
+        or not Service.Finite(radius) or radius<0 or radius>50 or not Service.Finite(size) or size < 24 or size > 64 or not Service.Finite(inset) or inset < 0 or inset > 8 then
         return false, "Invalid cooldown effect appearance."
     end
+    radius=math.max(0,math.min(radius,size/2)-inset)
     local changed = owner.effectMode ~= mode or owner.effectR ~= r or owner.effectG ~= g or owner.effectB ~= b or owner.effectA ~= a
         or owner.flash ~= flash or owner.flashR ~= fr or owner.flashG ~= fg or owner.flashB ~= fb or owner.flashA ~= fa
-        or owner.effectSize ~= size - inset * 2
+        or owner.effectSize ~= size - inset * 2 or owner.radius~=radius or owner.iconInset~=inset
     owner.effectMode, owner.effectR, owner.effectG, owner.effectB, owner.effectA = mode, r, g, b, a
     owner.flash, owner.flashR, owner.flashG, owner.flashB, owner.flashA = flash, fr, fg, fb, fa
     owner.effectSize, owner.nativeSize = size - inset * 2, size
-    owner.radius=math.max(0,(drawing.buttonRadius or 0)-inset)
+    owner.radius=radius
     owner.iconInset=inset
     owner.paintMode=mode == "native" and (r~=0 or g~=0 or b~=0 or owner.radius>0) and "circle" or mode
     return true, changed
@@ -122,14 +124,17 @@ local function Ensure(record, flash)
     if region then return region end
     if not record.button.icon then error("The cooldown icon is unavailable.", 0) end
     local parent = record.button
-    if flash then
-        local holder = record.flashHolder or UI.CreateContainer(nil, record.button)
-        record.flashHolder = holder
-        holder:SetAllPoints(record.button.icon); holder:SetFrameLevel(record.button:GetFrameLevel() + 3)
-        holder:EnableMouse(false)
-        parent = holder
+    if not flash then
+        local holder=record.button.cooldownTextHolder
+        if not holder then error("The cooldown foreground holder is unavailable.") end
+        record.effectHolder=holder;parent=holder
     end
-    region = UI.CreateTexture(parent, nil, flash and "OVERLAY" or "ARTWORK")
+    if flash then
+        local holder=record.button.cooldownTextHolder
+        if not holder then error("The cooldown foreground holder is unavailable.") end
+        record.flashHolder=holder;parent=holder
+    end
+    region = UI.CreateTexture(parent, nil, "ARTWORK")
     if not region then error("The cooldown effect texture is unavailable.", 0) end
     if flash then record.flashEffect, record.button.cooldownFlashEffect, record.flashShown = region, region, true
     else record.effect, record.button.cooldownEffect, record.effectShown = region, region, true end
@@ -178,9 +183,10 @@ local function Geometry(record, region, progress, selectedBucket)
     end
     if mode=="vertical" and owner.radius>0 or region.babCooldownShape then
         local options=region.babCooldownShape or {};region.babCooldownShape=options
-        options.owner,options.layer,options.path=record.button,"ARTWORK",mode=="circle" and circle or "Interface\\Buttons\\WHITE8X8"
-        options.width,options.height=size,mode=="circle" and size or size*progress
-        options.x,options.y,options.radius=owner.iconInset,-owner.iconInset-(mode=="vertical" and size*(1-progress) or 0),mode=="vertical" and owner.radius or 0
+        options.owner,options.layer,options.path=record.effectHolder,"ARTWORK",mode=="circle" and circle or "Interface\\Buttons\\WHITE8X8"
+        options.width,options.height=size,size
+        options.x,options.y,options.radius=owner.iconInset,-owner.iconInset,mode=="vertical" and owner.radius or 0
+        options.clipTop,options.clipBottom=mode=="vertical" and size*(1-progress) or 0,size
         if mode=="circle" then options.left,options.right,options.top,options.bottom=Service.EffectUV(record.effectBucket)
         else options.left,options.right,options.top,options.bottom=0,1,0,1 end
         options.visible=record.effectShown
@@ -234,8 +240,9 @@ function Effects.Paint(record, now)
         end
         if owner.radius>0 or region.babCooldownShape then
             local options=region.babCooldownShape or {};region.babCooldownShape=options
-            options.owner,options.layer,options.path=record.flashHolder,"OVERLAY","Interface\\Buttons\\WHITE8X8"
+            options.owner,options.layer,options.path=record.flashHolder,"ARTWORK","Interface\\Buttons\\WHITE8X8"
             options.width,options.height,options.radius=owner.effectSize,owner.effectSize,owner.radius
+            options.x,options.y=owner.iconInset,-owner.iconInset
             options.visible=record.flashShown;UI.SetRoundedTexture(region,options)
         end
         Color(record, region, owner.flashR, owner.flashG, owner.flashB, owner.flashA, true)

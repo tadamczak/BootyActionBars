@@ -2,7 +2,7 @@ local Bars = BootyActionBars
 local Groups = {}
 Bars.Modules.BarGroups = Groups
 local Merging, UI = Bars.Services.BarMerging, Bars.UI.Components
-local state = {links = {}, extents = {}}
+local state = {links = {}, extents = {}, decorations = {}}
 
 local function View(id)
     if type(id) == "string" then return Bars.Modules.NativeUtilityBars.GetView(id) end
@@ -10,6 +10,18 @@ local function View(id)
     local engine = Bars.Core.Engine.GetState()
     local owner = engine.mergeOwners[id] or id
     return engine.views[owner]
+end
+local function Decoration(view,descriptor)
+    local owner=view.id
+    local module=type(owner)=="string" and Bars.Modules.NativeUtilityBars or Bars.Modules.ButtonAppearance
+    local ok,reason=module.SetDecorationGroup(view,descriptor)
+    if ok==false then error(reason) end
+end
+local function Level(view)
+    local level=view.frame:GetFrameLevel()
+    for _,button in ipairs(view.layoutButtons or view.buttons or {}) do level=math.max(level,button:GetFrameLevel(),button.cooldown and button.cooldown:GetFrameLevel() or 0) end
+    for _,record in ipairs(view.records or {}) do level=math.max(level,record.frame:GetFrameLevel()) end
+    return level
 end
 local function Capture(frame)
     local result = {frame = frame, points = {}}
@@ -54,6 +66,10 @@ function Groups.Release()
         local ok, reason = pcall(Restore, record)
         if ok then state.links[frame] = nil else failure = failure or tostring(reason) end
     end
+    for view in pairs(state.decorations) do
+        local ok,reason=pcall(Decoration,view,nil)
+        if ok then state.decorations[view]=nil else failure=failure or tostring(reason) end
+    end
     for id, view in pairs(state.extents) do
         local ok, reason = pcall(Extent, id, view, view.frame:GetWidth(), view.frame:GetHeight())
         if ok then state.extents[id] = nil else failure = failure or tostring(reason) end
@@ -64,7 +80,7 @@ end
 local function Refresh()
     if not state.store or not Bars.Core.Engine.GetState().active then return Groups.Release() end
     if not state.store.barMerges or not next(state.store.barMerges) then return Groups.Release() end
-    local plans, extents, seen = {}, {}, {}
+    local plans, extents, seen, decorations = {}, {}, {}, {}
     for _, id in ipairs(Merging.IDs) do
         if state.store.barMerges and state.store.barMerges[id] then
             local primary = View(id)
@@ -82,11 +98,13 @@ local function Refresh()
                 local width, height = frame:GetWidth() * scale, frame:GetHeight() * scale
                 local left, top, right, bottom = 0, 0, width, height
                 local gap = (primary.layoutDrawing and primary.layoutDrawing.spacing or primary.preferences and primary.preferences.spacing or 4) * scale
+                local groupViews={primary};local groupLevel=Level(primary)
                 seen[frame] = true
                 for index = 2, table.getn(members) do
                     local child = View(members[index])
                     if child and not seen[child.frame] and child.frame:IsVisible() then
                         seen[child.frame] = true
+                        table.insert(groupViews,child);groupLevel=math.max(groupLevel,Level(child))
                         local childScale = child.frame:GetScale()
                         local childWidth, childHeight = child.frame:GetWidth() * childScale, child.frame:GetHeight() * childScale
                         local side = state.store.mergeSides and state.store.mergeSides[members[index]] or "bottom"
@@ -99,11 +117,14 @@ local function Refresh()
                         right, bottom = math.max(right, x + childWidth), math.max(bottom, y + childHeight)
                     end
                 end
-                extents[id] = {view = primary, width = (right - left) / scale, height = (bottom - top) / scale, left = left / scale, top = top / scale}
+                extents[id] = {view = primary, primary=primary, level=groupLevel, width = (right - left) / scale, height = (bottom - top) / scale, left = left / scale, top = top / scale}
+                for _,member in ipairs(groupViews) do decorations[member]=extents[id] end
             end
         end
     end
-    local snapshots, linked = {}, {}
+    local snapshots, linked, previousDecorations = {}, {}, {}
+    for view in pairs(decorations) do previousDecorations[view]={value=view.decorationGroup} end
+    for view in pairs(state.decorations) do if not previousDecorations[view] then previousDecorations[view]={value=view.decorationGroup} end end
     for _, plan in ipairs(plans) do
         snapshots[plan.frame] = Capture(plan.frame)
         linked[plan.frame] = true
@@ -130,14 +151,19 @@ local function Refresh()
             if not extents[id] then Extent(id, previous, previous.frame:GetWidth(), previous.frame:GetHeight()) end
         end
         for id, value in pairs(extents) do Extent(id, value.view, value.width, value.height, value.left, value.top) end
+        for view in pairs(state.decorations) do if not decorations[view] then Decoration(view,nil) end end
+        for view,descriptor in pairs(decorations) do Decoration(view,descriptor) end
     end)
     if not ok then
         local restoration
+        for view,record in pairs(previousDecorations) do local restored,reason=pcall(Decoration,view,record.value);if not restored then restoration=restoration or tostring(reason) end end
         for _, record in pairs(snapshots) do local restored, reason = pcall(Restore, record); if not restored then restoration = restoration or tostring(reason) end end
         return false, tostring(failure) .. (restoration and " Restoration: " .. restoration or "")
     end
     for frame in pairs(state.links) do if not linked[frame] then state.links[frame] = nil end end
     for _, plan in ipairs(plans) do if not state.links[plan.frame] then state.links[plan.frame] = snapshots[plan.frame] end end
+    for view in pairs(state.decorations) do state.decorations[view]=nil end
+    for view in pairs(decorations) do state.decorations[view]=true end
     for id in pairs(state.extents) do state.extents[id] = nil end
     for id, value in pairs(extents) do state.extents[id] = value.view end
     return true

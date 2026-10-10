@@ -5,8 +5,8 @@ Bars.Modules.ButtonAppearance = Appearance
 local NativeLayout = Bars.Services.NativeDecorationLayout
 local fields = {"hoverMode", "hoverSize", "hoverBackgroundShadow", "hoverBorderShadow", "hoverBorder", "hoverBorderSize", "hoverRadius",
     "showButtonBorder", "borderSize", "borderRadius", "buttonRadius", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
-    "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "columns", "spacing"}
-for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border", "titleText", "hotkeyText", "countText", "macroText"}) do
+    "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY", "columns", "spacing", "iconZoomPct", "clickNative", "clickHighlight", "clickBorder", "clickBorderSize", "clickHighlightSize", "clickHighlightRadius", "clickOutlineSize", "clickOutlineRadius"}
+for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border", "titleText", "hotkeyText", "countText", "macroText", "clickHighlight", "clickOutline"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
 end
 local defaultHover = "Interface\\Buttons\\ButtonHilight-Square"
@@ -185,10 +185,31 @@ local function Shape(button,primary,path,visible,inset,radius,layer,blend,r,g,b,
 end
 function Appearance.SetIcon(button,path)
     local style=button.bar.buttonAppearance
+    local crop=(1-100/style.iconZoomPct)/2
+    local options=button.icon.babShapeSpec or {};button.icon.babShapeSpec=options
+    options.left,options.right,options.top,options.bottom=crop,1-crop,crop,1-crop
     Shape(button,button.icon,path,path~=nil,style.iconInset,style.buttonRadius,"ARTWORK","BLEND",button.appearanceR,button.appearanceG,button.appearanceB,button.appearanceA)
 end
 function Appearance.SetPressed(button,visible)
-    Shape(button,button.pressFeedback,"Interface\\Buttons\\UI-Quickslot-Depress",visible,0,button.bar.buttonAppearance.buttonRadius,"OVERLAY")
+    visible=visible~=nil and visible~=false and visible~=0
+    local style=button.bar.buttonAppearance
+    button.appearancePressed=visible==true
+    Shape(button,button.pressFeedback,"Interface\\Buttons\\UI-Quickslot-Depress",visible and (style.clickNative or button.bindingSelected),0,style.buttonRadius,"OVERLAY")
+    local highlight=button.clickFeedback
+    if visible and style.clickHighlight and not highlight then highlight=UI.CreateTexture(button,nil,"OVERLAY");button.clickFeedback=highlight end
+    if highlight then UI.SetRoundedHoverSurface(button,highlight,visible and style.clickHighlight,"shadow",style.buttonSize+2*(style.clickHighlightSize-1),style.clickHighlightRadius,style.clickHighlightR,style.clickHighlightG,style.clickHighlightB,style.clickHighlightA) end
+    local host=button.clickOutlineHost
+    if visible and style.clickBorder and not host then host=UI.CreateContainer(nil,button);host:EnableMouse(false);button.clickOutlineHost=host end
+    if host then
+        local expansion=style.clickOutlineSize-1;local extent=style.buttonSize+2*expansion
+        host:ClearAllPoints();host:SetPoint("TOPLEFT",button,"TOPLEFT",-expansion,expansion);host:SetWidth(extent);host:SetHeight(extent)
+        host:SetFrameLevel(button:GetFrameLevel()+1)
+        button.clickOutlineColor=button.clickOutlineColor or {}
+        local color=button.clickOutlineColor;color[1],color[2],color[3]=style.clickOutlineR,style.clickOutlineG,style.clickOutlineB
+        UI.SetProjectButtonOutline(host,visible and style.clickBorder,style.clickBorderSize,color,nil,nil,style.clickOutlineRadius,extent)
+        host.bootyProjectOutline:SetAlpha(style.clickOutlineA)
+        if visible and style.clickBorder then host:Show() else host:Hide() end
+    end
 end
 function Appearance.SetChecked(button,checked)
     checked=checked~=nil and checked~=false and checked~=0
@@ -207,6 +228,9 @@ function Appearance.Empty(button,visible)
     Shape(button,texture,"Interface\\Buttons\\UI-Quickslot",visible,0,button.bar.buttonAppearance.buttonRadius,"BACKGROUND")
 end
 function Appearance.InitializeButton(button)
+    local holder=UI.CreateContainer(nil,button)
+    holder:SetAllPoints(button);holder:SetFrameLevel(button:GetFrameLevel()+8);holder:EnableMouse(false)
+    button.cooldownTextHolder=holder
     if not button.bar.buttonAppearance then Style(button.bar) end
     UI.ApplyDropdownChoiceSurface(button)
     button:SetBackdropBorderColor(0, 0, 0, 0)
@@ -232,7 +256,7 @@ local function ShowArt(texture, shown, repair)
 end
 local function Foreground(view, scene, repair)
     local art = view.buttonDecorations
-    local shown = scene.gryphons ~= "none"
+    local shown = scene.gryphons ~= "none" or scene.nativeBorder
     if shown and not art.foreground then
         art.foreground = UI.CreateContainer(nil, view.frame)
         art.foreground.appearanceInitialLevel = art.foreground:GetFrameLevel()
@@ -276,9 +300,17 @@ local function Piece(view, scene, kind, index, repair, cleanup)
         shown = scene.slotArtwork and index <= scene.count
         texture = art.panels[index]
         parent = (view.layoutButtons or view.buttons)[index]
+        if shown then
+            -- A socket is pooled with its button, never with a temporary grid index.
+            -- Releasing a former grid must not hide a socket acquired by its new owner.
+            if texture and texture~=parent.nativeSlotTexture and texture.nativeSlotOwner==view then ShowArt(texture,false,true);texture.nativeSlotOwner=nil end
+            texture=parent.nativeSlotTexture;art.panels[index]=texture
+        elseif texture and (texture.nativeSlotOwner~=view or scene.slotArtwork and index>scene.count
+            and texture.nativeSlotButton and (view.layoutButtons or view.buttons)[texture.nativeSlotButton.layoutIndex]==texture.nativeSlotButton) then return end
         x, y, width, height, left, right, top, bottom = NativeLayout.Tile(scene, index)
     elseif kind == "edge" then
         shown, texture = scene.nativeBorder, art.edges[index]
+        parent = art.foreground
         x, y, width, height, left, right, top, bottom = NativeLayout.Edge(scene, index)
     elseif kind == "backing" then
         shown, texture = scene.nativeBackground and index <= scene.backingCount, art.backings[index]
@@ -293,12 +325,13 @@ local function Piece(view, scene, kind, index, repair, cleanup)
     if shown and not texture then
         texture = UI.CreateTexture(parent, nil, side and "OVERLAY" or kind == "tile" and "BORDER" or "BACKGROUND")
         texture.appearancePaint, texture.appearanceCommittedPaint = {}, {}
-        if kind == "tile" then art.panels[index] = texture
+        if kind == "tile" then parent.nativeSlotTexture=texture;art.panels[index] = texture
         elseif kind == "edge" then art.edges[index] = texture
         elseif kind == "backing" then art.backings[index] = texture; if index == 1 then art.backing = texture end
         else art[side] = texture end
     end
     if not texture then return end
+    if kind=="tile" then texture.nativeSlotOwner=shown and view or nil;if shown then texture.nativeSlotButton=parent end end
     local paint
     if shown then
         paint = texture.appearancePaint
@@ -308,6 +341,8 @@ local function Piece(view, scene, kind, index, repair, cleanup)
         if side then
             paint.anchor, paint.x, paint.y = side == "left" and "BOTTOMRIGHT" or "BOTTOMLEFT",
                 side == "left" and scene.left + scene.gryphonOverlap or scene.right - scene.gryphonOverlap, -scene.gryphonBottom
+            paint.x = paint.x + (side == "left" and scene.gryphonLeftX or scene.gryphonRightX)
+            paint.y = paint.y + (side == "left" and scene.gryphonLeftY or scene.gryphonRightY)
         else paint.anchor, paint.x, paint.y = "TOPLEFT", x, -y end
     elseif repair and texture.appearanceHasPaint then
         -- Hidden regions can retain a previously painted geometry. Rollback
@@ -347,7 +382,7 @@ local function DrawScene(view, scene, repair, cleanup)
     local ok, reason = pcall(Foreground, view, scene, repair)
     if not ok then if not cleanup then error(reason) end; failure = reason end
     if view.buttonDecorations.foreground then
-        ok, reason = pcall(ShowArt, view.buttonDecorations.foreground, scene.gryphons ~= "none", repair)
+        ok, reason = pcall(ShowArt, view.buttonDecorations.foreground, scene.gryphons ~= "none" or scene.nativeBorder, repair)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
     local art = view.buttonDecorations
@@ -382,8 +417,14 @@ local function Decorations(view, style, repair)
     local scene
     if mergedChild then scene = NativeLayout.Copy(art.off, art.current)
     else scene = NativeLayout.Resolve(style, table.getn(buttons), art.current) end
-    if scene.gryphons ~= "none" then
-        scene.strata, scene.level = view.frame:GetFrameStrata(), view.frame:GetFrameLevel()
+    local group=view.decorationGroup
+    if not mergedChild and group and group.primary~=view then
+        scene.nativeBackground,scene.nativeBorder,scene.gryphons,scene.backingCount=false,false,"none",0
+    elseif not mergedChild and group then
+        NativeLayout.ExtendGroup(scene,group,style.nativeTextureScalePct,scene.nativeBackground)
+    end
+    if scene.gryphons ~= "none" or scene.nativeBorder then
+        scene.strata, scene.level = "MEDIUM", math.max(view.frame:GetFrameLevel(),group and group.level or 0)
         for _, button in ipairs(buttons) do
             scene.level = math.max(scene.level, button:GetFrameLevel(), button.cooldown:GetFrameLevel())
         end
@@ -405,6 +446,17 @@ local function Decorations(view, style, repair)
     end
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     CommitPaint(view, scene); NativeLayout.Copy(scene, art.committed); art.ready, art.hasCommitted = true, true
+end
+function Appearance.SetDecorationGroup(view, group)
+    if not view.buttonAppearance then view.decorationGroup=group;return true end
+    local previous=view.decorationGroup;view.decorationGroup=group
+    local ok,reason=pcall(Decorations,view,view.buttonAppearance,false)
+    if not ok then
+        view.decorationGroup=previous
+        local restored,failure=pcall(Decorations,view,view.buttonAppearance,true)
+        return false,tostring(reason)..(not restored and " Restoration: "..tostring(failure) or "")
+    end
+    return true
 end
 function Appearance.ApplyFont(label, choice, size, role)
     if not label then return end
@@ -462,6 +514,7 @@ local function ApplyView(view, drawing, repair)
             button:SetBackdropColor(0.08, 0.08, 0.08, style.buttonBackground and style.buttonRadius==0 and 0.95 or 0)
             button.appearanceBackground = style.buttonBackground;button.appearanceButtonRadius=style.buttonRadius
         end
+        Appearance.SetPressed(button,button.pressed or button.keyHeld or button.mousePressed or button.bindingSelected or false)
         Border(button, repair); Feedback(button, repair)
         if button.appearanceHasState then Appearance.ApplyColor(button, button.rendered, repair) end
     end

@@ -14,7 +14,7 @@ function Layout.SlotCount(id) return (id == 7 or id == 8) and 10 or Config.SLOT_
 -- Colors stay scalar so picker inputs and saved snapshots never share tables.
 local fields, colorKeys = {}, {}
 Layout.Fields, Layout.GlobalKeys = fields, {}
-Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverShadow", "hoverOutline", "border", "cooldown", "cooldownUnder10", "cooldownUnder5", "cooldownEffect", "cooldownFlash", "titleText", "hotkeyText", "countText", "macroText"}
+Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverShadow", "hoverOutline", "border", "cooldown", "cooldownUnder10", "cooldownUnder5", "cooldownEffect", "cooldownFlash", "titleText", "hotkeyText", "countText", "macroText", "clickHighlight", "clickOutline"}
 -- These values have legacy fallbacks; explicit false/default values must not
 -- disappear from sparse saves and reactivate an older preference.
 Layout.ExplicitKeys = {nativeSlotArtwork = true, nativeBackground = true, nativeBorder = true,
@@ -38,6 +38,7 @@ Define("showMacroNames", "boolean", true, nil, nil, 1)
 Define("showEmptyButtons", "boolean", true, nil, nil, 1)
 Define("buttonSize", "integer", 40, 24, 64, 1, true)
 Define("iconInset", "integer", 4, 0, 8, 1, true)
+Define("iconZoomPct", "integer", 100, 100, 200, 2)
 Define("opacityPct", "integer", 100, 20, 100, 1, true)
 Define("labelFontSize", "integer", 10, 8, 16, 1, true)
 Define("hoverMode", "enum", "default", nil, nil, 2, nil, {default = true, border = true, shadow = true})
@@ -63,6 +64,14 @@ Define("borderSize", "integer", 2, 1, 6, 2)
 Define("borderRadius", "integer", 0, 0, 50, 2)
 Define("buttonRadius", "integer", 0, 0, 50, 2)
 Define("buttonBackground", "boolean", false, nil, nil, 2)
+Define("clickNative", "boolean", true, nil, nil, 2)
+Define("clickHighlight", "boolean", false, nil, nil, 2)
+Define("clickBorder", "boolean", false, nil, nil, 2)
+Define("clickBorderSize", "integer", 2, 1, 10, 2)
+for _, prefix in ipairs({"clickHighlight", "clickOutline"}) do
+    Define(prefix .. "Size", "integer", 1, 1, 10, 2)
+    Define(prefix .. "Radius", "integer", 0, 0, 50, 2)
+end
 Define("cooldownFontSize", "integer", 24, 8, 32, 2)
 Define("showCooldownText", "boolean", true, nil, nil, 2)
 Define("cooldownFullSeconds", "boolean", true, nil, nil, 2)
@@ -78,10 +87,11 @@ Define("nativeBorderScalePct", "integer", 100, 25, 500, 2)
 Define("nativeButtonScalePct", "integer", 100, 25, 500, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
 Define("gryphonScalePct", "integer", 100, 25, 500, 2)
+for _, key in ipairs({"gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}) do Define(key, "integer", 0, -256, 256, 2) end
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,1,1,1}, hover = {1,1,1,1},
     hoverBackground = {1,1,1,1}, hoverShadow = {1,1,1,1}, hoverOutline = {1,1,1,1},
     border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownUnder10 = {1,0.8,0.2,1}, cooldownUnder5 = {1,0.2,0.2,1},
-    cooldownEffect = {0,0,0,1}, cooldownFlash = {1,0.2,0.2,0.65}, titleText={1,1,1,1}, hotkeyText={0.6,0.6,0.6,1}, countText={1,1,1,1}, macroText={1,1,1,1}}
+    cooldownEffect = {0,0,0,1}, cooldownFlash = {1,0.2,0.2,0.65}, titleText={1,1,1,1}, hotkeyText={0.6,0.6,0.6,1}, countText={1,1,1,1}, macroText={1,1,1,1}, clickHighlight={1,1,1,1}, clickOutline={1,0.78,0.2,1}}
 local channels = {"R", "G", "B", "A"}
 for _, group in ipairs(Layout.ColorGroups) do
     colorKeys[group] = {}
@@ -93,7 +103,7 @@ for _, group in ipairs(Layout.ColorGroups) do
 end
 function Layout.GameButtonDefaults()
     local patch = {showHotkeys=true,showCounts=true,showMacroNames=true,showCooldownText=true,
-        showButtonBorder=false,buttonBackground=false,cooldownEffectMode="native",cooldownFlash=false,
+        clickNative=true,clickHighlight=false,clickBorder=false,showButtonBorder=false,buttonBackground=false,cooldownEffectMode="native",cooldownFlash=false,
         buttonRadius=0,borderRadius=0,cooldownEffectR=0,cooldownEffectG=0,cooldownEffectB=0,cooldownEffectA=1,
         hoverMode="default",hoverBackgroundShadow=false,hoverBorderShadow=true,hoverBorder=false}
     for _, prefix in ipairs({"hotkey","count","macro","cooldown"}) do

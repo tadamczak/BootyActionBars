@@ -17,7 +17,7 @@ function Settings.Create(parent, context)
         local ok, failure = Runtime.SetUtilityPreference(id, key, value)
         return Complete(ok, failure, ok == true)
     end
-    local geometry = Bars.Modules.AppearanceSettings.Section(frame, "Geometry", {Complete = Complete})
+    local geometry = Bars.Modules.AppearanceSettings.Section(frame, "Appearance", {Complete = Complete})
     view.geometry = geometry
     local row = UI.CreateContainer(nil, frame); row:SetHeight(32)
     local shown = UI.Settings.CreateCheckbox(row, 0, 0, "Show bar", "shown", nil, {
@@ -71,7 +71,7 @@ function Settings.Create(parent, context)
             if item.key == "scalePct" or grid then item:Show() else item:Hide() end
             if layout then
                 if item.key == "columns" then
-                    local maximum = Utility.Definition(id).count
+                    local maximum = Utility.MaxColumns(id)
                     local syncing = item.control.bootySynchronizing; item.control.bootySynchronizing = true
                     item.control:SetMinMaxValues(1, maximum); item.control.bootySynchronizing = syncing
                     getglobal(item.control:GetName() .. "High"):SetText(tostring(maximum))
