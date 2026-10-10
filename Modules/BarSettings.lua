@@ -5,9 +5,9 @@ Bars.Modules.BarSettings = BarSettings
 local Utility = Bars.Services.UtilityLayout
 local Config = Bars.Services.BarConfig
 local Merging = Bars.Services.BarMerging
-local sliders = {{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, Config.MAX_SLOTS},
+local sliders = {{"scalePct", "Scale (%)", 25, 500}, {"columns", "Columns", 1, Config.MAX_SLOTS},
     {"spacing", "Spacing", 0, 20}, {"buttonSize", "Button size", 24, 64},
-    {"iconInset", "Icon inset", 0, 8}, {"opacityPct", "Opacity (%)", 20, 100}, {"labelFontSize", "Label size", 8, 16}}
+    {"iconInset", "Icon inset", 0, 8}, {"opacityPct", "Opacity (%)", 20, 100}}
 local checks = {{"showTitle", "Title"}, {"showHotkeys", "Hotkeys"}, {"showCounts", "Counts"},
     {"showMacroNames", "Macro names"}, {"showEmptyButtons", "Empty buttons"}}
 local identities = {"layout", "global"}
@@ -208,6 +208,7 @@ function BarSettings.Create(parent, host, owner)
     local appearance = Bars.Modules.AppearanceSettings.Create(settings, {
         GetLayout = GetLayout, GetSelection = function() return view.selected end,
         SetPreference = SetPreference, Complete = Complete, IsAvailable = IsAvailable,
+        ApplyGameDefaults = function() return Runtime.ApplyGameButtonDefaults(view.selected) end,
         SetColor = function(id, group, rgba)
             if id == "global" then return Runtime.SetGlobalColor(group, rgba) end
             return Runtime.SetBarColor(id, group, rgba)

@@ -329,7 +329,7 @@ local function Create(owner)
         button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
         Appearance.InitializeButton(button)
         button.pressFeedback = UI.CreateTexture(button, nil, "OVERLAY")
-        button.pressFeedback:SetAllPoints(button.icon)
+        button.pressFeedback:SetAllPoints(button)
         button.pressFeedback:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress"); button.pressFeedback:Hide()
         button.autocast = UI.CreateTexture(button, nil, "OVERLAY")
         button.autocast:SetAllPoints(button.icon)
@@ -338,8 +338,8 @@ local function Create(owner)
         button.cooldown = UI.CreateModel(buttonName .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
-        button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -4, -4)
+        button.hotkey = UI.CreateLabel(button, nil, "ARTWORK", "NumberFontNormalSmallGray")
+        button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         button.read, button.rendered = {}, {}; button.keyHeld, button.mouseHeld, button.mousePressed = false, false, false
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -388,7 +388,7 @@ local function Create(owner)
     end
     function view:SetGrid(value)
         self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
-        local size, inset, font = value.buttonSize or 40, value.iconInset or 4, value.labelFontSize or 10
+        local size, inset = value.buttonSize or 40, value.iconInset or 4
         local step, columns = size + value.spacing, value.columns
         self.frame:SetAlpha((value.opacityPct or 100) / 100)
         for index = 1, 10 do
@@ -400,7 +400,7 @@ local function Create(owner)
             button.icon:ClearAllPoints()
             button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", inset, -inset)
             button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
-            button.hotkey:SetWidth(math.max(1, size - 8))
+            button.hotkey:SetWidth(size)
         end
         self.title:SetWidth(value.barWidth); return true
     end

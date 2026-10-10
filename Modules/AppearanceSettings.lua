@@ -35,6 +35,7 @@ end
 function Appearance.MeasureRow(row)
     local control = row.control
     if row.kind == "slider" then return SliderWidth(row) end
+    if row.kind == "button" then return NaturalWidth(control.label)+28 end
     if row.kind == "choice" then
         local width = NaturalWidth(control.label) + 30
         for _, option in ipairs(control.panel.options) do width = math.max(width, NaturalWidth(option.label) + 30) end
@@ -61,7 +62,9 @@ end
 function Appearance.LayoutRow(row, parent, x, y, width)
     local control, height = row.control, row.babBaseHeight
     row:ClearAllPoints(); row:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y); row:SetWidth(width)
-    if row.kind == "slider" then
+    if row.kind == "button" then
+        control:ClearAllPoints();control:SetPoint("TOPLEFT",row,"TOPLEFT",0,0);control:SetWidth(math.min(width,NaturalWidth(control.label)+28));UI.ReflowControlText(control)
+    elseif row.kind == "slider" then
         local name = control:GetName()
         local label, low, high = getglobal(name .. "Text"), getglobal(name .. "Low"), getglobal(name .. "High")
         local titleHeight = LabelHeight(label, width, 14)
@@ -149,7 +152,7 @@ local function LayoutBlocks(group,body,width)
         end
     end
     for _,block in pairs(group.blocks) do if not block.babUsed then block:Hide() end end
-    items.bootyMaxColumns=3; items.bootyMeasureItem,items.bootyLayoutItem=MeasureBlock,LayoutBlock
+    items.bootyMaxColumns=group.caption == "Text fonts" and 4 or 3; items.bootyMeasureItem,items.bootyLayoutItem=MeasureBlock,LayoutBlock
     return UI.Settings.LayoutGrid(body,items,0,0,width,0)
 end
 function Appearance.Section(parent, caption, context)
@@ -177,7 +180,7 @@ function Appearance.LayoutSection(group, parent, top, width)
     top = top + 16
     width = math.max(1,width-12)
     body:Show(); body:ClearAllPoints(); body:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, -top); body:SetWidth(width)
-    if group.caption == "Decoration" or group.caption == "Hover" then
+    if group.caption == "Decoration" or group.caption == "Hover" or group.caption == "Text fonts" then
         local height=LayoutBlocks(group,body,width); body:SetHeight(height); return top+height+8
     end
     local offset, lastBlock, rows = 0, nil, group.scratch
@@ -265,7 +268,7 @@ function Appearance.Create(parent, context)
         if key == "cooldownEffectMode" then
             UI.AttachTooltip(control, "Cooldown indicator", "Game default uses the client animation. Circle and Top to bottom use the configured indicator color.")
         elseif key == "hotkeyFont" or key == "countFont" or key == "macroFont" then
-            UI.AttachTooltip(control, caption, "Game default keeps this label's native font and size. Other choices use Label size.")
+            UI.AttachTooltip(control, caption, "Game default uses the original game font. The size slider below controls this label independently.")
         end
     end
     local function LayoutFor(id)
@@ -361,19 +364,19 @@ function Appearance.Create(parent, context)
     Section("Decoration")
     block = "background"
     Checkbox("nativeBackground", "Native bar background")
-    local textureScale = Slider("nativeTextureScalePct", "Background scale (%)", 50, 200)
+    local textureScale = Slider("nativeTextureScalePct", "Background scale (%)", 25, 500)
     UI.AttachTooltip(textureScale, "Background scale (%)", "Scale only the native stone background.")
     block = "nativeBorder"
     Checkbox("nativeBorder", "Native bar border")
-    Slider("nativeBorderScalePct", "Border scale (%)", 50, 200)
+    Slider("nativeBorderScalePct", "Border scale (%)", 25, 500)
     block = "nativeButtons"
     local nativeBackground = Checkbox("nativeSlotArtwork", "Native button background")
     UI.AttachTooltip(nativeBackground, "Native button background", "Show native recessed slot artwork independently from the bar background, behind occupied and empty buttons.")
-    Slider("nativeButtonScalePct", "Button texture scale (%)", 50, 200)
+    Slider("nativeButtonScalePct", "Button texture scale (%)", 25, 500)
     block = "gryphons"
     Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
         {value = "right", text = "Right"}, {value = "both", text = "Both"}})
-    Slider("gryphonScalePct", "Gryphon scale (%)", 50, 200)
+    Slider("gryphonScalePct", "Gryphon scale (%)", 25, 500)
     if not context.OnlyDecoration then
     Section("Range colors"); Color("rangeIn", "In range"); Color("rangeOut", "Out of range")
     Section("Hover")
@@ -395,7 +398,7 @@ function Appearance.Create(parent, context)
     Checkbox("showCooldownText", "Cooldown numbers"); Color("cooldown", "Text color")
     Color("cooldownUnder10", "Text below 10 seconds"); Color("cooldownUnder5", "Text below 5 seconds")
     local precision = Checkbox("cooldownFullSeconds", "Full seconds")
-    UI.AttachTooltip(precision, "Full seconds", "On: whole seconds. Off: one digit after the decimal point.")
+    UI.AttachTooltip(precision, "Full seconds", "Below one minute: whole seconds or one decimal. Longer timers use minutes, hours or days.")
     Choice("cooldownFont", "Cooldown font", Bars.Services.TextStyle.Options)
     Slider("cooldownFontSize", "Font size", 8, 32)
     block = "indicator"
@@ -406,8 +409,21 @@ function Appearance.Create(parent, context)
     Color("cooldownFlash", "Blink color")
     Section("Text fonts")
     for _, item in ipairs({{"titleFont", "Title font"}, {"hotkeyFont", "Keybinding font"}, {"countFont", "Count font"}, {"macroFont", "Macro name font"}}) do
-        Choice(item[1], item[2], Bars.Services.TextStyle.Options)
+        block=item[1];Choice(item[1], item[2], Bars.Services.TextStyle.Options)
+        if item[1] ~= "titleFont" then
+            local prefix=string.sub(item[1],1,-5)
+            Slider(prefix .. "FontSize", item[2] .. " size", 6, 32)
+        end
     end
+    block="preset"
+    local presetRow=Row(32);presetRow.kind="button"
+    local preset=UI.CreateButton(presetRow,nil,"Game default buttons",180,24);UI.StyleActionButton(preset)
+    presetRow.control,presetRow.key=preset,"gameDefaults";view.gameDefaults=preset
+    preset:SetScript("OnClick",function()
+        local closed,reason=view:Close();if not closed then return Complete(false,reason) end
+        Complete(context.ApplyGameDefaults())
+    end)
+    UI.AttachTooltip(preset,"Game default buttons","Restore skill fonts/sizes, original hover and client cooldown. Position, merges, bar size and decorations stay unchanged.")
     end
     function view:Refresh(layout)
         if not layout then return end
@@ -425,6 +441,7 @@ function Appearance.Create(parent, context)
             for _, option in ipairs(choice.options) do if option.value == layout[key] then choice.control.label:SetText(option.text) end end
             UI.SetButtonEnabled(choice.control, context.IsAvailable())
         end
+        if self.gameDefaults then UI.SetButtonEnabled(self.gameDefaults, context.IsAvailable()) end
         for group, control in pairs(self.colors) do
             control.swatch:SetTexture(layout[group .. "R"], layout[group .. "G"], layout[group .. "B"], 1)
             UI.SetButtonEnabled(control, context.IsAvailable())

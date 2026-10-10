@@ -99,7 +99,7 @@ local function ColorBand(remaining)
 end
 local function Style(record)
     local owner = record.owner
-    local face = Bars.Services.TextStyle.Font(owner.font, record.face)
+    local face = Bars.Services.TextStyle.Font(owner.font, record.face, "cooldown")
     if record.fontSize ~= owner.size or record.fontFace ~= face then
         record.fontSize, record.fontFace = nil, nil
         Call(record, "SetFont", face, owner.size, "OUTLINE"); record.fontSize, record.fontFace = owner.size, face

@@ -330,20 +330,20 @@ function ActionBar.Create(callbacks, barId)
         button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -4, 4)
         Appearance.InitializeButton(button)
         button.pressFeedback = UI.CreateTexture(button, nil, "OVERLAY")
-        button.pressFeedback:SetAllPoints(button.icon)
+        button.pressFeedback:SetAllPoints(button)
         button.pressFeedback:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
         button.pressFeedback:Hide()
         button.cooldown = UI.CreateModel(name .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.count = UI.CreateLabel(button, name .. "Count", "OVERLAY", "NumberFontNormal")
-        button.count:SetPoint("BOTTOMRIGHT", button.icon, "BOTTOMRIGHT", -2, 2)
-        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
-        button.hotkey:SetPoint("TOPRIGHT", button.icon, "TOPRIGHT", -2, -2)
+        button.count = UI.CreateLabel(button, name .. "Count", "ARTWORK", "NumberFontNormal")
+        button.count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+        button.hotkey = UI.CreateLabel(button, nil, "ARTWORK", "NumberFontNormalSmallGray")
+        button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         -- SuperMacro uses these conventional globals during wrapped reads.
         button.nameLabel = UI.CreateLabel(button, name .. "Name", "OVERLAY", "GameFontHighlightSmallOutline")
-        button.nameLabel:SetPoint("BOTTOM", button.icon, "BOTTOM", 0, 2)
+        button.nameLabel:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
         button.nameLabel:SetWidth(32); button.nameLabel:SetHeight(12); button.nameLabel:Hide()
         button.rendered, button.read, button.pressed, button.mousePressed = {}, {}, false, false
         button.mouseHeld = false
@@ -417,7 +417,7 @@ function ActionBar.Create(callbacks, barId)
     function view:SetGrid(value)
         if self.mergeHost ~= self then return self.mergeHost:SetGrid(value) end
         self.frame:SetWidth(value.barWidth); self.frame:SetHeight(value.barHeight)
-        local size, inset, fontSize = value.buttonSize or 40, value.iconInset or 4, value.labelFontSize or 10
+        local size, inset = value.buttonSize or 40, value.iconInset or 4
         local step, columns = size + value.spacing, value.columns
         self.frame:SetAlpha((value.opacityPct or 100) / 100)
         for index, button in ipairs(self.layoutButtons) do
@@ -430,8 +430,8 @@ function ActionBar.Create(callbacks, barId)
             button.icon:ClearAllPoints()
             button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", inset, -inset)
             button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
-            button.hotkey:SetWidth(math.max(1, size - 8))
-            button.nameLabel:SetWidth(math.max(1, size - 8)); button.nameLabel:SetHeight(fontSize + 2)
+            button.hotkey:SetWidth(size)
+            button.nameLabel:SetWidth(size)
         end
         self.gridWidth = value.barWidth
         title:SetWidth(value.barWidth); title:SetHeight(20)

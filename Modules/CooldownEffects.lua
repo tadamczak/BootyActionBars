@@ -38,7 +38,7 @@ function Effects.Configure(owner, drawing)
         or owner.effectSize ~= size - inset * 2
     owner.effectMode, owner.effectR, owner.effectG, owner.effectB, owner.effectA = mode, r, g, b, a
     owner.flash, owner.flashR, owner.flashG, owner.flashB, owner.flashA = flash, fr, fg, fb, fa
-    owner.effectSize = size - inset * 2
+    owner.effectSize, owner.nativeSize = size - inset * 2, size
     return true, changed
 end
 function Effects.Demand(record)
@@ -58,13 +58,13 @@ function Effects.SyncNative(record)
         and button.index <= count and not button.emptyHidden and record.enabled and record.start > 0 and record.duration > 0
     if not shown then Effects.HideNative(record); return end
     local model = button.cooldown
-    if record.nativeSize ~= owner.effectSize then
+    if record.nativeSize ~= owner.nativeSize then
         record.nativeSize = nil
         Call(record, model, "ClearAllPoints")
-        Call(record, model, "SetPoint", "CENTER", button.icon, "CENTER", 0, -1)
-        Call(record, model, "SetWidth", 36); Call(record, model, "SetHeight", 36)
-        Call(record, model, "SetScale", 0.75 * owner.effectSize / 36)
-        record.nativeSize = owner.effectSize
+        Call(record, model, "SetPoint", "CENTER", button, "CENTER", 0, -1)
+        Call(record, model, "SetWidth", owner.nativeSize); Call(record, model, "SetHeight", owner.nativeSize)
+        Call(record, model, "SetScale", 0.75)
+        record.nativeSize = owner.nativeSize
     end
     if not record.nativeActive or record.nativeStart ~= record.start or record.nativeDuration ~= record.duration then
         record.nativeActive = false

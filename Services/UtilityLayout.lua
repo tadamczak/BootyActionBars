@@ -29,7 +29,7 @@ function Utility.ValidValue(id, key, value)
     if not Finite(value) then return false end
     if key == "x" or key == "y" then return true end
     if value ~= math.floor(value) then return false end
-    if key == "scalePct" then return value >= 50 and value <= 200 end
+    if key == "scalePct" then return value >= 25 and value <= 500 end
     if key == "columns" then return value >= 1 and value <= definition.count end
     return value >= 0 and value <= 20
 end
@@ -196,9 +196,9 @@ function Utility.Resolve(record, width, height, screenWidth, screenHeight)
         or not Finite(record.x) or not Finite(record.y) or not Finite(record.scalePct) or record.scalePct <= 0 then
         return nil, "Utility-bar screen geometry is unavailable."
     end
-    local scale = math.min(record.scalePct / 100, screenWidth / width, screenHeight / height)
+    local scale = record.scalePct / 100
     local halfWidth, halfHeight = width * scale / 2, height * scale / 2
-    local x = math.max(-screenWidth / 2 + halfWidth, math.min(screenWidth / 2 - halfWidth, record.x))
-    local y = math.max(-screenHeight / 2 + halfHeight, math.min(screenHeight / 2 - halfHeight, record.y))
+    local x = halfWidth * 2 > screenWidth and 0 or math.max(-screenWidth / 2 + halfWidth, math.min(screenWidth / 2 - halfWidth, record.x))
+    local y = halfHeight * 2 > screenHeight and 0 or math.max(-screenHeight / 2 + halfHeight, math.min(screenHeight / 2 - halfHeight, record.y))
     return {scale = scale, x = x, y = y, anchorX = x / scale, anchorY = y / scale}
 end

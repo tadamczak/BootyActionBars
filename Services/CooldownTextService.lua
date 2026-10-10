@@ -46,11 +46,11 @@ end
 function Service.Bucket(remaining, fullSeconds)
     if not Service.Finite(remaining) then return nil, "Invalid cooldown time." end
     if remaining <= 0 then return 0, 0 end
-    if fullSeconds == true then return 2, ceil(remaining) end
-    if fullSeconds == false then return 1, math.max(1, ceil(remaining * 10)) end
     if remaining >= 86400 then return 5, ceil(remaining / 86400) end
     if remaining >= 3600 then return 4, ceil(remaining / 3600) end
     if remaining >= 60 then return 3, ceil(remaining / 60) end
+    if fullSeconds == true then return 2, ceil(remaining) end
+    if fullSeconds == false then return 1, math.max(1, ceil(remaining * 10)) end
     if remaining >= 3 then return 2, ceil(remaining) end
     -- Never print zero while the native timer still has positive time left.
     return 1, math.max(1, ceil(remaining * 10))
