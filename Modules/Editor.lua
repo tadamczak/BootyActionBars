@@ -254,7 +254,7 @@ local function Capture(view, context)
     return Layout.Capture(x, y, view.frame:GetEffectiveScale(), context.scale, context.x, context.y)
 end
 local function SetScale(id, percent)
-    if not Layout.ValidID(id) or not Layout.ValidScale(percent) then return false, "Choose an action bar and an integer scale from 50 to 200." end
+    if not Layout.ValidID(id) or not Layout.ValidScale(percent) then return false, "Choose an action bar and an integer scale from 25 to 500." end
     local cancelled, failure = CancelDrag(id)
     if not cancelled then return false, failure end
     local record, reason = LocalSettings(id)
@@ -339,6 +339,7 @@ local function SetAppearance(id, key, value)
         record.x, record.y = x, y
     end
     record[key] = value
+    if key == "labelFontSize" then for _, prefix in ipairs({"hotkey","count","macro"}) do record[prefix .. "FontSize"] = value end end
     if key == "hoverMode" then
         record.hoverBackgroundShadow, record.hoverBorderShadow, record.hoverBorder = value == "shadow", value == "default", value == "border"
     elseif key == "hoverSize" or key == "hoverRadius" then
@@ -553,6 +554,7 @@ end
 function Editor.SetGlobalLayout(key, value)
     if not Layout.ValidGlobalValue(key, value) then return false, "Invalid global action bar setting." end
     local patch = {[key] = value}
+    if key == "labelFontSize" then for _, prefix in ipairs({"hotkey","count","macro"}) do patch[prefix .. "FontSize"] = value end end
     if key == "nativeTexture" then patch.nativeBackground, patch.nativeBorder = value, value end
     if key == "hoverMode" then
         patch.hoverBackgroundShadow, patch.hoverBorderShadow, patch.hoverBorder = value == "shadow", value == "default", value == "border"
@@ -577,6 +579,22 @@ function Editor.SetGlobalColor(group, rgba)
     ran, ok, failure = Run(SetGlobalPatch, patch)
     if not ran then return false, ok end
     return ok, failure
+end
+local function ApplyGameButtonDefaults(id)
+    local patch = Layout.GameButtonDefaults()
+    if id == "global" then return SetGlobalPatch(patch) end
+    if not Layout.ValidID(id) then return false, "Choose an action, pet or form bar." end
+    local cancelled, failure = CancelDrag(id)
+    if not cancelled then return false, failure end
+    local record, reason = LocalSettings(id)
+    if not record then return false, reason end
+    for key,value in pairs(patch) do record[key]=value end
+    return Commit(id,record,false)
+end
+function Editor.ApplyGameButtonDefaults(id)
+    local ran,ok,failure=Run(ApplyGameButtonDefaults,id)
+    if not ran then return false,ok end
+    return ok,failure
 end
 local function DragStart(id)
     local view = View(id)

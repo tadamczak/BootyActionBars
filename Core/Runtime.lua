@@ -570,6 +570,12 @@ function Runtime.SetGlobalLayout(key, value)
     end
     return FinishLayout(ok, reason)
 end
+function Runtime.ApplyGameButtonDefaults(id)
+    if not Runtime.IsAvailable() then return false, "BootyActionBars is stopped or waiting for login." end
+    local owner,failure=Bars.Database.Ensure();if not owner then return false,failure end
+    local ok,reason=Bars.Modules.Editor.ApplyGameButtonDefaults(id)
+    return FinishLayout(ok,reason)
+end
 function Runtime.CopyGlobalSettings(id)
     if not Runtime.IsAvailable() then return false, "BootyActionBars is unavailable." end
     local ok, failure = Bars.Modules.Editor.CopyGlobalSettings(id)
@@ -1164,6 +1170,6 @@ function Runtime.Open(command)
         return ok, reason
     end
     if command == "" then return state.host.OpenView("actionbars") end
-    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-10 on|off, /bab unlock|lock, /bab scale ID 50-200, /bab columns ID 1-120 (up to the bar's slots), /bab gap ID 0-20, /bab title|hotkeys|counts ID on|off, or /bab reset ID. Layout IDs: 1-6 action bars, 7 pet, 8 forms, 9-12 action bars 7-10.")
+    state.host.Print("Use /bab, /bab settings, /bab pet|stance on|off, /bab test on|off, /bab native on|off, /bab bar 2-10 on|off, /bab unlock|lock, /bab scale ID 25-500, /bab columns ID 1-120 (up to the bar's slots), /bab gap ID 0-20, /bab title|hotkeys|counts ID on|off, or /bab reset ID. Layout IDs: 1-6 action bars, 7 pet, 8 forms, 9-12 action bars 7-10.")
     return false
 end

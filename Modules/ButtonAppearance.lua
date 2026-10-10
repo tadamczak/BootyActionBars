@@ -118,7 +118,7 @@ local function Feedback(button, repair)
             if feedback:SetTexture(defaultHover) == false then error("Native hover texture was declined.") end
             if feedback:SetTexCoord(0, 1, 0, 1) == false then error("Native hover coordinates were declined.") end
             feedback:SetBlendMode("ADD")
-            feedback:ClearAllPoints(); feedback:SetAllPoints(button.icon)
+            feedback:ClearAllPoints(); feedback:SetAllPoints(button)
             feedback:SetVertexColor(style.hoverShadowR, style.hoverShadowG, style.hoverShadowB, style.hoverShadowA)
             local accepted
             if shown then accepted = feedback:Show() else accepted = feedback:Hide() end
@@ -177,7 +177,7 @@ function Appearance.InitializeButton(button)
     button:SetBackdropBorderColor(0, 0, 0, 0)
     local checked = UI.CreateTexture(button, nil, "OVERLAY")
     checked:SetTexture("Interface\\Buttons\\CheckButtonHilight"); checked:SetBlendMode("ADD")
-    checked:SetAllPoints(button.icon); button:SetCheckedTexture(checked)
+    checked:SetAllPoints(button); button:SetCheckedTexture(checked)
     button.hoverFeedback = UI.CreateTexture(button, nil, "OVERLAY")
     button.hoverFeedback:SetTexture(defaultHover); button.hoverFeedback:SetBlendMode("ADD")
     button.hoverFeedback:SetAllPoints(button.icon)
@@ -371,30 +371,45 @@ local function Decorations(view, style, repair)
     this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 = savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9
     CommitPaint(view, scene); NativeLayout.Copy(scene, art.committed); art.ready, art.hasCommitted = true, true
 end
-function Appearance.ApplyFont(label, choice, size)
+function Appearance.ApplyFont(label, choice, size, role)
     if not label then return end
     if not label.babOriginalFont then
         local face, originalSize, flags = label:GetFont()
         label.babOriginalFont, label.babOriginalSize, label.babOriginalFlags = face, originalSize, flags
-        label.babAppliedFont, label.babAppliedSize = face, originalSize
+        label.babAppliedFont, label.babAppliedSize, label.babAppliedFlags = face, originalSize, flags
     end
-    local face, failure = Bars.Services.TextStyle.Font(choice, label.babOriginalFont)
+    local face, failure = Bars.Services.TextStyle.Font(choice, label.babOriginalFont, role)
     if not face then error(failure or "The button font is unavailable.") end
-    size = choice == "native" and label.babOriginalSize or size or label.babOriginalSize
-    if label.babAppliedFont ~= face or label.babAppliedSize ~= size then
-        label.babAppliedFont, label.babAppliedSize = nil, nil
-        local ok = label:SetFont(face, size, label.babOriginalFlags)
+    local native = choice == "native" and Bars.Services.TextStyle.Native[role]
+    local flags = native and native.flags or label.babOriginalFlags
+    size = size or (native and native.size) or label.babOriginalSize
+    if label.babAppliedFont ~= face or label.babAppliedSize ~= size or label.babAppliedFlags ~= flags or native and not label.babNativeFontDetached then
+        label.babAppliedFont, label.babAppliedSize, label.babAppliedFlags = nil, nil, nil
+        local ok = label:SetFont(face, size, flags)
         if ok == false then error("The button font was declined.") end
-        label.babAppliedFont, label.babAppliedSize = face, size
+        label.babAppliedFont, label.babAppliedSize, label.babAppliedFlags = face, size, flags
+        label.babNativeFontDetached = native ~= nil and native ~= false
+    end
+    if role == "macro" or role == "hotkey" then
+        local height = native and role == "hotkey" and size == native.size and 10 or size
+        if label.babAppliedTextHeight ~= height then label:SetHeight(height);label.babAppliedTextHeight=height end
+    end
+    if native and not label.babNativeVisuals then
+        if role == "macro" or role == "count" then
+            if label:SetTextColor(1,1,1,1) == false then error("Native label color was declined.") end
+        end
+        if label.SetShadowOffset then label:SetShadowOffset(role == "macro" and 1 or 0, role == "macro" and -1 or 0) end
+        if label.SetShadowColor then label:SetShadowColor(0,0,0,role == "macro" and 1 or 0) end
+        label.babNativeVisuals = true
     end
 end
 local function ApplyView(view, drawing, repair)
     local style = Style(view, drawing)
     Appearance.ApplyFont(view.title, drawing.titleFont)
     for _, button in ipairs(view.buttons) do
-        Appearance.ApplyFont(button.hotkey, drawing.hotkeyFont, drawing.labelFontSize)
-        Appearance.ApplyFont(button.count, drawing.countFont, drawing.labelFontSize)
-        Appearance.ApplyFont(button.nameLabel, drawing.macroFont, drawing.labelFontSize)
+        Appearance.ApplyFont(button.hotkey, drawing.hotkeyFont, drawing.hotkeyFontSize or drawing.labelFontSize, "hotkey")
+        Appearance.ApplyFont(button.count, drawing.countFont, drawing.countFontSize or drawing.labelFontSize, "count")
+        Appearance.ApplyFont(button.nameLabel, drawing.macroFont, drawing.macroFontSize or drawing.labelFontSize, "macro")
         if repair or button.appearanceBackground ~= style.buttonBackground then
             button.appearanceBackground = nil
             button:SetBackdropColor(0.08, 0.08, 0.08, style.buttonBackground and 0.95 or 0)

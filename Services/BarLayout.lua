@@ -19,6 +19,7 @@ Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverS
 -- disappear from sparse saves and reactivate an older preference.
 Layout.ExplicitKeys = {nativeSlotArtwork = true, nativeBackground = true, nativeBorder = true,
     nativeButtonScalePct = true, nativeBorderScalePct = true, hoverBackgroundShadow = true, hoverBorderShadow = true, hoverBorder = true}
+for _, key in ipairs({"hotkeyFontSize","countFontSize","macroFontSize"}) do Layout.ExplicitKeys[key]=true end
 for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
     for _, suffix in ipairs({"Size", "Radius", "R", "G", "B", "A"}) do Layout.ExplicitKeys[prefix .. suffix] = true end
 end
@@ -27,7 +28,7 @@ local function Define(key, kind, value, minimum, maximum, version, geometry, cho
         version = version, geometry = geometry, choices = choices}
     table.insert(Layout.GlobalKeys, key)
 end
-Define("scalePct", "integer", 100, 50, 200, 1, true)
+Define("scalePct", "integer", 100, 25, 500, 1, true)
 Define("columns", "integer", Config.SLOT_COUNT, 1, Config.MAX_SLOTS, 1, true)
 Define("spacing", "integer", 4, 0, 20, 1, true)
 Define("showTitle", "boolean", true, nil, nil, 1)
@@ -54,6 +55,9 @@ local fontChoices = {native = true, default = true, friz = true, arial = true, m
 for _, prefix in ipairs({"title", "hotkey", "count", "macro", "cooldown"}) do
     Define(prefix .. "Font", "enum", prefix == "title" and "default" or "native", nil, nil, 2, true, fontChoices)
 end
+for _, item in ipairs({{"hotkey",12},{"count",14},{"macro",10}}) do
+    Define(item[1] .. "FontSize", "integer", item[2], 6, 32, 2)
+end
 Define("showButtonBorder", "boolean", false, nil, nil, 2)
 Define("borderSize", "integer", 2, 1, 6, 2)
 Define("buttonBackground", "boolean", false, nil, nil, 2)
@@ -67,11 +71,11 @@ Define("nativeTextureBackground", "boolean", true, nil, nil, 2)
 Define("nativeSlotArtwork", "boolean", false, nil, nil, 2)
 Define("nativeBackground", "boolean", false, nil, nil, 2)
 Define("nativeBorder", "boolean", false, nil, nil, 2)
-Define("nativeTextureScalePct", "integer", 100, 50, 200, 2)
-Define("nativeBorderScalePct", "integer", 100, 50, 200, 2)
-Define("nativeButtonScalePct", "integer", 100, 50, 200, 2)
+Define("nativeTextureScalePct", "integer", 100, 25, 500, 2)
+Define("nativeBorderScalePct", "integer", 100, 25, 500, 2)
+Define("nativeButtonScalePct", "integer", 100, 25, 500, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
-Define("gryphonScalePct", "integer", 100, 50, 200, 2)
+Define("gryphonScalePct", "integer", 100, 25, 500, 2)
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,1,1,1}, hover = {1,1,1,1},
     hoverBackground = {1,1,1,1}, hoverShadow = {1,1,1,1}, hoverOutline = {1,1,1,1},
     border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownUnder10 = {1,0.8,0.2,1}, cooldownUnder5 = {1,0.2,0.2,1},
@@ -84,6 +88,18 @@ for _, group in ipairs(Layout.ColorGroups) do
         Define(key, "number", colors[group][index], 0, 1, 2)
         colorKeys[group][index] = key
     end
+end
+function Layout.GameButtonDefaults()
+    local patch = {showHotkeys=true,showCounts=true,showMacroNames=true,showCooldownText=false,
+        showButtonBorder=false,buttonBackground=false,cooldownEffectMode="native",cooldownFlash=false,
+        hoverMode="default",hoverBackgroundShadow=false,hoverBorderShadow=true,hoverBorder=false}
+    for _, prefix in ipairs({"hotkey","count","macro","cooldown"}) do
+        patch[prefix .. "Font"]="native";patch[prefix .. "FontSize"]=fields[prefix .. "FontSize"].default
+    end
+    for _, key in ipairs(Layout.GlobalKeys) do
+        if string.sub(key,1,5)=="hover" or string.sub(key,1,5)=="range" then patch[key]=fields[key].default end
+    end
+    return patch
 end
 function Layout.ValidGlobalValue(key, value)
     local field = fields[key]
@@ -159,6 +175,13 @@ local function NativeSlots(record)
     return record ~= nil and record.nativeTexture == true and record.nativeTextureBackground ~= false
 end
 local function LegacyValues(result, record)
+    for _, prefix in ipairs({"hotkey", "count", "macro"}) do
+        if record and record[prefix .. "FontSize"] == nil then
+            if record[prefix .. "Font"] and record[prefix .. "Font"] ~= "native" then
+                result[prefix .. "FontSize"] = result.labelFontSize
+            end
+        end
+    end
     for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
         for _, channel in ipairs({"R", "G", "B", "A"}) do
             if not record or record[prefix .. channel] == nil then result[prefix .. channel] = result["hover" .. channel] end

@@ -8,7 +8,7 @@ Layout.GryphonTexture = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf"
 Layout.SlotUV = {47 / 256, 90 / 256, 213 / 256, 1}
 Layout.BackingUV = {56 / 256, 248 / 256, 94 / 256, 126 / 256}
 Layout.BackingPixels = {192, 32}
-Layout.MaxBackingPieces = 1155 -- Worst legal 120-slot partial row at 50% body / 200% socket scale; lazy only.
+Layout.MaxBackingPieces = 4608 -- Expanded range: measured worst is 4389 pieces for 120 slots; lazy pooled regions.
 local keys = {"count", "columns", "buttonSize", "spacing", "nativeTexture", "nativeBackground", "nativeBorder", "slotArtwork", "gryphons",
     "textureScale", "buttonScale", "gryphonScale", "width", "height", "tileSize", "socketSize", "step", "left", "top", "right", "bottom",
     "innerLeft", "innerTop", "innerRight", "innerBottom", "padLeft", "padRight", "padTop", "padBottom",
@@ -21,7 +21,7 @@ local function Number(value, fallback, minimum, maximum)
 end
 function Layout.ResolveBacking(left, top, width, height, scalePct, target)
     target = target or {}
-    local scale = Number(scalePct, 100, 50, 200) / 100
+    local scale = Number(scalePct, 100, 25, 500) / 100
     local tileWidth, tileHeight = Layout.BackingPixels[1] * scale, Layout.BackingPixels[2] * scale
     local columns, rows = math.ceil(width / tileWidth), math.ceil(height / tileHeight)
     local rotatedColumns, rotatedRows = math.ceil(width / tileHeight), math.ceil(height / tileWidth)
@@ -56,10 +56,10 @@ function Layout.Resolve(drawing, count, target)
     local columns = math.floor(Number(drawing.columns, count, 1, count))
     local size = Number(drawing.buttonSize, 40, 24, 64)
     local spacing = Number(drawing.spacing, 4, 0, 20)
-    local textureScale = Number(drawing.nativeTextureScalePct, 100, 50, 200) / 100
-    local borderScale = Number(drawing.nativeBorderScalePct, textureScale * 100, 50, 200) / 100
-    local buttonScale = Number(drawing.nativeButtonScalePct, textureScale * 100, 50, 200) / 100
-    local gryphonScale = Number(drawing.gryphonScalePct, 100, 50, 200) / 100
+    local textureScale = Number(drawing.nativeTextureScalePct, 100, 25, 500) / 100
+    local borderScale = Number(drawing.nativeBorderScalePct, textureScale * 100, 25, 500) / 100
+    local buttonScale = Number(drawing.nativeButtonScalePct, textureScale * 100, 25, 500) / 100
+    local gryphonScale = Number(drawing.gryphonScalePct, 100, 25, 500) / 100
     local rows = math.ceil(count / columns)
     local width, height = columns * size + (columns - 1) * spacing, rows * size + (rows - 1) * spacing
     local tileSize = 43 * buttonScale

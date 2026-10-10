@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.40 — 2026-10-10
+
+- Expand every scale control to 25–500%, including wide Experience/Reputation bars.
+- Add independent keybinding, count and macro font sizes; restore exact stock fonts, offsets, hover and cooldown geometry with Game default buttons.
+- Show long cooldowns as minutes in either seconds-precision mode; preserve geometry, merge groups and decorations when resetting skill style.
+
 ## 0.1.0-dev.39 — 2026-10-10
 
 - Use the game's skill-button hover, checked feedback, fonts and native cooldown animation by default, without extra countdown text or project fill/outline.

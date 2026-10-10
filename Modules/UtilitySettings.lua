@@ -27,7 +27,7 @@ function Settings.Create(parent, context)
     row.kind, row.control, row.babBaseHeight = "check", shown, 32
     table.insert(geometry.rows, row); view.shown = shown
     UI.AttachTooltip(shown, "Show utility bar", "The primary bar controls visibility of its entire merged group. Native actions and scripts keep working.")
-    for _, definition in ipairs({{"scalePct", "Scale (%)", 50, 200}, {"columns", "Columns", 1, 8}, {"spacing", "Spacing", 0, 20}}) do
+    for _, definition in ipairs({{"scalePct", "Scale (%)", 25, 500}, {"columns", "Columns", 1, 8}, {"spacing", "Spacing", 0, 20}}) do
         local key, caption, minimum, maximum = definition[1], definition[2], definition[3], definition[4]
         local item = UI.CreateContainer(nil, frame); item:SetHeight(44)
         local slider = UI.Settings.CreateSlider(item, "BootyActionBarsUtility" .. key, 0, -15,
