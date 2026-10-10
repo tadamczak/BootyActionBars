@@ -14,7 +14,7 @@ local keys = {"count", "columns", "buttonSize", "spacing", "nativeTexture", "nat
     "innerLeft", "innerTop", "innerRight", "innerBottom", "padLeft", "padRight", "padTop", "padBottom",
     "gryphonSize", "gryphonOverlap", "gryphonBottom", "level", "strata", "backingLeft", "backingTop",
     "backingWidth", "backingHeight", "backingColumns", "backingRows", "backingCount", "backingRotated",
-    "backingStepX", "backingStepY"}
+    "backingStepX", "backingStepY", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
 local function Number(value, fallback, minimum, maximum)
     if type(value) ~= "number" or value - value ~= 0 then return fallback end
     return math.max(minimum, math.min(maximum, value))
@@ -85,12 +85,26 @@ function Layout.Resolve(drawing, count, target)
     target.left, target.top = target.innerLeft - target.padLeft, target.innerTop - target.padTop
     target.right, target.bottom = target.innerRight + target.padRight, target.innerBottom + target.padBottom
     target.gryphonSize, target.gryphonOverlap = 128 * gryphonScale, 32 * gryphonScale
+    target.gryphonLeftX, target.gryphonLeftY = drawing.gryphonLeftX or 0, drawing.gryphonLeftY or 0
+    target.gryphonRightX, target.gryphonRightY = drawing.gryphonRightX or 0, drawing.gryphonRightY or 0
     -- End caps meet the first row even when the grid contains several rows.
     target.gryphonBottom = size + extent + target.padBottom
     Layout.ResolveBacking(target.innerLeft, target.innerTop, target.innerRight - target.innerLeft,
         target.innerBottom - target.innerTop, textureScale * 100, target)
     if not target.nativeBackground then target.backingCount = 0 end
     return target
+end
+-- Bounds describe the complete visible merge group in the primary's units.
+-- Background/border/end caps have one owner; each member retains its sockets.
+function Layout.ExtendGroup(scene, group, scalePct, background)
+    if not group then return end
+    scene.innerLeft,scene.innerTop=math.min(scene.innerLeft,group.left),math.min(scene.innerTop,group.top)
+    scene.innerRight,scene.innerBottom=math.max(scene.innerRight,group.left+group.width),math.max(scene.innerBottom,group.top+group.height)
+    scene.left,scene.top=scene.innerLeft-scene.padLeft,scene.innerTop-scene.padTop
+    scene.right,scene.bottom=scene.innerRight+scene.padRight,scene.innerBottom+scene.padBottom
+    scene.gryphonBottom=scene.innerTop+(scene.buttonSize or scene.cellHeight)+(scene.padBottom or 0)
+    Layout.ResolveBacking(scene.innerLeft,scene.innerTop,scene.innerRight-scene.innerLeft,scene.innerBottom-scene.innerTop,scalePct,scene)
+    if not background then scene.backingCount=0 end
 end
 function Layout.Copy(source, target)
     target = target or {}

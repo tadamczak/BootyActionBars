@@ -166,9 +166,10 @@ local function Click()
     if BindingMode() then
         Appearance.SetChecked(this,this.rendered.checked)
         this.mousePressed, this.mouseHeld = false, false
-        Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index)
+        if not Bars.Modules.BindingEditor.CaptureMouseButton(arg1) then Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index) end
         return
     end
+    if arg1 ~= "LeftButton" and arg1 ~= "RightButton" then return end
     if LayoutMode() then Appearance.SetChecked(this,this.rendered.checked); CancelPressed(this); return end
     -- Native CheckButton clicks toggle checked before invoking this script.
     Appearance.SetChecked(this,this.rendered.checked)
@@ -337,18 +338,18 @@ function ActionBar.Create(callbacks, barId)
         button.cooldown = UI.CreateModel(name .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.count = UI.CreateLabel(button, name .. "Count", "OVERLAY", "NumberFontNormal")
+        button.count = UI.CreateLabel(button.cooldownTextHolder, name .. "Count", "OVERLAY", "NumberFontNormal")
         button.count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
-        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
+        button.hotkey = UI.CreateLabel(button.cooldownTextHolder, nil, "OVERLAY", "NumberFontNormalSmallGray")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         -- SuperMacro uses these conventional globals during wrapped reads.
-        button.nameLabel = UI.CreateLabel(button, name .. "Name", "OVERLAY", "GameFontHighlightSmallOutline")
+        button.nameLabel = UI.CreateLabel(button.cooldownTextHolder, name .. "Name", "OVERLAY", "GameFontHighlightSmallOutline")
         button.nameLabel:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
         button.nameLabel:SetWidth(32); button.nameLabel:SetHeight(12); button.nameLabel:Hide()
         button.rendered, button.read, button.pressed, button.mousePressed = {}, {}, false, false
         button.mouseHeld = false
-        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        button:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp", "Button4Up", "Button5Up")
         button:RegisterForDrag("LeftButton")
         button:SetScript("OnClick", Click); button:SetScript("OnMouseDown", MouseDown)
         button:SetScript("OnMouseUp", MouseUp)

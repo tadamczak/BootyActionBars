@@ -54,8 +54,17 @@ function Overview.Create(parent, host)
         button:SetScript("OnClick", function() view:SelectTab(id) end); view.tabs[id] = button
         table.insert(view.tabRow, button)
     end
+    local unlockRow=UI.CreateContainer(nil,navigation);unlockRow:SetHeight(26)
+    local unlock=UI.Settings.CreateCheckbox(unlockRow,0,0,"Unlock","editing",nil,{
+        ensure=function() end,get=Bars.Core.Runtime.IsLayoutUnlocked,
+        set=function(_,value) return view.Complete(Bars.Core.Runtime.SetEditEnabled(value)) end})
+    unlockRow:SetWidth(unlock:GetWidth()+8+math.ceil(unlock.label:GetStringWidth()))
+    table.insert(view.tabRow,unlockRow);view.editCheckbox,view.unlockRow=unlock,unlockRow
+    UI.AttachTooltip(unlock,"Unlock","Move enabled bars. Selection persists across tabs and window minimization until you lock it.")
     function view:OnResize()
         if not frame:IsVisible() then return end
+        self.editCheckbox:SetChecked(Bars.Core.Runtime.IsLayoutUnlocked() and 1 or nil)
+        UI.Settings.SetCheckboxEnabled(self.editCheckbox,Bars.Core.Runtime.IsLayoutUnlocked() or Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active==true)
         local width, height = UI.GetFrameSpan(parent); width, height = math.max(1, width), math.max(1, height)
         frame:SetWidth(width); frame:SetHeight(height)
         for _, item in ipairs(tabs) do
@@ -77,6 +86,8 @@ function Overview.Create(parent, host)
     end
     function view:Refresh()
         if not frame:IsVisible() then return end
+        self.editCheckbox:SetChecked(Bars.Core.Runtime.IsLayoutUnlocked() and 1 or nil)
+        UI.Settings.SetCheckboxEnabled(self.editCheckbox,Bars.Core.Runtime.IsLayoutUnlocked() or Bars.Core.Runtime.IsAvailable() and Bars.Core.Engine.GetState().active==true)
         Panel(self.activeTab):Refresh(true); self:OnResize()
     end
     function view:Show()

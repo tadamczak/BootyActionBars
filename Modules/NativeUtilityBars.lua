@@ -50,11 +50,11 @@ local function Remember(record, point, owner, relative, x, y)
 end
 local function Capture(frame, name, target, anchored)
     for _, method in ipairs({"GetParent", "SetParent", "GetNumPoints", "GetPoint", "SetPoint", "ClearAllPoints",
-        "GetWidth", "GetHeight", "GetScale", "SetScale", "SetWidth", "SetHeight"}) do
+        "GetWidth", "GetHeight", "GetScale", "SetScale", "SetWidth", "SetHeight", "GetFrameLevel", "SetFrameLevel"}) do
         if type(frame[method]) ~= "function" then error("Native " .. name .. " lacks " .. method .. ".") end
     end
     local record = {frame = frame, name = name, parent = frame:GetParent(), target = target,
-        points = Points(frame), width = frame:GetWidth(), height = frame:GetHeight(), scale = frame:GetScale(),
+        points = Points(frame), level=frame:GetFrameLevel(), width = frame:GetWidth(), height = frame:GetHeight(), scale = frame:GetScale(),
         setParent = frame.SetParent, setPoint = frame.SetPoint, clear = frame.ClearAllPoints,
         setWidth = frame.SetWidth, setHeight = frame.SetHeight, setScale = frame.SetScale, anchored = anchored}
     record.pointCount = table.getn(record.points)
@@ -128,7 +128,7 @@ local function Restore(record)
         return false
     end
     if not Call(record.setParent, frame, record.parent) then restored = false end
-    -- Only our parent and anchor writes are leased. Native size/scale updates
+    -- Parent, anchors and our assigned frame level are leased. Native size/scale updates
     -- continue to own their fields; a foreign anchor must keep its geometry.
     if record.anchored and not record.foreignAnchors then
         if not Call(record.clear, frame) then restored = false end
@@ -136,6 +136,13 @@ local function Restore(record)
             local point = record.points[index]
             if not Call(record.setPoint, frame, point[1], point[2], point[3], point[4], point[5]) then restored = false end
         end
+    end
+    if record.assignedLevel then
+        local current=frame:GetFrameLevel()
+        if current==record.assignedLevel or current==record.level then
+            if not Call(frame.SetFrameLevel,frame,record.level) then restored=false end
+        else Failure("Native "..record.name.." has another frame-level owner.");restored=false end
+        if restored then record.assignedLevel=nil end
     end
     if record.visibilityTouched then
         if not Call(record.latestShown and record.show or record.hide, frame) then restored = false end
@@ -163,10 +170,11 @@ end
 local function Foreground(group)
     local art, frame = group.artwork, group.frame
     if not art.foreground then art.foreground = UI.CreateContainer(nil, frame) end
-    art.foreground:EnableMouse(false); art.foreground:SetAllPoints(frame)
+    if not art.foregroundReady then art.foreground:EnableMouse(false);art.foreground:SetAllPoints(frame);art.foreground:SetFrameStrata("MEDIUM");art.foregroundReady=true end
     local level = frame:GetFrameLevel()
     for _, record in ipairs(group.records or {}) do level = math.max(level, record.frame:GetFrameLevel()) end
-    art.foreground:SetFrameLevel(level + 4)
+    local wanted=math.max(level,group.decorationGroup and group.decorationGroup.level or 0)+4
+    if art.foregroundLevel~=wanted then art.foreground:SetFrameLevel(wanted);art.foregroundLevel=wanted end
     return art.foreground
 end
 local function ArtworkGeometry(texture, group, paint)
@@ -250,6 +258,14 @@ local function PaintArtwork(group, wanted)
     end
     local scene, failure = Layout.ResolveArtwork(group.id, group.preferences, group.width, group.height, shown, art.current)
     if not scene then error(failure) end
+    local merged=group.decorationGroup
+    if merged and merged.primary~=group then
+        scene.backingCount,scene.edgeCount,scene.frontCount,scene.gryphons=0,0,0,"none"
+    elseif merged then
+        Bars.Services.NativeDecorationLayout.ExtendGroup(scene,merged,value.nativeTextureScalePct,value.nativeBackground)
+    end
+    scene.regularCount=scene.backingCount+scene.edgeCount+scene.slotCount;scene.count=scene.regularCount+scene.frontCount
+    if art.foreground then Foreground(group) end
     if art.ready and SameArtwork(scene, art.committed) then return end
     local previous = art.hasCommitted and art.committed or art.off
     local savedThis, savedEvent, a1, a2, a3, a4, a5, a6, a7, a8, a9 = this, event, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9
@@ -410,6 +426,7 @@ end
 local function Lease(group)
     if group.leased then
         for _, record in ipairs(group.records) do
+            if record.assignedLevel and record.frame:GetFrameLevel()~=record.assignedLevel then error("Native "..record.name.." has another frame-level owner.") end
             if record.frame:GetParent() ~= record.target or record.anchored and
                 (record.frame.SetPoint ~= record.pointGuard or record.frame.ClearAllPoints ~= record.clearGuard) then
                 error("Native " .. record.name .. " has another layout owner.")
@@ -464,6 +481,11 @@ end
 local function Position(group)
     local definition, preferences = Layout.Definition(group.id), group.preferences
     for index, record in ipairs(group.records) do
+        local level=group.frame:GetFrameLevel()+1
+        if record.frame:GetFrameLevel()~=level then
+            record.assignedLevel=level
+            if record.frame:SetFrameLevel(level)==false then error("Native utility frame level was declined.") end
+        end
         if record.anchored then
             local x, y = 0, 0
             if group.id == "experience" then y = index == 2 and -13 or 0
@@ -676,6 +698,16 @@ end
 function Utility.SetFailureObserver(callback)
     if callback ~= nil and type(callback) ~= "function" then return false, "Expected a utility failure observer or nil." end
     failureObserver = callback; return true
+end
+function Utility.SetDecorationGroup(group, descriptor)
+    local previous=group.decorationGroup;group.decorationGroup=descriptor
+    local ok,reason=pcall(PaintArtwork,group,group.leased==true)
+    if not ok then
+        group.decorationGroup=previous
+        local restored,failure=pcall(PaintArtwork,group,group.leased==true)
+        return false,tostring(reason)..(not restored and " Restoration: "..tostring(failure) or "")
+    end
+    return true
 end
 function Utility.GetState() return state end
 local function Boundary(callback)

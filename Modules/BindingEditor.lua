@@ -40,7 +40,7 @@ Notify = function()
     if capture and capture.label then
         local label = state.command and ((Bars.Services.BarConfig.Name(state.barId))
             .. ", button " .. state.index) or "Click an action button"
-        capture.label:SetText(state.command and (label .. " â€” press a key. Escape clears this binding.") or "Click an action button to assign a key.")
+        capture.label:SetText(state.command and (label .. " - press a key or a side mouse button over an action icon. Escape clears this binding.") or "Click an action button to assign a key.")
     end
     if observer then
         ok, failure = Run(observer, state)
@@ -153,8 +153,7 @@ local function Choose(barId, index, button)
     state.failure, state.message = nil, "Button selected. Press its next key; the draft is shown immediately."
     return Notify()
 end
-local function KeyDownBody()
-    local key = arg1
+local function StageInput(key)
     if not state.editing or state.confirming then return end
     if key == "ESCAPE" then if state.command then BindingEditor.ClearSelection() end; return end
     if type(key) ~= "string" or key == "UNKNOWN" or key == "SHIFT" or key == "CTRL" or key == "ALT"
@@ -169,8 +168,16 @@ local function KeyDownBody()
     BindingEditor.StageKey(key)
 end
 local function KeyDown()
-    local ok, failure = Run(KeyDownBody)
+    local ok, failure = Run(StageInput,arg1)
     if not ok then Failure(failure) end
+end
+function BindingEditor.CaptureMouseButton(name)
+    local key=name == "MiddleButton" and "BUTTON3" or name == "Button4" and "BUTTON4" or name == "Button5" and "BUTTON5"
+    if not key then return false end
+    if state.editing and not state.confirming and state.command then
+        local ok,failure=Run(StageInput,key);if not ok then Failure(failure) end
+    end
+    return true
 end
 local function CreateCapture()
     if capture and capture.ready then return true end

@@ -143,9 +143,10 @@ local function Click()
     if BindingMode() then
         Appearance.SetChecked(this,this.rendered.current)
         this.mousePressed, this.mouseHeld = false, false
-        Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index)
+        if not Bars.Modules.BindingEditor.CaptureMouseButton(arg1) then Bars.Modules.BindingEditor.SelectButton(this, this.bar.id, this.index) end
         return
     end
+    if arg1 ~= "LeftButton" and arg1 ~= "RightButton" then return end
     if LayoutMode() then Appearance.SetChecked(this,this.rendered.current); Cancel(this); return end
     local button, mouseButton = this, arg1
     Appearance.SetChecked(button,button.rendered.current)
@@ -338,11 +339,11 @@ local function Create(owner)
         button.cooldown = UI.CreateModel(buttonName .. "Cooldown", button, "CooldownFrameTemplate")
         button.cooldown:SetAllPoints(button.icon); button.cooldown:Hide()
         Countdown("Attach", button)
-        button.hotkey = UI.CreateLabel(button, nil, "OVERLAY", "NumberFontNormalSmallGray")
+        button.hotkey = UI.CreateLabel(button.cooldownTextHolder, nil, "OVERLAY", "NumberFontNormalSmallGray")
         button.hotkey:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
         button.hotkey:SetWidth(32); button.hotkey:SetJustifyH("RIGHT")
         button.read, button.rendered = {}, {}; button.keyHeld, button.mouseHeld, button.mousePressed = false, false, false
-        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        button:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp", "Button4Up", "Button5Up")
         button:SetScript("OnClick", Click); button:SetScript("OnMouseDown", MouseDown); button:SetScript("OnMouseUp", MouseUp)
         button:SetScript("OnEnter", Enter); button:SetScript("OnLeave", Leave)
         if owner.kind == "pet" then
