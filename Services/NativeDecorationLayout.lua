@@ -19,6 +19,76 @@ local function Number(value, fallback, minimum, maximum)
     if type(value) ~= "number" or value - value ~= 0 then return fallback end
     return math.max(minimum, math.min(maximum, value))
 end
+Layout.OrnamentKeys = {"topOrnament", "topOrnamentScalePct", "topOrnamentX", "topOrnamentY",
+    "bottomOrnament", "bottomOrnamentScalePct", "bottomOrnamentX", "bottomOrnamentY"}
+for _, key in ipairs(Layout.OrnamentKeys) do table.insert(keys, key) end
+local ornamentPrefixes = {"topOrnament", "bottomOrnament"}
+function Layout.ResolveOrnaments(drawing, target)
+    for _, prefix in ipairs(ornamentPrefixes) do
+        target[prefix] = drawing[prefix] or "none"
+        target[prefix .. "ScalePct"] = Number(drawing[prefix .. "ScalePct"],100,25,500)
+        target[prefix .. "X"] = Number(drawing[prefix .. "X"],0,-1024,1024)
+        target[prefix .. "Y"] = Number(drawing[prefix .. "Y"],0,-1024,1024)
+    end
+end
+function Layout.OrnamentVisible(scene, index)
+    if index == 3 then return scene.topOrnament ~= nil and scene.topOrnament ~= "none" end
+    if index == 4 then return scene.bottomOrnament ~= nil and scene.bottomOrnament ~= "none" end
+    local kind = scene.gryphons or "none"
+    if kind == "none" then return false end
+    if kind == "left" then return index == 1 end
+    if kind == "right" then return index == 2 end
+    return index == 1 or index == 2
+end
+function Layout.OrnamentCount(scene)
+    local count=0
+    for index=1,4 do if Layout.OrnamentVisible(scene,index) then count=count+1 end end
+    return count
+end
+function Layout.OrnamentIndex(scene, ordinal)
+    for index=1,4 do
+        if Layout.OrnamentVisible(scene,index) then ordinal=ordinal-1;if ordinal==0 then return index end end
+    end
+end
+function Layout.HasOrnaments(scene) return Layout.OrnamentCount(scene)>0 end
+function Layout.Ornament(scene, index)
+    if not Layout.OrnamentVisible(scene,index) then return end
+    local side=index==1 and "left" or "right"
+    local native=scene.gryphons=="both" or scene.gryphons=="left" or scene.gryphons=="right"
+    local width,height,x,y,left,right,top,bottom,path
+    if index<=2 and native then
+        width,height=scene.gryphonSize,scene.gryphonSize
+        x=index==1 and scene.left-width+scene.gryphonOverlap or scene.right-scene.gryphonOverlap
+        y=scene.gryphonBottom-height
+        left,right,top,bottom=index==1 and 0 or 1,index==1 and 1 or 0,0,1
+        path=Layout.GryphonTexture
+    else
+        local catalog=BootyActionBars.Services.BarConfig.Ornaments
+        local definition,sprite,scale
+        if index<=2 then
+            definition=catalog.side[scene.gryphons]
+            sprite=catalog.sprites[definition[side]]
+            scale=scene.gryphonSize/128
+            height=definition.height*scale;width=height*sprite.width/sprite.height
+            x=index==1 and scene.left-width*.8 or scene.right-width*.2
+            y=scene.gryphonBottom-height
+        else
+            local prefix=index==3 and "topOrnament" or "bottomOrnament"
+            definition=catalog.centre[scene[prefix]];sprite=catalog.sprites[definition.sprite]
+            scale=scene[prefix .. "ScalePct"]/100
+            width=definition.width*scale;height=width*sprite.height/sprite.width
+            x=(scene.left+scene.right-width)/2+scene[prefix .. "X"]
+            y=(index==3 and scene.top-height+8*scale or scene.bottom-8*scale)-scene[prefix .. "Y"]
+        end
+        path,left,right,top,bottom=sprite.path,0,sprite.right,0,sprite.bottom
+        if index==2 and definition.mirrorRight then left,right=right,left end
+    end
+    if index<=2 then
+        x=x+(index==1 and scene.gryphonLeftX or scene.gryphonRightX)
+        y=y-(index==1 and scene.gryphonLeftY or scene.gryphonRightY)
+    end
+    return path,x,y,width,height,left,right,top,bottom
+end
 function Layout.ResolveBacking(left, top, width, height, scalePct, target)
     target = target or {}
     local scale = Number(scalePct, 100, 25, 500) / 100
@@ -89,6 +159,7 @@ function Layout.Resolve(drawing, count, target)
     target.gryphonRightX, target.gryphonRightY = drawing.gryphonRightX or 0, drawing.gryphonRightY or 0
     -- End caps meet the first row even when the grid contains several rows.
     target.gryphonBottom = size + extent + target.padBottom
+    Layout.ResolveOrnaments(drawing,target)
     Layout.ResolveBacking(target.innerLeft, target.innerTop, target.innerRight - target.innerLeft,
         target.innerBottom - target.innerTop, textureScale * 100, target)
     if not target.nativeBackground then target.backingCount = 0 end

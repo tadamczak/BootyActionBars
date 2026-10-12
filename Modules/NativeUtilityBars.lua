@@ -230,7 +230,7 @@ local function DrawArtwork(group, scene, repair, cleanup)
         local ok, reason = pcall(ArtworkPiece, group, scene, index, repair, cleanup)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
-    for index = 1, 2 do
+    for index = 1, 4 do
         local ok, reason = pcall(ArtworkPiece, group, scene, (scene.regularCount or 0) + index, repair, cleanup, index)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
@@ -250,7 +250,7 @@ end
 local function PaintArtwork(group, wanted)
     local art = group.artwork
     local value = group.preferences
-    local shown = wanted and (value.nativeBackground or value.nativeBorder or value.nativeSlotArtwork or value.gryphons ~= "none")
+    local shown = wanted and (value.nativeBackground or value.nativeBorder or value.nativeSlotArtwork or Bars.Services.NativeDecorationLayout.HasOrnaments(value))
     if not art and not shown then return end
     if not art then
         art = {pieces = {}, frontPieces = {}, current = {}, committed = {}, off = {id = group.id, shown = false, count = 0}}
@@ -261,6 +261,7 @@ local function PaintArtwork(group, wanted)
     local merged=group.decorationGroup
     if merged and merged.primary~=group then
         scene.backingCount,scene.edgeCount,scene.frontCount,scene.gryphons=0,0,0,"none"
+        scene.topOrnament,scene.bottomOrnament="none","none"
     elseif merged then
         Bars.Services.NativeDecorationLayout.ExtendGroup(scene,merged,value.nativeTextureScalePct,value.nativeBackground)
     end

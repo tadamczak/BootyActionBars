@@ -23,7 +23,8 @@ for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
         legacyHover[key] = "hover" .. suffix
     end
 end
-local sides = {"left", "right"}
+local sides = {"left", "right", "top", "bottom"}
+for _, key in ipairs(NativeLayout.OrnamentKeys) do table.insert(fields,key) end
 local function Style(view, drawing)
     local style = view.buttonAppearance
     if not style then
@@ -256,7 +257,7 @@ local function ShowArt(texture, shown, repair)
 end
 local function Foreground(view, scene, repair)
     local art = view.buttonDecorations
-    local shown = scene.gryphons ~= "none" or scene.nativeBorder
+    local shown = NativeLayout.HasOrnaments(scene) or scene.nativeBorder
     if shown and not art.foreground then
         art.foreground = UI.CreateContainer(nil, view.frame)
         art.foreground.appearanceInitialLevel = art.foreground:GetFrameLevel()
@@ -317,10 +318,9 @@ local function Piece(view, scene, kind, index, repair, cleanup)
         x, y, width, height, left, right, top, bottom, rotated = NativeLayout.Backing(scene, index)
     else
         side = sides[index]
-        shown = scene.gryphons == "both" or scene.gryphons == side
-        texture, parent, path = art[side], art.foreground, NativeLayout.GryphonTexture
-        width, height = scene.gryphonSize, scene.gryphonSize
-        left, right, top, bottom = side == "right" and 1 or 0, side == "right" and 0 or 1, 0, 1
+        shown = NativeLayout.OrnamentVisible(scene,index)
+        texture, parent = art[side], art.foreground
+        path,x,y,width,height,left,right,top,bottom = NativeLayout.Ornament(scene,index)
     end
     if shown and not texture then
         texture = UI.CreateTexture(parent, nil, side and "OVERLAY" or kind == "tile" and "BORDER" or "BACKGROUND")
@@ -338,7 +338,7 @@ local function Piece(view, scene, kind, index, repair, cleanup)
         paint.path, paint.width, paint.height = path, width, height
         paint.left, paint.right, paint.top, paint.bottom = left, right, top, bottom
         paint.rotated = rotated == true
-        if side then
+        if side and index<=2 and (scene.gryphons=="both" or scene.gryphons=="left" or scene.gryphons=="right") then
             paint.anchor, paint.x, paint.y = side == "left" and "BOTTOMRIGHT" or "BOTTOMLEFT",
                 side == "left" and scene.left + scene.gryphonOverlap or scene.right - scene.gryphonOverlap, -scene.gryphonBottom
             paint.x = paint.x + (side == "left" and scene.gryphonLeftX or scene.gryphonRightX)
@@ -370,8 +370,8 @@ local function CommitPaint(view, scene)
     for _, texture in ipairs(art.backings) do CommitPiece(texture) end
     for _, texture in ipairs(art.panels) do CommitPiece(texture) end
     for _, texture in ipairs(art.edges) do CommitPiece(texture) end
-    CommitPiece(art.left); CommitPiece(art.right)
-    if art.foreground and scene.gryphons ~= "none" then
+    CommitPiece(art.left); CommitPiece(art.right); CommitPiece(art.top); CommitPiece(art.bottom)
+    if art.foreground and (NativeLayout.HasOrnaments(scene) or scene.nativeBorder) then
         art.foreground.appearanceCommittedLevel, art.foreground.appearanceCommittedStrata = scene.level, scene.strata
     end
 end
@@ -382,7 +382,7 @@ local function DrawScene(view, scene, repair, cleanup)
     local ok, reason = pcall(Foreground, view, scene, repair)
     if not ok then if not cleanup then error(reason) end; failure = reason end
     if view.buttonDecorations.foreground then
-        ok, reason = pcall(ShowArt, view.buttonDecorations.foreground, scene.gryphons ~= "none" or scene.nativeBorder, repair)
+        ok, reason = pcall(ShowArt, view.buttonDecorations.foreground, NativeLayout.HasOrnaments(scene) or scene.nativeBorder, repair)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
     local art = view.buttonDecorations
@@ -398,7 +398,7 @@ local function DrawScene(view, scene, repair, cleanup)
         ok, reason = pcall(Piece, view, scene, "edge", index, repair, cleanup)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
-    for index = 1, 2 do
+    for index = 1, 4 do
         ok, reason = pcall(Piece, view, scene, "gryphon", index, repair, cleanup)
         if not ok then if not cleanup then error(reason) end; failure = failure or reason end
     end
@@ -407,7 +407,7 @@ end
 local function Decorations(view, style, repair)
     local art = view.buttonDecorations
     local mergedChild = view.mergeHost ~= nil and view.mergeHost ~= view
-    if not art and (mergedChild or not style.nativeBackground and not style.nativeBorder and not style.nativeSlotArtwork and style.gryphons == "none") then return end
+    if not art and (mergedChild or not style.nativeBackground and not style.nativeBorder and not style.nativeSlotArtwork and not NativeLayout.HasOrnaments(style)) then return end
     local buttons = view.layoutButtons or view.buttons
     if not art then
         art = {panels = {}, edges = {}, backings = {}, current = {}, committed = {}, off = {}}
@@ -420,10 +420,11 @@ local function Decorations(view, style, repair)
     local group=view.decorationGroup
     if not mergedChild and group and group.primary~=view then
         scene.nativeBackground,scene.nativeBorder,scene.gryphons,scene.backingCount=false,false,"none",0
+        scene.topOrnament,scene.bottomOrnament="none","none"
     elseif not mergedChild and group then
         NativeLayout.ExtendGroup(scene,group,style.nativeTextureScalePct,scene.nativeBackground)
     end
-    if scene.gryphons ~= "none" or scene.nativeBorder then
+    if NativeLayout.HasOrnaments(scene) or scene.nativeBorder then
         scene.strata, scene.level = "MEDIUM", math.max(view.frame:GetFrameLevel(),group and group.level or 0)
         for _, button in ipairs(buttons) do
             scene.level = math.max(scene.level, button:GetFrameLevel(), button.cooldown:GetFrameLevel())

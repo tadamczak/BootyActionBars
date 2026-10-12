@@ -373,16 +373,23 @@ function Appearance.Create(parent, context)
     local nativeBackground = Checkbox("nativeSlotArtwork", "Native button background")
     UI.AttachTooltip(nativeBackground, "Native button background", "Show native recessed slot artwork independently from the bar background, behind occupied and empty buttons.")
     Slider("nativeButtonScalePct", "Button texture scale (%)", 25, 500)
+    Section("Side ornaments")
     block = "gryphons"
-    Choice("gryphons", "Gryphons", {{value = "none", text = "None"}, {value = "left", text = "Left"},
-        {value = "right", text = "Right"}, {value = "both", text = "Both"}})
-    Slider("gryphonScalePct", "Gryphon scale (%)", 25, 500)
+    Choice("gryphons", "Side ornament", Bars.Services.BarConfig.Ornaments.sideChoices)
+    Slider("gryphonScalePct", "Side ornament scale (%)", 25, 500)
     block = "leftGryphon"
-    Slider("gryphonLeftX", "Left gryphon horizontal", -256, 256)
-    Slider("gryphonLeftY", "Left gryphon vertical", -256, 256)
+    Slider("gryphonLeftX", "Left ornament horizontal", -256, 256)
+    Slider("gryphonLeftY", "Left ornament vertical", -256, 256)
     block = "rightGryphon"
-    Slider("gryphonRightX", "Right gryphon horizontal", -256, 256)
-    Slider("gryphonRightY", "Right gryphon vertical", -256, 256)
+    Slider("gryphonRightX", "Right ornament horizontal", -256, 256)
+    Slider("gryphonRightY", "Right ornament vertical", -256, 256)
+    for _, item in ipairs({{"topOrnament", "Top ornament"}, {"bottomOrnament", "Bottom ornament"}}) do
+        Section(item[2]); block = item[1]
+        Choice(item[1], item[2], Bars.Services.BarConfig.Ornaments.centreChoices)
+        Slider(item[1] .. "ScalePct", "Scale (%)", 25, 500)
+        Slider(item[1] .. "X", "Horizontal position", -1024, 1024)
+        Slider(item[1] .. "Y", "Vertical position", -1024, 1024)
+    end
     if not context.OnlyDecoration then
     Section("Range colors"); Color("rangeIn", "In range"); Color("rangeOut", "Out of range")
     Section("Hover")

@@ -10,6 +10,7 @@ local definitions = {
 }
 local fields = {shown = true, x = true, y = true, scalePct = true, columns = true, spacing = true, nativeTexture = true}
 Utility.StyleKeys = {"nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
+for _, key in ipairs(BootyActionBars.Services.BarConfig.Ornaments.keys) do table.insert(Utility.StyleKeys,key) end
 for _, key in ipairs(Utility.StyleKeys) do fields[key] = true end
 -- Separate starting rows keep newly enabled groups usable before their first drag.
 local positions = {experience = {0, -180}, keyring = {-290, -120}, latency = {-250, -120}, bags = {-110, -120}, micro = {150, -120}}
@@ -117,6 +118,8 @@ Utility.ArtworkFields = {"id", "shown", "columns", "spacing", "width", "height",
     "padLeft", "padRight", "padTop", "padBottom", "backingLeft", "backingTop", "backingWidth", "backingHeight",
     "backingColumns", "backingRows", "backingCount", "backingRotated", "backingStepX", "backingStepY",
     "edgeCount", "slotCount", "slotWidth", "slotHeight", "slotPadding", "cellWidth", "cellHeight", "gryphons", "gryphonSize", "gryphonOverlap", "frontCount", "regularCount", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
+for _, key in ipairs(BootyActionBars.Services.BarConfig.Ornaments.keys) do table.insert(Utility.ArtworkFields,key) end
+table.insert(Utility.ArtworkFields,"gryphonBottom")
 function Utility.ResolveArtwork(id, record, width, height, shown, target)
     if not Utility.SupportsNativeTexture(id) or type(record) ~= "table" or type(shown) ~= "boolean"
         or not Utility.ValidValue(id, "columns", record.columns) or not Utility.ValidValue(id, "spacing", record.spacing)
@@ -149,7 +152,9 @@ function Utility.ResolveArtwork(id, record, width, height, shown, target)
     target.gryphonSize, target.gryphonOverlap = 128 * (record.gryphonScalePct or 100) / 100, 32 * (record.gryphonScalePct or 100) / 100
     target.gryphonLeftX, target.gryphonLeftY = record.gryphonLeftX or 0, record.gryphonLeftY or 0
     target.gryphonRightX, target.gryphonRightY = record.gryphonRightX or 0, record.gryphonRightY or 0
-    target.frontCount = target.gryphons == "both" and 2 or target.gryphons ~= "none" and 1 or 0
+    target.gryphonBottom = target.cellHeight + target.padBottom
+    native.ResolveOrnaments(record,target)
+    target.frontCount = native.OrnamentCount(target)
     target.regularCount = target.backingCount + target.edgeCount + target.slotCount
     target.count = target.regularCount + target.frontCount
     if target.backingCount > native.MaxBackingPieces then return nil, "Native utility artwork exceeds its supported grid." end
@@ -184,13 +189,9 @@ function Utility.ArtworkPiece(scene, index, target)
             target.left, target.right, target.top, target.bottom = 53 / 256, 84 / 256, 219 / 256, 250 / 256
         else target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom = native.Edge(cell, piece) end
     else
-        local side = scene.gryphons == "right" and "right" or index == scene.count and scene.gryphons == "both" and "right" or "left"
-        target.path, target.foreground = native.GryphonTexture, true
-        target.width, target.height = scene.gryphonSize, scene.gryphonSize
-        target.x = side == "left" and scene.left - scene.gryphonSize + scene.gryphonOverlap or scene.right - scene.gryphonOverlap
-        target.x = target.x + (side == "left" and scene.gryphonLeftX or scene.gryphonRightX)
-        target.y = scene.cellHeight + scene.padBottom - scene.gryphonSize - (side == "left" and scene.gryphonLeftY or scene.gryphonRightY)
-        target.left, target.right, target.top, target.bottom = side == "right" and 1 or 0, side == "right" and 0 or 1, 0, 1
+        local ornament = native.OrnamentIndex(scene,index-scene.regularCount)
+        target.foreground = true
+        target.path,target.x,target.y,target.width,target.height,target.left,target.right,target.top,target.bottom = native.Ornament(scene,ornament)
     end
     return target
 end

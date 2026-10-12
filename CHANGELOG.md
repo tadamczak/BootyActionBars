@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-dev.44 — 2026-10-12
+
+- Choose side, top and bottom ornaments independently: native/new gryphons, statues, lions, banners, drapery, crests and crystals.
+- Scale and position each group; retain native gryphon settings, profiles and one decoration owner per merged group.
+- Requires the matching BootyLib ornament assets.
+
 ## 0.1.0-dev.43 — 2026-10-11
 
 - Add icon zoom, independent click effects and separate left/right gryphon offsets; place Unlock beside Keybindings.

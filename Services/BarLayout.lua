@@ -85,9 +85,15 @@ Define("nativeBorder", "boolean", false, nil, nil, 2)
 Define("nativeTextureScalePct", "integer", 100, 25, 500, 2)
 Define("nativeBorderScalePct", "integer", 100, 25, 500, 2)
 Define("nativeButtonScalePct", "integer", 100, 25, 500, 2)
-Define("gryphons", "enum", "none", nil, nil, 2, nil, {none = true, left = true, right = true, both = true})
+Define("gryphons", "enum", "none", nil, nil, 2, nil, Config.Ornaments.sideValues)
 Define("gryphonScalePct", "integer", 100, 25, 500, 2)
 for _, key in ipairs({"gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}) do Define(key, "integer", 0, -256, 256, 2) end
+for _, prefix in ipairs({"topOrnament", "bottomOrnament"}) do
+    Define(prefix, "enum", "none", nil, nil, 2, nil, Config.Ornaments.centreValues)
+    Define(prefix .. "ScalePct", "integer", 100, 25, 500, 2)
+    Define(prefix .. "X", "integer", 0, -1024, 1024, 2)
+    Define(prefix .. "Y", "integer", 0, -1024, 1024, 2)
+end
 local colors = {rangeIn = {1,1,1,1}, rangeOut = {1,1,1,1}, hover = {1,1,1,1},
     hoverBackground = {1,1,1,1}, hoverShadow = {1,1,1,1}, hoverOutline = {1,1,1,1},
     border = {1,0.78,0.2,1}, cooldown = {1,1,1,1}, cooldownUnder10 = {1,0.8,0.2,1}, cooldownUnder5 = {1,0.2,0.2,1},
