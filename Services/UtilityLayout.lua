@@ -9,7 +9,7 @@ local definitions = {
     micro = {label = "Micro Menu", names = {"CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton", "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton"}, count = 8, width = 29, height = 58, visualWidth = 26, visualHeight = 58 * 41 / 64 - 3, offsetX = -1.5, offsetY = 58 * 23 / 64 + 1.5, columns = 8},
 }
 local fields = {shown = true, x = true, y = true, scalePct = true, columns = true, spacing = true, nativeTexture = true}
-Utility.StyleKeys = {"nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
+Utility.StyleKeys = {"barBorderTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork", "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}
 for _, key in ipairs(BootyActionBars.Services.BarConfig.Ornaments.keys) do table.insert(Utility.StyleKeys,key) end
 for _, key in ipairs(Utility.StyleKeys) do fields[key] = true end
 -- Separate starting rows keep newly enabled groups usable before their first drag.
@@ -172,7 +172,8 @@ function Utility.ArtworkPiece(scene, index, target)
         target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom, target.rotated = native.Backing(scene, index)
     elseif index <= scene.backingCount + scene.edgeCount then
         target.path = native.Texture
-        target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom = native.Edge(scene, index - scene.backingCount)
+        target.x, target.y, target.width, target.height, target.left, target.right, target.top, target.bottom, target.path = native.Edge(scene, index - scene.backingCount)
+        target.path = target.path or native.Texture
     elseif index <= scene.backingCount + scene.edgeCount + scene.slotCount then
         local part = index - scene.backingCount - scene.edgeCount - 1
         local slot, piece = math.floor(part / 9), math.mod(part, 9)

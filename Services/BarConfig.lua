@@ -90,6 +90,12 @@ ornaments.sprites["v3-screen2-gryphon-right"] = {path="Interface\\AddOns\\BootyL
 ornaments.sprites["v2-screen1-decoration-statue"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v2-screen1-decoration-statue",width=242,height=188,right=0.9453125,bottom=0.734375}
 ornaments.sprites["v4-screen3-decoration-bottom-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v4-screen3-decoration-bottom-left",width=355,height=239,right=0.693359375,bottom=0.93359375}
 ornaments.sprites["v4-screen3-decoration-bottom-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v4-screen3-decoration-bottom-right",width=353,height=238,right=0.689453125,bottom=0.9296875}
+ornaments.sprites["v6-screen1-action-bottom-wing-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen1-action-bottom-wing-left",width=198,height=55,right=0.7734375,bottom=0.859375}
+ornaments.sprites["v6-screen1-action-bottom-wing-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen1-action-bottom-wing-right",width=196,height=50,right=0.765625,bottom=0.78125}
+ornaments.sprites["v6-screen3-action-ornament-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen3-action-ornament-left",width=212,height=195,right=0.828125,bottom=0.76171875}
+ornaments.sprites["v6-screen3-action-ornament-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen3-action-ornament-right",width=212,height=216,right=0.828125,bottom=0.84375}
+ornaments.sprites["v6-screen3-xp-ornament-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen3-xp-ornament-left",width=108,height=69,right=0.84375,bottom=0.5390625}
+ornaments.sprites["v6-screen3-xp-ornament-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen3-xp-ornament-right",width=85,height=67,right=0.6640625,bottom=0.5234375}
 ornaments.sprites["v2-previous-decoration-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v2-previous-decoration-left",width=115,height=137,right=0.8984375,bottom=0.53515625}
 ornaments.sprites["v2-previous-decoration-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v2-previous-decoration-right",width=115,height=137,right=0.8984375,bottom=0.53515625}
 ornaments.sprites["v3-screen1-decoration-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v3-screen1-decoration-left",width=186,height=189,right=0.7265625,bottom=0.73828125}
@@ -104,6 +110,11 @@ ornaments.sprites["v4-screen2-decoration-side-left"] = {path="Interface\\AddOns\
 ornaments.sprites["v4-screen2-decoration-side-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v4-screen2-decoration-side-right",width=139,height=167,right=0.54296875,bottom=0.65234375}
 ornaments.sprites["v4-screen2-decoration-bottom-left"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v4-screen2-decoration-bottom-left",width=234,height=137,right=0.9140625,bottom=0.53515625}
 ornaments.sprites["v4-screen2-decoration-bottom-right"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v4-screen2-decoration-bottom-right",width=230,height=136,right=0.8984375,bottom=0.53125}
+ornaments.sprites["v6-screen1-action-ornament-top"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen1-action-ornament-top",width=128,height=64,right=1,bottom=1}
+ornaments.sprites["v6-screen1-action-ornament-bottom"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen1-action-ornament-bottom",width=182,height=54,right=0.7109375,bottom=0.84375}
+ornaments.sprites["v6-screen3-action-ornament-top"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen3-action-ornament-top",width=429,height=92,right=0.837890625,bottom=0.71875}
+ornaments.sprites["v6-screen1-chat-ornament-top"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen1-chat-ornament-top",width=59,height=118,right=0.921875,bottom=0.921875}
+ornaments.sprites["v6-screen2-chat-ornament-top"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v6-screen2-chat-ornament-top",width=44,height=23,right=0.6875,bottom=0.71875}
 ornaments.sprites["v5-moon-ornament-top"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v5-moon-ornament-top",width=143,height=49,right=0.55859375,bottom=0.765625}
 ornaments.sprites["v5-moon-ornament-bottom"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v5-moon-ornament-bottom",width=456,height=85,right=0.890625,bottom=0.6640625}
 ornaments.sprites["v4-screen3-decoration-top-centre"] = {path="Interface\\AddOns\\BootyLib\\Assets\\Ornaments\\v4-screen3-decoration-top-centre",width=767,height=202,right=0.7490234375,bottom=0.7890625}
@@ -125,6 +136,12 @@ ornaments.side["statue"] = {left="v2-screen1-decoration-statue",right="v2-screen
 table.insert(ornaments.sideChoices,{value="statue",text="Statue with pedestal"}); ornaments.sideValues["statue"]=true
 ornaments.side["lions"] = {left="v4-screen3-decoration-bottom-left",right="v4-screen3-decoration-bottom-right",height=128,mirrorLeft=false,mirrorRight=false}
 table.insert(ornaments.sideChoices,{value="lions",text="Lions with drapery"}); ornaments.sideValues["lions"]=true
+ornaments.side["azureWings"] = {left="v6-screen1-action-bottom-wing-left",right="v6-screen1-action-bottom-wing-right",height=128,mirrorLeft=false,mirrorRight=false}
+table.insert(ornaments.sideChoices,{value="azureWings",text="Azure crystal wings"}); ornaments.sideValues["azureWings"]=true
+ornaments.side["natureHeads"] = {left="v6-screen3-action-ornament-left",right="v6-screen3-action-ornament-right",height=128,mirrorLeft=false,mirrorRight=false}
+table.insert(ornaments.sideChoices,{value="natureHeads",text="Nature animal heads"}); ornaments.sideValues["natureHeads"]=true
+ornaments.side["natureXP"] = {left="v6-screen3-xp-ornament-left",right="v6-screen3-xp-ornament-right",height=64,mirrorLeft=false,mirrorRight=false}
+table.insert(ornaments.sideChoices,{value="natureXP",text="Nature XP ornaments"}); ornaments.sideValues["natureXP"]=true
 ornaments.side["bannersSteel"] = {left="v2-previous-decoration-left",right="v2-previous-decoration-right",height=128,mirrorLeft=false,mirrorRight=false}
 table.insert(ornaments.sideChoices,{value="bannersSteel",text="Side banners - steel"}); ornaments.sideValues["bannersSteel"]=true
 ornaments.side["bannersSpiked"] = {left="v3-screen1-decoration-left",right="v3-screen1-decoration-right",height=128,mirrorLeft=false,mirrorRight=false}
@@ -139,6 +156,16 @@ ornaments.side["bannersCloth"] = {left="v4-screen2-decoration-side-left",right="
 table.insert(ornaments.sideChoices,{value="bannersCloth",text="Side banners - cloth tails"}); ornaments.sideValues["bannersCloth"]=true
 ornaments.side["drapery"] = {left="v4-screen2-decoration-bottom-left",right="v4-screen2-decoration-bottom-right",height=128,mirrorLeft=false,mirrorRight=false}
 table.insert(ornaments.sideChoices,{value="drapery",text="Side drapery"}); ornaments.sideValues["drapery"]=true
+ornaments.centre["azureUpper"] = {sprite="v6-screen1-action-ornament-top",width=100}
+table.insert(ornaments.centreChoices,{value="azureUpper",text="Azure crystal - upper"}); ornaments.centreValues["azureUpper"]=true
+ornaments.centre["azureLower"] = {sprite="v6-screen1-action-ornament-bottom",width=120}
+table.insert(ornaments.centreChoices,{value="azureLower",text="Azure crystal - lower"}); ornaments.centreValues["azureLower"]=true
+ornaments.centre["natureMoon"] = {sprite="v6-screen3-action-ornament-top",width=240}
+table.insert(ornaments.centreChoices,{value="natureMoon",text="Nature moon and vines"}); ornaments.centreValues["natureMoon"]=true
+ornaments.centre["chatCrystal"] = {sprite="v6-screen1-chat-ornament-top",width=65}
+table.insert(ornaments.centreChoices,{value="chatCrystal",text="Tall azure crystal"}); ornaments.centreValues["chatCrystal"]=true
+ornaments.centre["chatGold"] = {sprite="v6-screen2-chat-ornament-top",width=60}
+table.insert(ornaments.centreChoices,{value="chatGold",text="Small gold crest"}); ornaments.centreValues["chatGold"]=true
 ornaments.centre["moonUpper"] = {sprite="v5-moon-ornament-top",width=150}
 table.insert(ornaments.centreChoices,{value="moonUpper",text="Moon - upper"}); ornaments.centreValues["moonUpper"]=true
 ornaments.centre["moonLower"] = {sprite="v5-moon-ornament-bottom",width=280}

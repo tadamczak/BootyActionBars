@@ -371,7 +371,8 @@ function Appearance.Create(parent, context)
     local textureScale = Slider("nativeTextureScalePct", "Background scale (%)", 25, 500)
     UI.AttachTooltip(textureScale, "Background scale (%)", "Scale only the native stone background.")
     block = "nativeBorder"
-    Checkbox("nativeBorder", "Native bar border")
+    Checkbox("nativeBorder", "Show bar border")
+    Choice("barBorderTexture", "Bar border texture", UI.ExtractedTextures.actionChoices)
     Slider("nativeBorderScalePct", "Border scale (%)", 25, 500)
     block = "nativeButtons"
     local nativeBackground = Checkbox("nativeSlotArtwork", "Native button background")

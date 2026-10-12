@@ -9,7 +9,7 @@ Layout.SlotUV = {47 / 256, 90 / 256, 213 / 256, 1}
 Layout.BackingUV = {56 / 256, 248 / 256, 94 / 256, 126 / 256}
 Layout.BackingPixels = {192, 32}
 Layout.MaxBackingPieces = 4608 -- Expanded range: measured worst is 4389 pieces for 120 slots; lazy pooled regions.
-local keys = {"count", "columns", "buttonSize", "spacing", "nativeTexture", "nativeBackground", "nativeBorder", "slotArtwork", "gryphons",
+local keys = {"barBorderTexture", "count", "columns", "buttonSize", "spacing", "nativeTexture", "nativeBackground", "nativeBorder", "slotArtwork", "gryphons",
     "textureScale", "buttonScale", "gryphonScale", "width", "height", "tileSize", "socketSize", "step", "left", "top", "right", "bottom",
     "innerLeft", "innerTop", "innerRight", "innerBottom", "padLeft", "padRight", "padTop", "padBottom",
     "gryphonSize", "gryphonOverlap", "gryphonBottom", "level", "strata", "backingLeft", "backingTop",
@@ -24,6 +24,7 @@ Layout.OrnamentKeys = {"sideOrnamentLeft","sideOrnamentRight","topOrnament", "to
 for _, key in ipairs(Layout.OrnamentKeys) do table.insert(keys, key) end
 local ornamentPrefixes = {"topOrnament", "bottomOrnament"}
 function Layout.ResolveOrnaments(drawing, target)
+    target.barBorderTexture=drawing.barBorderTexture or "native"
     target.sideOrnamentLeft,target.sideOrnamentRight=drawing.sideOrnamentLeft,drawing.sideOrnamentRight
     for _, prefix in ipairs(ornamentPrefixes) do
         target[prefix] = drawing[prefix] or "none"
@@ -202,6 +203,23 @@ end
 function Layout.Edge(scene, index)
     local left, top, right, bottom = scene.left, scene.top, scene.right, scene.bottom
     local innerLeft, innerTop, innerRight, innerBottom = scene.innerLeft, scene.innerTop, scene.innerRight, scene.innerBottom
+    local custom = BootyLib.UI.Components.ExtractedTextures.actionBorders[scene.barBorderTexture]
+    if custom and scene.padTop>0 then
+        local part=custom.parts[index]
+        local x,y,w,h
+        if index==1 then x,y,w,h=left,top,scene.padLeft,scene.padTop
+        elseif index==2 then x,y,w,h=innerLeft,top,innerRight-innerLeft,scene.padTop
+        elseif index==3 then x,y,w,h=innerRight,top,scene.padRight,scene.padTop
+        elseif index==4 then x,y,w,h=left,innerTop,scene.padLeft,innerBottom-innerTop
+        elseif index==5 then x,y,w,h=innerRight,innerTop,scene.padRight,innerBottom-innerTop
+        elseif index==6 then x,y,w,h=left,innerBottom,scene.padLeft,scene.padBottom
+        elseif index==7 then x,y,w,h=innerLeft,innerBottom,innerRight-innerLeft,scene.padBottom
+        elseif index==8 then x,y,w,h=innerRight,innerBottom,scene.padRight,scene.padBottom end
+        local u,v=1,1
+        if index==2 or index==7 then u=w/(part.width*h/part.height)
+        elseif index==4 or index==5 then v=h/(part.height*w/part.width) end
+        return x,y,w,h,0,u,0,v,part.path
+    end
     -- Coherent six-pixel bevel from the same complete native socket. No
     -- neighbouring socket connector, pager, or bag engraving enters the frame.
     if index == 1 then return left, top, scene.padLeft, scene.padTop, 47 / 256, 53 / 256, 213 / 256, 219 / 256

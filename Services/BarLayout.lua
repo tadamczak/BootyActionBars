@@ -83,6 +83,9 @@ Define("nativeTextureBackground", "boolean", true, nil, nil, 2)
 Define("nativeSlotArtwork", "boolean", false, nil, nil, 2)
 Define("nativeBackground", "boolean", false, nil, nil, 2)
 Define("nativeBorder", "boolean", false, nil, nil, 2)
+local borderValues = {native=true}
+for _, choice in ipairs(BootyLib.UI.Components.ExtractedTextures.actionChoices) do borderValues[choice.value]=true end
+Define("barBorderTexture", "enum", "native", nil, nil, 2, nil, borderValues)
 Define("nativeTextureScalePct", "integer", 100, 25, 500, 2)
 Define("nativeBorderScalePct", "integer", 100, 25, 500, 2)
 Define("nativeButtonScalePct", "integer", 100, 25, 500, 2)

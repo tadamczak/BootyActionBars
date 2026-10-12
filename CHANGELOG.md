@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-dev.46 — 2026-10-12
+
+- Select seven extracted bar border textures; add azure wings/crystals, nature heads, XP ornaments and moon with existing scale and position controls.
+
 ## 0.1.0-dev.45 — 2026-10-12
 
 - Separate side ornament style from Left/Right visibility checkboxes, preserving older native selections.

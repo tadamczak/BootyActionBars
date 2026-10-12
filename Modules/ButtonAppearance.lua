@@ -4,7 +4,7 @@ local Appearance = {}
 Bars.Modules.ButtonAppearance = Appearance
 local NativeLayout = Bars.Services.NativeDecorationLayout
 local fields = {"hoverMode", "hoverSize", "hoverBackgroundShadow", "hoverBorderShadow", "hoverBorder", "hoverBorderSize", "hoverRadius",
-    "showButtonBorder", "borderSize", "borderRadius", "buttonRadius", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
+    "barBorderTexture", "showButtonBorder", "borderSize", "borderRadius", "buttonRadius", "buttonBackground", "nativeTexture", "nativeBackground", "nativeBorder", "nativeSlotArtwork",
     "nativeTextureScalePct", "nativeBorderScalePct", "nativeButtonScalePct", "gryphons", "gryphonScalePct", "gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY", "columns", "spacing", "iconZoomPct", "clickNative", "clickHighlight", "clickBorder", "clickBorderSize", "clickHighlightSize", "clickHighlightRadius", "clickOutlineSize", "clickOutlineRadius"}
 for _, prefix in ipairs({"rangeIn", "rangeOut", "hover", "border", "titleText", "hotkeyText", "countText", "macroText", "clickHighlight", "clickOutline"}) do
     for _, channel in ipairs({"R", "G", "B", "A"}) do table.insert(fields, prefix .. channel) end
@@ -312,7 +312,8 @@ local function Piece(view, scene, kind, index, repair, cleanup)
     elseif kind == "edge" then
         shown, texture = scene.nativeBorder, art.edges[index]
         parent = art.foreground
-        x, y, width, height, left, right, top, bottom = NativeLayout.Edge(scene, index)
+        x, y, width, height, left, right, top, bottom, path = NativeLayout.Edge(scene, index)
+        path = path or NativeLayout.Texture
     elseif kind == "backing" then
         shown, texture = scene.nativeBackground and index <= scene.backingCount, art.backings[index]
         x, y, width, height, left, right, top, bottom, rotated = NativeLayout.Backing(scene, index)
