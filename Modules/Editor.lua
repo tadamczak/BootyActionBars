@@ -339,6 +339,7 @@ local function SetAppearance(id, key, value)
         record.x, record.y = x, y
     end
     record[key] = value
+    if key=="gryphons" then Layout.ApplyLegacySideChoice(record,value) end
     if key == "labelFontSize" then for _, prefix in ipairs({"hotkey","count","macro"}) do record[prefix .. "FontSize"] = value end end
     if key == "hoverMode" then
         record.hoverBackgroundShadow, record.hoverBorderShadow, record.hoverBorder = value == "shadow", value == "default", value == "border"
@@ -500,6 +501,7 @@ local function SetGlobalPatch(patch)
     for key, value in pairs(patch) do
         if not Layout.ExplicitKeys[key] and value == Layout.DefaultValue(key) then proposed[key] = nil else proposed[key] = value end
     end
+    Layout.ApplyLegacySideChoice(proposed,patch.gryphons)
     local function Owned()
         local owner = Owner()
         if owner ~= store or store.barLayouts ~= layouts or store.globalLayout ~= global

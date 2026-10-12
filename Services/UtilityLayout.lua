@@ -63,6 +63,7 @@ function Utility.Read(saved, id)
         end
         record[key] = value
     end
+    BootyActionBars.Services.BarLayout.ResolveSideSelection(record,source)
     return record
 end
 function Utility.ReadEffective(store, id, candidate)
@@ -85,6 +86,7 @@ function Utility.Patch(saved, id, key, value)
     local record, failure = Utility.Read(saved, id)
     if not record then return nil, failure end
     record[key] = value
+    if key=="gryphons" then BootyActionBars.Services.BarLayout.ApplyLegacySideChoice(record,value) end
     if key == "nativeTexture" then record.nativeBackground, record.nativeBorder, record.nativeSlotArtwork = value, value, value end
     return record
 end

@@ -260,7 +260,11 @@ function Appearance.Create(parent, context)
         label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0); label:SetHeight(14)
         local _, control = UI.CreateChoiceField({parent = row, x = 0, y = -18, label = "", initialText = options[1].text,
             width = 180, height = table.getn(options) * 22 + 14, firstY = -7, step = 22, buttonOffset = 0,
-            labelValue = true, choices = options, getValue = function() local layout = context.GetLayout(); return layout and layout[key] end,
+            labelValue = true, choices = options, getValue = function()
+                local layout = context.GetLayout();local value=layout and layout[key]
+                if key=="gryphons" and (value=="left" or value=="right") then return "both" end
+                return value
+            end,
             onSelect = function(value) Complete(context.SetPreference(key, value)) end,
             onChanged = function() view:Refresh(context.GetLayout()) end})
         row.kind, row.control, row.key, row.label = "choice", control, key, label
@@ -376,6 +380,8 @@ function Appearance.Create(parent, context)
     Section("Side ornaments")
     block = "gryphons"
     Choice("gryphons", "Side ornament", Bars.Services.BarConfig.Ornaments.sideChoices)
+    Checkbox("sideOrnamentLeft", "Left")
+    Checkbox("sideOrnamentRight", "Right")
     Slider("gryphonScalePct", "Side ornament scale (%)", 25, 500)
     block = "leftGryphon"
     Slider("gryphonLeftX", "Left ornament horizontal", -256, 256)
@@ -465,7 +471,9 @@ function Appearance.Create(parent, context)
         end
         for key, check in pairs(self.checks) do check:SetChecked(layout[key] and 1 or nil); UI.Settings.SetCheckboxEnabled(check, context.IsAvailable()) end
         for key, choice in pairs(self.choices) do
-            for _, option in ipairs(choice.options) do if option.value == layout[key] then choice.control.label:SetText(option.text) end end
+            local value=layout[key]
+            if key=="gryphons" and (value=="left" or value=="right") then value="both" end
+            for _, option in ipairs(choice.options) do if option.value == value then choice.control.label:SetText(option.text) end end
             UI.SetButtonEnabled(choice.control, context.IsAvailable())
         end
         if self.gameDefaults then UI.SetButtonEnabled(self.gameDefaults, context.IsAvailable()) end

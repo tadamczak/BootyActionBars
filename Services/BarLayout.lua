@@ -18,6 +18,7 @@ Layout.ColorGroups = {"rangeIn", "rangeOut", "hover", "hoverBackground", "hoverS
 -- These values have legacy fallbacks; explicit false/default values must not
 -- disappear from sparse saves and reactivate an older preference.
 Layout.ExplicitKeys = {nativeSlotArtwork = true, nativeBackground = true, nativeBorder = true,
+    sideOrnamentLeft = true, sideOrnamentRight = true,
     nativeButtonScalePct = true, nativeBorderScalePct = true, hoverBackgroundShadow = true, hoverBorderShadow = true, hoverBorder = true}
 for _, key in ipairs({"hotkeyFontSize","countFontSize","macroFontSize"}) do Layout.ExplicitKeys[key]=true end
 for _, prefix in ipairs({"hoverBackground", "hoverShadow", "hoverOutline"}) do
@@ -87,6 +88,8 @@ Define("nativeBorderScalePct", "integer", 100, 25, 500, 2)
 Define("nativeButtonScalePct", "integer", 100, 25, 500, 2)
 Define("gryphons", "enum", "none", nil, nil, 2, nil, Config.Ornaments.sideValues)
 Define("gryphonScalePct", "integer", 100, 25, 500, 2)
+Define("sideOrnamentLeft", "boolean", true, nil, nil, 2)
+Define("sideOrnamentRight", "boolean", true, nil, nil, 2)
 for _, key in ipairs({"gryphonLeftX", "gryphonLeftY", "gryphonRightX", "gryphonRightY"}) do Define(key, "integer", 0, -256, 256, 2) end
 for _, prefix in ipairs({"topOrnament", "bottomOrnament"}) do
     Define(prefix, "enum", "none", nil, nil, 2, nil, Config.Ornaments.centreValues)
@@ -194,6 +197,7 @@ local function NativeSlots(record)
     return record ~= nil and record.nativeTexture == true and record.nativeTextureBackground ~= false
 end
 local function LegacyValues(result, record)
+    Layout.ResolveSideSelection(result,record)
     for _, prefix in ipairs({"hotkey", "count", "macro"}) do
         if record and record[prefix .. "FontSize"] == nil then
             if record[prefix .. "Font"] and record[prefix .. "Font"] ~= "native" then
@@ -218,6 +222,16 @@ local function LegacyValues(result, record)
     if not record or record.hoverBackgroundShadow == nil then result.hoverBackgroundShadow = mode == "shadow" end
     if not record or record.hoverBorderShadow == nil then result.hoverBorderShadow = mode == "default" end
     if not record or record.hoverBorder == nil then result.hoverBorder = mode == "border" end
+end
+function Layout.ResolveSideSelection(result, record)
+    record=record or {}
+    if record.sideOrnamentLeft==nil then result.sideOrnamentLeft=record.gryphons~="right" end
+    if record.sideOrnamentRight==nil then result.sideOrnamentRight=record.gryphons~="left" end
+end
+function Layout.ApplyLegacySideChoice(record, choice)
+    if choice=="left" or choice=="right" then
+        record.sideOrnamentLeft,record.sideOrnamentRight=choice=="left",choice=="right"
+    end
 end
 function Layout.ReadGlobal(record)
     local ok, failure = Layout.ValidateGlobal(record)

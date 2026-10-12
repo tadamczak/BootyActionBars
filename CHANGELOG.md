@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-dev.45 — 2026-10-12
+
+- Separate side ornament style from Left/Right visibility checkboxes, preserving older native selections.
+- Turn pedestal statues inward; repair gryphon notches and the wide crystal; add upper/lower moon ornaments.
+
 ## 0.1.0-dev.44 — 2026-10-12
 
 - Choose side, top and bottom ornaments independently: native/new gryphons, statues, lions, banners, drapery, crests and crystals.

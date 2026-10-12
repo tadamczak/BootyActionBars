@@ -19,11 +19,12 @@ local function Number(value, fallback, minimum, maximum)
     if type(value) ~= "number" or value - value ~= 0 then return fallback end
     return math.max(minimum, math.min(maximum, value))
 end
-Layout.OrnamentKeys = {"topOrnament", "topOrnamentScalePct", "topOrnamentX", "topOrnamentY",
+Layout.OrnamentKeys = {"sideOrnamentLeft","sideOrnamentRight","topOrnament", "topOrnamentScalePct", "topOrnamentX", "topOrnamentY",
     "bottomOrnament", "bottomOrnamentScalePct", "bottomOrnamentX", "bottomOrnamentY"}
 for _, key in ipairs(Layout.OrnamentKeys) do table.insert(keys, key) end
 local ornamentPrefixes = {"topOrnament", "bottomOrnament"}
 function Layout.ResolveOrnaments(drawing, target)
+    target.sideOrnamentLeft,target.sideOrnamentRight=drawing.sideOrnamentLeft,drawing.sideOrnamentRight
     for _, prefix in ipairs(ornamentPrefixes) do
         target[prefix] = drawing[prefix] or "none"
         target[prefix .. "ScalePct"] = Number(drawing[prefix .. "ScalePct"],100,25,500)
@@ -36,6 +37,8 @@ function Layout.OrnamentVisible(scene, index)
     if index == 4 then return scene.bottomOrnament ~= nil and scene.bottomOrnament ~= "none" end
     local kind = scene.gryphons or "none"
     if kind == "none" then return false end
+    if index==1 and scene.sideOrnamentLeft~=nil then return scene.sideOrnamentLeft end
+    if index==2 and scene.sideOrnamentRight~=nil then return scene.sideOrnamentRight end
     if kind == "left" then return index == 1 end
     if kind == "right" then return index == 2 end
     return index == 1 or index == 2
@@ -81,7 +84,7 @@ function Layout.Ornament(scene, index)
             y=(index==3 and scene.top-height+8*scale or scene.bottom-8*scale)-scene[prefix .. "Y"]
         end
         path,left,right,top,bottom=sprite.path,0,sprite.right,0,sprite.bottom
-        if index==2 and definition.mirrorRight then left,right=right,left end
+        if index==1 and definition.mirrorLeft or index==2 and definition.mirrorRight then left,right=right,left end
     end
     if index<=2 then
         x=x+(index==1 and scene.gryphonLeftX or scene.gryphonRightX)
